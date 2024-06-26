@@ -100,7 +100,6 @@ void browser_leave_directory(){
   for(int i=strlen(Config.active_dir)-2;i>=0;i--){
     if(Config.active_dir[i]=='/'){
       strncpy(Config.prev_dir,&Config.active_dir[i+1],sizeof(Config.prev_dir)-1);
-      // Config.prev_dir[strlen(Config.prev_dir)-1]=0; //remove trailing slash
       Config.active_dir[i+1]=0;
       break;
     }
@@ -130,13 +129,11 @@ bool browser_full_path(int cur, char* path, int path_size){
 int browser_build_list(bool fromPlayer=false){
   memset(sort_list,0,sizeof(sort_list));
   if(!sd_fat.begin(SD_CONFIG)){
-    // message_box_P(PSTR(MSG_ERR_NO_CARD),MB_OK);
     PlayerCTRL.isSDeject=true;
     PlayerCTRL.screen_mode=SCR_SDEJECT;
     return FILE_ERR_NO_CARD;
   }
   if(!sd_dir.open(fromPlayer?Config.play_dir:Config.active_dir,O_RDONLY)){
-    // message_box_P(PSTR(MSG_ERR_CANT_OPEN_DIR),MB_OK);
     return FILE_ERR_OTHER;
   }
   int file_id=-1;
@@ -155,7 +152,6 @@ int browser_build_list(bool fromPlayer=false){
             sort_list_len=0;
             char str[128];
             snprintf(str,sizeof(str),"Too many files\nin a folder\n(%u max)",SORT_FILES_MAX);
-            // message_box(str, MB_OK);
             return FILE_ERR_OTHER;
           }
           if(sd_file.isSubDir()){
@@ -181,7 +177,6 @@ int browser_build_list(bool fromPlayer=false){
   }
   sd_dir.close();
   if(sort_list_len==0){
-    // message_box_P(PSTR(MSG_ERR_NO_FILES), MB_OK);
     return FILE_ERR_OTHER;
   }
   //now sort the list for a convenient alphanumeric ordered display
@@ -513,20 +508,10 @@ int browser_screen(int mode){
       PlayerCTRL.isBrowserCommand=true;
       PlayerCTRL.autoPlay=false;
       PlayerCTRL.isFinish=true;
-      // DEBUG
     }
     config_save();
     return Config.dir_cur;
   }
-  // if(up.click()){
-  //   stop_down++;
-  //   // if(stop_down>=STOP_HOLD_TIME){
-  //     sound_play(SFX_SELECT);
-  //     return -1;
-  //   // }
-  // }else{
-  //   stop_down=0;
-  // }
   if(dn.click()){
     sound_play(SFX_CANCEL);
     if(mode==BROWSE_DIR){

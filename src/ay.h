@@ -167,15 +167,13 @@ void AYInit(){
 }
 
 void IRAM_ATTR AYTimer_ISR(){
-  // if(PlayerCTRL.music_type!=TYPE_AY){
-    if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
-      if(writeFlag&&!PlayerCTRL.isFastForward) music_play();
-      if(PlayerCTRL.isFastForward) music_play();
-    }else{
-      ay_mute(0);
-      ay_mute(1);
-    }
-  // }
+  if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
+    if(writeFlag&&!PlayerCTRL.isFastForward) music_play();
+    if(PlayerCTRL.isFastForward) music_play();
+  }else{
+    ay_mute(0);
+    ay_mute(1);
+  }
   writeFlag = !writeFlag;
 }
 

@@ -15,8 +15,7 @@ volatile uint32_t frame_max=PLAY_NORMAL;
 const uint8_t* const sounds_list[] = {
   cancel_data,
   move_data,
-  select_data,
-  // startup_data,
+  select_data
 };
 
 struct{

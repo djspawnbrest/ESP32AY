@@ -178,7 +178,6 @@ void config_screen(){
     spr_printmenu_item(img,3,2,PSTR("Clock"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
     spr_printmenu_item(img,4,2,PSTR("Play mode"),WILD_CYAN_D2,ccur==2?TFT_RED:TFT_BLACK,play_modes[Config.play_mode],TFT_YELLOW);
     sprintf(buf,"%2u%%",Config.scr_bright);
-    //sprintf(buf,"%2u%%",map(Config.scr_bright, 100, 0, 0, 100));
     spr_printmenu_item(img,5,2,PSTR("Scr.brightness"),WILD_CYAN_D2,ccur==3?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
     if(!Config.scr_timeout){
       strcpy(buf,"Off");

@@ -200,9 +200,6 @@ void voltage() {
       precent = ((volt - v_min) * 100) / (v_max - v_min);
     }
 
-    // uncomment for debug
-    // precent = 28;
-
     img.setColorDepth(8);
     img.createSprite(40,9);
     img.fillScreen(0);
@@ -243,7 +240,6 @@ void voltage() {
 
 void display_brightness(uint8_t Value){
   if (Value > 0 || Value < 100) {
-    //analogWrite(TFT_BL, Value * 2.55);
     analogWrite(TFT_BL, map(Value, 100, 0, 0, 100) * 2.55);
   }
 }
@@ -330,7 +326,6 @@ void sdEject(){
 
 void TFTInit(){
   tft.init(TFT_BLACK);
-  // tft.setRotation(2);
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_WHITE);
   tft.setFreeFont(&WildFont);

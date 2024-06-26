@@ -223,8 +223,7 @@ enum {
 enum {
   SFX_CANCEL=0,
   SFX_MOVE,
-  SFX_SELECT,
-  // SFX_STARTUP
+  SFX_SELECT
 };
 
 enum {

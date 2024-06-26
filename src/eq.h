@@ -1,8 +1,6 @@
 #include "ayFreqTable.h"
 
 #define EQ_HEIGHT 24
-// EQ read from AY - 1, read from file/stream - 0
-#define AY_EQ 0
 
 uint8_t ay_reg_1[16];
 uint8_t ay_reg_2[16];
@@ -53,11 +51,6 @@ void fastEQ(){
       shift2+=4;
     }
   }
-  // img.setFreeFont(&WildFont);
-  // img.setTextSize(2);
-  // img.setTextColor(TFT_WHITE);
-  // img.setCursor(8,16);
-  // img.print(frqHz);
   //If Turbo Sound - draw flash labels
   if(AYInfo.is_ts){
     img.setFreeFont(&WildFont);
@@ -160,77 +153,60 @@ void fastEQ(){
   img.deleteSprite();
 }
 
-void readEQ(uint8_t reg,uint8_t val,/*bool ay=false,*/ uint8_t chip=0){
+void readEQ(uint8_t reg,uint8_t val, uint8_t chip=0){
 	uint16_t tmpA=0,tmpB=0,tmpC=0;
 	uint16_t regEnv=0,indxEnv=0;
 	uint8_t regNoise=0,reg13=0;
 	uint8_t regMix=0xFF;
   tA1=(ay_reg_1[8]&0x1F); tB1=(ay_reg_1[9]&0x1F); tC1=(ay_reg_1[10]&0x1F);
   tA2=(ay_reg_2[8]&0x1F); tB2=(ay_reg_2[9]&0x1F); tC2=(ay_reg_2[10]&0x1F);
-  // if(!ay){
-    val=(ay_reg_1[reg]+ay_reg_2[reg])/2;
-    switch(reg){
-      case 0:
-        tmpA|=val;
-      break;
-      case 1:
-        tmpA=(val&0x0F)<<8;
-      break;
-      case 2:
-        tmpB|=val;
-      break;
-      case 3:
-        tmpB=(val&0x0F)<<8;
-      break;
-      case 4:
-        tmpC|=val;
-      break;
-      case 5:
-        tmpC=(val&0x0F)<<8;
-      break;
-      case 6:
-        regNoise=val&0x1F;
-      break;
-      case 7:
-        regMix=val;
-      break;
-      case 8:
-        tA=(val&0x1F);
-      break;
-      case 9:
-        tB=(val&0x1F);
-      break;
-      case 10:
-        tC=(val&0x1F);
-      break;
-      case 11:
-        regEnv|=val;
-      break;
-      case 12:
-        regEnv=val<<8;
-      break;
-      case 13:
-        reg13=val;
-      break;
-      default:
-      break;
-    }
-  // }else{
-  //   tmpA=(ay_read(chip,1)&0x0F)<<8;
-  //   tmpA|=ay_read(chip,0);
-  //   tmpB=(ay_read(chip,3)&0x0F)<<8;
-  //   tmpB|=ay_read(chip,2);
-  //   tmpC=(ay_read(chip,5)&0x0F)<<8;
-  //   tmpC|=ay_read(chip,4);
-  //   reg13=ay_read(chip,13);
-  //   regEnv=ay_read(chip,12)<<8;
-  //   regEnv|=ay_read(chip,11);
-  //   regNoise=ay_read(chip,6)&0x1F;
-  //   regMix=ay_read(chip,7);
-  //   tA=(ay_read(chip,8)&0x1F);
-  //   tB=(ay_read(chip,9)&0x1F);
-  //   tC=(ay_read(chip,10)&0x1F);
-  // }
+  val=(ay_reg_1[reg]+ay_reg_2[reg])/2;
+  switch(reg){
+    case 0:
+      tmpA|=val;
+    break;
+    case 1:
+      tmpA=(val&0x0F)<<8;
+    break;
+    case 2:
+      tmpB|=val;
+    break;
+    case 3:
+      tmpB=(val&0x0F)<<8;
+    break;
+    case 4:
+      tmpC|=val;
+    break;
+    case 5:
+      tmpC=(val&0x0F)<<8;
+    break;
+    case 6:
+      regNoise=val&0x1F;
+    break;
+    case 7:
+      regMix=val;
+    break;
+    case 8:
+      tA=(val&0x1F);
+    break;
+    case 9:
+      tB=(val&0x1F);
+    break;
+    case 10:
+      tC=(val&0x1F);
+    break;
+    case 11:
+      regEnv|=val;
+    break;
+    case 12:
+      regEnv=val<<8;
+    break;
+    case 13:
+      reg13=val;
+    break;
+    default:
+    break;
+  }
 	for (uint8_t i=0;i<96;i++) {
 		if(FreqAY[i]>=tmpA&&FreqAY[i+1]<tmpA)A=i;
 		if(FreqAY[i]>=tmpB&&FreqAY[i+1]<tmpB)B=i;

@@ -1,7 +1,4 @@
 #include <Wire.h>
-//#include <PT2257.h>
-
-//#include <microWire.h>
  
 // --- Audio Amplifier I2C definitions ---
 #define AMP_ADDRESS 0x60       // TPA6130A2 device address
@@ -15,8 +12,6 @@
 bool muteL=false;
 bool muteR=false;
 
-//PT2257 rt;
-
 void writeToAmp(byte address,byte val) {
   Wire.beginTransmission(AMP_ADDRESS); // start transmission to device   
   Wire.write(address);                 // send register address
@@ -24,18 +19,8 @@ void writeToAmp(byte address,byte val) {
   Wire.endTransmission();              // end transmission
 }
 
-void ampVolume(){
-  //rt.setLeft(Config.volume); // int 0...79 
-  //rt.setRight(Config.volume);// int 0...79
-  writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
-  // writeToAmp(AMP_REG2, AMP_REG2_SETUP);
-}
-
 void ampInit() {
   Wire.begin();
-  //rt.setLeft(Config.volume); // int 0...79 
-  //rt.setRight(Config.volume);// int 0...79
   writeToAmp(AMP_REG1,AMP_REG1_SETUP);
-  //writeToAmp(AMP_REG2,AMP_REG2_SETUP);
   writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
 }

@@ -124,7 +124,6 @@ int music_open(const char* filename,int ay_sub_song){
             while(offsetString<=offset-21){
               if(fileInfoBuf[offsetString]==0x00){
                 bufPos++;
-                //tft.println(offsetString);
                 offsetBuf[bufPos]=offsetString+1;
               }
               offsetString++;
@@ -295,19 +294,7 @@ void music_init(){
   AYInfo.module_len=music_data_size;
   AYInfo.file_data=music_data;
   AYInfo.file_len=music_data_size;
-  /*
-    AYInfo.data=NULL; //needs to be reset to prevent player deleting arrays
-    AYInfo.data1=NULL;
-    AYInfo.module1=NULL;
-    AYInfo.Length=0;
-    AYInfo.Loop=0;
-    AYInfo.is_ts=0;
 
-    AYInfo.Author.reserve(64);
-    AYInfo.Author=""; //in case info is missing, but there is some from previous track
-    AYInfo.Name.reserve(64);
-    AYInfo.Name="";
-  */
   switch(PlayerCTRL.music_type){
     case TYPE_PT1: PT1_Init(AYInfo); PT1_GetInfo(AYInfo); break;
     case TYPE_PT2: PT2_Init(AYInfo); PT2_GetInfo(AYInfo); break;
@@ -683,7 +670,6 @@ void timeShow(){
   img.pushSprite(9,161);
   img.deleteSprite();
   //time elapsed
-  //sprintf(tme, "%2.2u:%2.2u:%2.2u/%2.2u:%2.2u:%2.2u", playerCTRL.currentFramePosition/50/60, playerCTRL.currentFramePosition/50%60, playerCTRL.currentFramePosition*2%100, playerCTRL.trackFrames/50/60, playerCTRL.trackFrames/50%60, playerCTRL.trackFrames*2%100);
   sprintf(tme, "%2.2u:%2.2u:%2.2u", PlayerCTRL.trackFrame/50/60, PlayerCTRL.trackFrame/50%60, PlayerCTRL.trackFrame*2%100);
   img.setColorDepth(8);
   img.createSprite((8*10)-2,8);
@@ -731,7 +717,6 @@ void timeShow(){
 
 void ayClockShow(){
   // ay clock show
-  // sprintf(tme, "%.4f MHz",(float)Config.ay_clock/1000000);
   switch(Config.ay_clock){
     case CLK_SPECTRUM: sprintf(tme,"ZX 1.77MHz");break;
     case CLK_PENTAGON: sprintf(tme,"PEN 1.75MHz");break;
@@ -818,7 +803,6 @@ void player_screen(){
   if(PlayerCTRL.scr_mode_update[SCR_PLAYER]){
     clear_display_field();
     dynRebuild=true;
-    //batChange=true;
     playerFrameShow();
   }
   if(dynRebuild){
@@ -888,7 +872,6 @@ void player_screen(){
   if (up.hasClicks(1) || up.holding()) {
     if (!enc.holding()) {
       if(Config.volume++ >=63) Config.volume=63;
-      //ampVolume();
       writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
       img.createSprite(10*13,8*2);
       img.fillScreen(0);
@@ -917,7 +900,6 @@ void player_screen(){
   if(dn.hasClicks(1)||dn.holding()) {
     if(!enc.holding()) {
       if(Config.volume-- <=0) Config.volume=0;
-      //ampVolume();
       writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
       img.createSprite(10*13,8*2);
       img.fillScreen(0);

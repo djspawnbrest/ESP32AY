@@ -15,33 +15,6 @@
 #include "playlist.h"
 #include "browser.h"
 
-// void dbg(){
-//   Serial.print("Ayl file: ");
-//   Serial.println(Config.ayl_file);
-//   Serial.print("Play ayl file: ");
-//   Serial.println(Config.play_ayl_file);
-//   Serial.print("Play dir: ");
-//   Serial.println(Config.play_dir);
-//   Serial.print("Active dir: ");
-//   Serial.println(Config.active_dir);
-//   Serial.print("Prev dir: ");
-//   Serial.println(Config.prev_dir);
-//   Serial.print("Cur dir: ");
-//   Serial.println(Config.dir_cur);
-//   Serial.print("Prev dir cur: ");
-//   Serial.println(Config.dir_cur_prev);
-//   Serial.print("Play cur: ");
-//   Serial.println(Config.play_cur);
-//   Serial.print("Count files: ");
-//   Serial.println(Config.play_count_files);
-//   Serial.print("isBrowserPlaylist: ");
-//   Serial.println(Config.isBrowserPlaylist?"YES":"NO");
-//   Serial.print("isPlayAYL: ");
-//   Serial.println(Config.isPlayAYL?"YES":"NO");
-//   Serial.print("Cursor offset: ");
-//   Serial.println(cursor_offset);
-// }
-
 #include "sound.h"
 #include "eq.h"
 #include "ay.h"
@@ -62,14 +35,12 @@
 
 void setup(){
   display_brightness(0);
-  Serial.begin(115200);
   config_load();
   AYPlayCoreInit();
   initVoltage();
   TFTInit();
   buttonsSetup();
   DACInit();
-  // AYTimerInit();
   AYInit();
   muteAYBeep();
   ampInit();

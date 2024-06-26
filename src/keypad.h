@@ -27,35 +27,6 @@ void playerModeChange(){
 
 bool isRight=false,isLeft=false;
 
-void buttonsTick(){
-  // if(enc.right()){
-  //   isRight=true;
-  // }
-  // if (enc.left()){
-  //   isLeft=true;
-  // }
-  // if(enc.timeout(400)){
-  //   if(isRight){
-  //     isRight=false;
-  //   }
-  //   if(isLeft){
-  //     isLeft=false;
-  //   }
-  // }
-  // if (enc.rightH()){
-
-  // }
-  // if (enc.release()){
-
-  // }
-  // if (enc.click()){
-
-  // }
-  // if (enc.hold()){
-
-  // }
-}
-
 void generalTick(){
   enc.tick();
   up.tick();
@@ -77,28 +48,4 @@ void generalTick(){
       PlayerCTRL.scr_mode_update[PlayerCTRL.screen_mode]=true;
     }
   }
-  // if (enc.leftH()){
-
-  // }
-  // if (up.click()||up.holding()){
-  //   if (!enc.holding()){
-      
-  //   }else{
-      
-  //   }
-  // }
-  // if (dn.click()||dn.holding()){
-  //   if (!enc.holding()){
-      
-  //   }else{
-      
-  //   }
-  // }
-  // if (dn.click(2)) {
-
-  // }
-  // if (dn.timeout(2000)||up.timeout(2000)){
-
-  // }
-  // buttonsTick();
 }
