@@ -16,6 +16,17 @@ ESP32 based AY Turbo Sound multiformat player
 - .rsf - Registers Stream Flow file format
 - .yrg - [Custom AVR-AY format](https://www.avray.ru/ru/avr-ay-player/)
 
+### Controls
+- Encoder Hold - change mode player/file browser
+- Encoder Click - in player mode - play/pause; in file browser mode select track/playlist/directory; select - in config mode
+- Encoder Double click - in player mode - open settings
+- Encoder Push and turn right - fast forward (for ay format change subsong)
+- Encoder Push and turn left - slow down (for ay format change subsong)
+- Left button click/hold - volume - (in player mode); cancel - in config mode
+- Right button click/hold - volume + (in player mode)
+- Left button double click - change AY clock (in player mode)
+- Right button double click - change play mode: all/shuffle/once (in player mode)
+
 ### Playing modes:
 - Playing all tracks (in folder/playlist)
 - Playing random track (in folder/playlist)
