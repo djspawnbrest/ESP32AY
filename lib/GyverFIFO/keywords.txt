@@ -1,0 +1,23 @@
+#######################################
+# Syntax Coloring Map For GyverFIFO
+#######################################
+
+#######################################
+# Datatypes (KEYWORD1)
+#######################################
+GyverFIFO	KEYWORD1
+
+#######################################
+# Methods and Functions (KEYWORD2)
+#######################################
+
+write	KEYWORD2
+availableForWrite	KEYWORD2
+read	KEYWORD2
+peek	KEYWORD2
+available	KEYWORD2
+clear	KEYWORD2
+
+#######################################
+# Constants (LITERAL1)
+#######################################
