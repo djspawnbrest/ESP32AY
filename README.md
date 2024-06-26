@@ -45,4 +45,5 @@ ESP32 based AY Turbo Sound multiformat player
 ### Built-in headphones stereo amplifier controlled by I2C bus
 
 ## Demo video with digital sound record:
-[https://www.youtube.com/watch?v=-dr-m1xszBs](https://www.youtube.com/watch?v=-dr-m1xszBs)
+
+[![Watch the video](https://i9.ytimg.com/vi_webp/-dr-m1xszBs/mq3.webp?sqp=CKDj8LMG-oaymwEmCMACELQB8quKqQMa8AEB-AH-CYAC0AWKAgwIABABGH8gLSgvMA8=&rs=AOn4CLDVComMjCLzqgLo2z5xSIcDsQl70g)](https://youtu.be/-dr-m1xszBs)
