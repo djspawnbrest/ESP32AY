@@ -57,4 +57,4 @@ ESP32 based AY Turbo Sound multiformat player
 
 ## Demo video with digital sound record:
 
-[![Watch the video](https://i9.ytimg.com/vi_webp/-dr-m1xszBs/mq3.webp?sqp=CKDj8LMG-oaymwEmCMACELQB8quKqQMa8AEB-AH-CYAC0AWKAgwIABABGH8gLSgvMA8=&rs=AOn4CLDVComMjCLzqgLo2z5xSIcDsQl70g)](https://youtu.be/-dr-m1xszBs)
+[![Watch the video](https://i.ytimg.com/an_webp/-dr-m1xszBs/mqdefault_6s.webp?du=3000&sqp=CL2L8rMG&rs=AOn4CLDMJ1whNv1aUUzgGtIppH1XILQPmw)](https://youtu.be/-dr-m1xszBs)
