@@ -64,19 +64,17 @@ void sound_play(int id){
 
 void sound_update(){
   if(Sound.sample_data){  //either a system sound or emulated beeper sound is active at a given moment, to avoid clipping
-    if(!Config.sound_vol){
-      Sound.dac=0x80;
-    }else{
+    if(Config.sound_vol){
       if((Sound.sample_ptr&~0xff)!=(Sound.sample_ptr_prev&~0xff)){
         Sound.dac=0x80+((pgm_read_byte((const void*)&Sound.sample_data[Sound.sample_ptr>>8])-128)*Config.sound_vol/2);
         Sound.sample_ptr_prev=Sound.sample_ptr;
       }
-      Sound.sample_ptr+=Sound.sample_step;
-      Sound.sample_len-=Sound.sample_step;
-      if(Sound.sample_len<=0){
-        Sound.sample_data=NULL;
-        Sound.dac=0x80;
-      }
+    }
+    Sound.sample_ptr+=Sound.sample_step;
+    Sound.sample_len-=Sound.sample_step;
+    if(Sound.sample_len<=0){
+      Sound.sample_data=NULL;
+      Sound.dac=0x00; // silent on dac
     }
   }else if(Sound.buf_rd&&PlayerCTRL.isPlay){
     Sound.dac=(PlayerCTRL.isPlay)?0x80+Sound.buf_rd[Sound.buf_ptr_rd++]:0x80;  //rendered beeper sound is always unsigned
@@ -91,8 +89,8 @@ void sound_update(){
         Sound.buf_wr=Sound.buf_2;
       }
     }
-  }else{
-    Sound.dac=0x80;
+  }else{  // else silent on dac
+    Sound.dac=0x00;
   }
   Sound.int_counter++;
 }
