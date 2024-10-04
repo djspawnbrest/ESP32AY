@@ -1,7 +1,7 @@
 # ESP32AY multiformat Turbo Sound player
 ESP32 based AY Turbo Sound multiformat player
 
-## Fast flash firmware avaliable on [Alex Spawn OTA web page](https://ota.alexspawny.ru)
+## Fast flash firmware avaliable on [Alex Spawn OTA web page](https://ota.alexspawn.ru)
 
 ## Features
 ### Supported formats:
