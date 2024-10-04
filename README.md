@@ -1,5 +1,8 @@
 # ESP32AY multiformat Turbo Sound player
 ESP32 based AY Turbo Sound multiformat player
+
+## Fast flash firmware avaliable on [Alex Spawn OTA web page](https://ota.alexspawny.ru)
+
 ## Features
 ### Supported formats:
 - .ayl - [Ay_Emul](https://bulba.untergrund.net/emulator_e.htm) by Sergey Bulba own playlist format
