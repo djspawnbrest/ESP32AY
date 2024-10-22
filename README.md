@@ -18,6 +18,7 @@ ESP32 based AY Turbo Sound multiformat player
 - .psg - Programmable Sound Generator file format
 - .rsf - Registers Stream Flow file format
 - .yrg - [Custom AVR-AY format](https://www.avray.ru/ru/avr-ay-player/)
+- UART mode (available in player settings menu as Player source)
 
 ### Controls
 - Encoder Hold - change mode player/file browser
@@ -61,3 +62,6 @@ ESP32 based AY Turbo Sound multiformat player
 ## Demo video with digital sound record:
 
 [![Watch the video](https://img.youtube.com/vi/-dr-m1xszBs/maxresdefault.jpg)](https://youtu.be/-dr-m1xszBs)
+
+### UPD 22.10.2024
+- Add new feature: "UART mode" with AVR-AY player through UART.
