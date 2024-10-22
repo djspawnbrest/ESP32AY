@@ -168,9 +168,9 @@ void config_screen(){
     img.setTextSize(1);
     img.setFreeFont(&WildFont);
     spr_println(img,0,1,PSTR("Settings"),2,ALIGN_CENTER,WILD_CYAN);
-    spr_printmenu_item(img,1,2,PSTR("Player source"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,player_sources[Config.playerSource],TFT_YELLOW);
+    spr_printmenu_item(img,2,2,PSTR("Player source"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,player_sources[Config.playerSource],TFT_YELLOW);
     sprintf(buf,"%s",ay_layout_names[Config.ay_layout]);
-    spr_printmenu_item(img,2,2,PSTR("Stereo"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    spr_printmenu_item(img,3,2,PSTR("Stereo"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
     switch(Config.ay_clock){
       case CLK_SPECTRUM: strcpy(buf,"ZX 1.77MHz");break;
       case CLK_PENTAGON: strcpy(buf,"PEN 1.75MHz");break;
@@ -178,19 +178,19 @@ void config_screen(){
       case CLK_CPC: strcpy(buf,"CPC 1.0MHz");break;
       case CLK_ATARIST: strcpy(buf,"ST 2.0MHz");break;
     }
-    spr_printmenu_item(img,3,2,PSTR("Clock"),WILD_CYAN_D2,ccur==2?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
-    spr_printmenu_item(img,4,2,PSTR("Play mode"),WILD_CYAN_D2,ccur==3?TFT_RED:TFT_BLACK,play_modes[Config.play_mode],TFT_YELLOW);
+    spr_printmenu_item(img,4,2,PSTR("Clock"),WILD_CYAN_D2,ccur==2?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    spr_printmenu_item(img,5,2,PSTR("Play mode"),WILD_CYAN_D2,ccur==3?TFT_RED:TFT_BLACK,play_modes[Config.play_mode],TFT_YELLOW);
     sprintf(buf,"%2u%%",Config.scr_bright);
-    spr_printmenu_item(img,5,2,PSTR("Scr.brightness"),WILD_CYAN_D2,ccur==4?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    spr_printmenu_item(img,6,2,PSTR("Scr.brightness"),WILD_CYAN_D2,ccur==4?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
     if(!Config.scr_timeout){
       strcpy(buf,"Off");
     }else{
       sprintf(buf,"%2us",Config.scr_timeout);
     }
-    spr_printmenu_item(img,6,2,PSTR("Scr.timeout"),WILD_CYAN_D2,ccur==5?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
-    spr_printmenu_item(img,7,2,PSTR("Key Sounds"),WILD_CYAN_D2,ccur==6?TFT_RED:TFT_BLACK,sound_vol_names[Config.sound_vol],TFT_YELLOW);
-    spr_printmenu_item(img,8,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==7?TFT_RED:TFT_BLACK);
-    spr_printmenu_item(img,9,2,PSTR("About"),WILD_CYAN_D2,ccur==8?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,7,2,PSTR("Scr.timeout"),WILD_CYAN_D2,ccur==5?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    spr_printmenu_item(img,8,2,PSTR("Key Sounds"),WILD_CYAN_D2,ccur==6?TFT_RED:TFT_BLACK,sound_vol_names[Config.sound_vol],TFT_YELLOW);
+    spr_printmenu_item(img,9,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==7?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,10,2,PSTR("About"),WILD_CYAN_D2,ccur==8?TFT_RED:TFT_BLACK);
 
     img.pushSprite(8,8);
     img.deleteSprite();
