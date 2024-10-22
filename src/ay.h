@@ -164,22 +164,5 @@ void AYInit(){
   pinMode(OUT_SHIFT_DATA_PIN, OUTPUT);
   pinMode(OUT_SHIFT_CLOCK_PIN, OUTPUT);
   digitalWrite(OUT_SHIFT_LATCH_PIN, HIGH);
-}
-
-void IRAM_ATTR AYTimer_ISR(){
-  if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
-    if(writeFlag&&!PlayerCTRL.isFastForward) music_play();
-    if(PlayerCTRL.isFastForward) music_play();
-  }else{
-    ay_mute(0);
-    ay_mute(1);
-  }
-  writeFlag = !writeFlag;
-}
-
-void AYTimerInit(){
-  AYTimer=timerBegin(1,80,true); // timer_id = 0; divider=80; countUp = true;
-  timerAttachInterrupt(AYTimer,&AYTimer_ISR,true); // edge = true
-  timerAlarmWrite(AYTimer,10*1000,true); //1000 ms
-  timerAlarmEnable(AYTimer);
+  ay_reset();
 }

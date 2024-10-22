@@ -27,8 +27,6 @@ extern "C" {
 #define PAGE_UNDEF		255
 #define PAGES_MAX		sizeof(music_data)/PAGE_SIZE
 
-TaskHandle_t AYPlay;
-
 uint8_t frqHz;
 
 struct{

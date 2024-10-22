@@ -4,3 +4,7 @@
 .vscode/launch.json
 .vscode/ipch
 !data/*
+.DS_Store
+lib/.DS_Store
+PCB/.DS_Store
+src/.DS_Store

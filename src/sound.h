@@ -63,7 +63,7 @@ void sound_play(int id){
 }
 
 void sound_update(){
-  if(Sound.sample_data){  //either a system sound or emulated beeper sound is active at a given moment, to avoid clipping
+  if(Sound.sample_data){  //either a system sound or emulated beeper sound is active at a given moment, to avoid clipping (playing raw wav)
     if(Config.sound_vol){
       if((Sound.sample_ptr&~0xff)!=(Sound.sample_ptr_prev&~0xff)){
         Sound.dac=0x80+((pgm_read_byte((const void*)&Sound.sample_data[Sound.sample_ptr>>8])-128)*Config.sound_vol/2);
@@ -76,7 +76,7 @@ void sound_update(){
       Sound.sample_data=NULL;
       Sound.dac=0x00; // silent on dac
     }
-  }else if(Sound.buf_rd&&PlayerCTRL.isPlay){
+  }else if(Sound.buf_rd&&PlayerCTRL.isPlay){  //else if AY buffer not empty (playing AY beeper)
     Sound.dac=(PlayerCTRL.isPlay)?0x80+Sound.buf_rd[Sound.buf_ptr_rd++]:0x80;  //rendered beeper sound is always unsigned
     if (Sound.buf_ptr_rd>=SOUND_BUF_MAX_SIZE){
       Sound.buf_ptr_rd=0;

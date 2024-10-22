@@ -1,4 +1,4 @@
-#define VERSION         "3.05"
+#define VERSION         "3.2"
 
 #define CLK_SPECTRUM  	1773400
 #define CLK_PENTAGON  	1750000
@@ -82,6 +82,7 @@ byte fileInfoBuf[128]; // 31 bytes per frame max, 50*31 = 1550 per sec, 155 per 
 char tme[64];
 
 struct {
+  uint8_t playerSource;
   uint8_t ay_layout;
   uint32_t ay_clock;
   uint16_t scr_timeout;
@@ -236,12 +237,20 @@ enum {
   LAY_ALL
 };
 
+enum {
+  PLAYER_MODE_SD=0,
+  PLAYER_MODE_UART,
+  PLAYER_MODE_ALL
+};
+
 const char* ay_layout_names[] = {"ABC","ACB","BAC","BCA","CAB","CBA"};
 
 void sound_play(int id);
 void browser_reset_directory();
 int browser_check_ext(const char* name);
+void ay_set_clock(uint32_t f);
 void AY_PlayBuf();
 void music_play();
 void muteAYBeep();
 int checkSDonStart();
+void playerSourceChange();

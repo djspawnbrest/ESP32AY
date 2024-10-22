@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <SdFat.h>
+#include "esp_task_wdt.h"
 
 #include "defines.h"
 
@@ -32,26 +33,26 @@
 #include "players/PSGPlay.h"
 
 #include "player.h"
+#include "uart.h"
 
 void setup(){
   display_brightness(0);
   config_load();
-  AYPlayCoreInit();
   initVoltage();
   TFTInit();
   buttonsSetup();
   DACInit();
   AYInit();
-  muteAYBeep();
   ampInit();
   introTFT();
   delay(2000);
   show_frame();
+  playerSourceChange(); // ayplaycore or uartplaycore
   checkSDonStart();
+  muteAYBeep();
 }
 
 void loop(){
-  ay_set_clock(Config.ay_clock);
   generalTick();
   player();
   switch(PlayerCTRL.screen_mode){
@@ -76,4 +77,5 @@ void loop(){
       break;
   }
   scrTimeout();
+  esp_task_wdt_reset();
 }

@@ -52,7 +52,7 @@ void fastEQ(){
     }
   }
   //If Turbo Sound - draw flash labels
-  if(AYInfo.is_ts){
+  if(AYInfo.is_ts&&Config.playerSource==PLAYER_MODE_SD){
     img.setFreeFont(&WildFont);
     img.setTextSize(1);
     img.setTextColor((colCh)?TFT_RED:TFT_WHITE);
@@ -92,7 +92,7 @@ void fastEQ(){
   img.print("B");
   img.setCursor(149,20);
   img.print("C");
-  if(AYInfo.is_ts){
+  if(AYInfo.is_ts&&Config.playerSource==PLAYER_MODE_SD){
     if(tA1>0){
       int w=(58/2)*tA1/8;
       if (w>58) w=58;

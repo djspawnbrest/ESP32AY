@@ -2,6 +2,7 @@
 
 void config_default(){
   memset(&Config,0,sizeof(Config));
+  Config.playerSource=PLAYER_MODE_SD;
   Config.ay_layout=LAY_ABC;
   Config.ay_clock=CLK_PENTAGON;
   Config.volume=32;
@@ -74,7 +75,7 @@ void config_about_screen(){
     //print message
     sprintf(buf,"ESP32 AY Player v.%s",VERSION);
     spr_println(img,0,8,buf,2,ALIGN_CENTER,TFT_RED);
-    spr_println(img,0,9,PSTR("by Spawn 03'24"),2,ALIGN_CENTER,TFT_YELLOW);
+    spr_println(img,0,9,PSTR("by Spawn 10'24"),2,ALIGN_CENTER,TFT_YELLOW);
     spr_println(img,0,10,PSTR("powered with"),2,ALIGN_CENTER,TFT_CYAN);
     spr_println(img,0,11,PSTR("  and"),2,ALIGN_CENTER,TFT_CYAN);
     spr_println(img,0,11,PSTR("libayfly     z80emu"),2,ALIGN_CENTER,WILD_GREEN);
@@ -153,6 +154,7 @@ void config_reset_default_screen(){
 }
 
 void config_screen(){
+  const char* const player_sources[]={"SD","UART"};
   const char* const play_modes[]={"Once","All","Shuffle"};
   const char* const sound_vol_names[]={"Off","Min","Mid","High"};
   char buf[32];
@@ -166,8 +168,9 @@ void config_screen(){
     img.setTextSize(1);
     img.setFreeFont(&WildFont);
     spr_println(img,0,1,PSTR("Settings"),2,ALIGN_CENTER,WILD_CYAN);
+    spr_printmenu_item(img,1,2,PSTR("Player source"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,player_sources[Config.playerSource],TFT_YELLOW);
     sprintf(buf,"%s",ay_layout_names[Config.ay_layout]);
-    spr_printmenu_item(img,2,2,PSTR("Stereo"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    spr_printmenu_item(img,2,2,PSTR("Stereo"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
     switch(Config.ay_clock){
       case CLK_SPECTRUM: strcpy(buf,"ZX 1.77MHz");break;
       case CLK_PENTAGON: strcpy(buf,"PEN 1.75MHz");break;
@@ -175,19 +178,19 @@ void config_screen(){
       case CLK_CPC: strcpy(buf,"CPC 1.0MHz");break;
       case CLK_ATARIST: strcpy(buf,"ST 2.0MHz");break;
     }
-    spr_printmenu_item(img,3,2,PSTR("Clock"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
-    spr_printmenu_item(img,4,2,PSTR("Play mode"),WILD_CYAN_D2,ccur==2?TFT_RED:TFT_BLACK,play_modes[Config.play_mode],TFT_YELLOW);
+    spr_printmenu_item(img,3,2,PSTR("Clock"),WILD_CYAN_D2,ccur==2?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    spr_printmenu_item(img,4,2,PSTR("Play mode"),WILD_CYAN_D2,ccur==3?TFT_RED:TFT_BLACK,play_modes[Config.play_mode],TFT_YELLOW);
     sprintf(buf,"%2u%%",Config.scr_bright);
-    spr_printmenu_item(img,5,2,PSTR("Scr.brightness"),WILD_CYAN_D2,ccur==3?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    spr_printmenu_item(img,5,2,PSTR("Scr.brightness"),WILD_CYAN_D2,ccur==4?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
     if(!Config.scr_timeout){
       strcpy(buf,"Off");
     }else{
       sprintf(buf,"%2us",Config.scr_timeout);
     }
-    spr_printmenu_item(img,6,2,PSTR("Scr.timeout"),WILD_CYAN_D2,ccur==4?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
-    spr_printmenu_item(img,7,2,PSTR("Key Sounds"),WILD_CYAN_D2,ccur==5?TFT_RED:TFT_BLACK,sound_vol_names[Config.sound_vol],TFT_YELLOW);
-    spr_printmenu_item(img,8,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==6?TFT_RED:TFT_BLACK);
-    spr_printmenu_item(img,9,2,PSTR("About"),WILD_CYAN_D2,ccur==7?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,6,2,PSTR("Scr.timeout"),WILD_CYAN_D2,ccur==5?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    spr_printmenu_item(img,7,2,PSTR("Key Sounds"),WILD_CYAN_D2,ccur==6?TFT_RED:TFT_BLACK,sound_vol_names[Config.sound_vol],TFT_YELLOW);
+    spr_printmenu_item(img,8,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==7?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,9,2,PSTR("About"),WILD_CYAN_D2,ccur==8?TFT_RED:TFT_BLACK);
 
     img.pushSprite(8,8);
     img.deleteSprite();
@@ -197,13 +200,13 @@ void config_screen(){
     sound_play(SFX_MOVE);
     PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
     Config.cfg_cur--;
-    if(Config.cfg_cur<0)Config.cfg_cur=7;
+    if(Config.cfg_cur<0)Config.cfg_cur=8;
   }
   if(enc.right()){
     sound_play(SFX_MOVE);
     PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
     Config.cfg_cur++;
-    if(Config.cfg_cur>7) Config.cfg_cur=0;
+    if(Config.cfg_cur>8) Config.cfg_cur=0;
   }
   if(dn.click()){
     sound_play(SFX_CANCEL);
@@ -216,10 +219,15 @@ void config_screen(){
     PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
     switch (Config.cfg_cur){
       case 0:
+        Config.playerSource++;
+        if(Config.playerSource>=PLAYER_MODE_ALL) Config.playerSource=PLAYER_MODE_SD;
+        playerSourceChange();
+        break;
+      case 1:
         Config.ay_layout++;
         if (Config.ay_layout>=LAY_ALL) Config.ay_layout=0;
         break;
-      case 1:
+      case 2:
         switch(Config.ay_clock){
           case CLK_SPECTRUM: Config.ay_clock=CLK_PENTAGON;break;
           case CLK_PENTAGON: Config.ay_clock=CLK_MSX;break;
@@ -227,17 +235,18 @@ void config_screen(){
           case CLK_CPC: Config.ay_clock=CLK_ATARIST;break;
           case CLK_ATARIST: Config.ay_clock=CLK_SPECTRUM;break;
         }
+        ay_set_clock(Config.ay_clock);
         break;
-      case 2:
+      case 3:
         Config.play_mode++;
         if(Config.play_mode>=PLAY_MODES_ALL) Config.play_mode=PLAY_MODE_ONE;
         break;
-      case 3:
+      case 4:
         Config.scr_bright-=10;
         if (Config.scr_bright<=0) Config.scr_bright=100;
         display_brightness(Config.scr_bright);
         break;
-      case 4:
+      case 5:
         switch(Config.scr_timeout){
           case 0: Config.scr_timeout=1;break;
           case 1: Config.scr_timeout=3;break;
@@ -250,16 +259,16 @@ void config_screen(){
           case 90: Config.scr_timeout=0;break;
         }
         break;
-      case 5:
+      case 6:
         Config.sound_vol++;
         if(Config.sound_vol>=VOL_MODES_ALL) Config.sound_vol=0;
         break;
-      case 6:
+      case 7:
         PlayerCTRL.msg_cur=NO;
         PlayerCTRL.screen_mode=SCR_RESET_CONFIG;
         PlayerCTRL.scr_mode_update[SCR_RESET_CONFIG]=true;
         break;
-      case 7:
+      case 8:
         PlayerCTRL.screen_mode=SCR_ABOUT;
         PlayerCTRL.scr_mode_update[SCR_ABOUT]=true;
         break;

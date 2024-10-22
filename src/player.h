@@ -3,6 +3,8 @@ static bool colCh2=false;
 int ay_cur_song=0;
 uint16_t prev_file_id=0;
 
+TaskHandle_t ayPlayTaskHandle = NULL;
+
 void player_shuffle_cur(){
   int prev_cur=Config.play_cur;
   if(Config.play_count_files<=0) return;
@@ -459,41 +461,46 @@ void player(){
     PlayerCTRL.screen_mode=SCR_SDEJECT;
     PlayerCTRL.isSDeject=true;
     return;
-  } 
-  if(PlayerCTRL.isFinish){
-    playFinish();
-    muteAYBeep();
-    if(Config.isPlayAYL){
-      playlist_get_entry_full_path(Config.play_cur,lfn,sizeof(lfn),true);
-      if(Config.play_prev_cur!=Config.play_cur) ay_cur_song=0;
-      Config.play_prev_cur=Config.play_cur;
+  }
+  if(Config.playerSource==PLAYER_MODE_SD){
+    if(PlayerCTRL.isFinish){
+      playFinish();
+      muteAYBeep();
+      if(Config.isPlayAYL){
+        playlist_get_entry_full_path(Config.play_cur,lfn,sizeof(lfn),true);
+        if(Config.play_prev_cur!=Config.play_cur) ay_cur_song=0;
+        Config.play_prev_cur=Config.play_cur;
+      }else{
+        player_full_path(Config.play_cur,lfn,sizeof(lfn));
+        if(prev_file_id!=sort_list_play[Config.play_cur].file_id) ay_cur_song=0;
+        prev_file_id=sort_list_play[Config.play_cur].file_id;
+      }
+      memcpy(playFileName,lfn,sizeof(lfn));
+      music_open(playFileName,ay_cur_song);
+      music_init();
+      muteAYBeep();
+      PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
+      browser_rebuild=1;
+      PlayerCTRL.isFinish=false;
+      PlayerCTRL.isPlay=true;
+      return;
     }else{
-      player_full_path(Config.play_cur,lfn,sizeof(lfn));
-      if(prev_file_id!=sort_list_play[Config.play_cur].file_id) ay_cur_song=0;
-      prev_file_id=sort_list_play[Config.play_cur].file_id;
+      switch(PlayerCTRL.music_type){
+      case TYPE_PSG:
+      case TYPE_RSF:
+      case TYPE_YRG:
+        fillBuffer();
+        break;
+      default:
+        break;
+      }
     }
-    memcpy(playFileName,lfn,sizeof(lfn));
-    music_open(playFileName,ay_cur_song);
-    music_init();
-    muteAYBeep();
-    PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
-    browser_rebuild=1;
-    PlayerCTRL.isFinish=false;
-    PlayerCTRL.isPlay=true;
-    return;
-  }else{
-    switch(PlayerCTRL.music_type){
-    case TYPE_PSG:
-    case TYPE_RSF:
-    case TYPE_YRG:
-      fillBuffer();
-      break;
-    default:
-      break;
+    if(!PlayerCTRL.isPlay){
+      muteAYBeep();
     }
   }
-  if(!PlayerCTRL.isPlay){
-    muteAYBeep();
+  if(Config.playerSource==PLAYER_MODE_UART){
+
   }
 }
 
@@ -540,31 +547,37 @@ void scrollInfos(char *txt, uint8_t textSize, uint16_t textColor, int width, int
 }
 
 void showFileInfo(){
-  //current Track / Tracks count
-  img.setColorDepth(8);
-  img.createSprite(12*7,8*2);
-  img.setFreeFont(&WildFont);
-  img.setTextSize(2);
-  img.fillScreen(0);
-  uint8_t shift=0;
-  img.setCursor(8,16);
-  img.setTextColor(WILD_CYAN,TFT_BLACK,true);
-  sprintf(tme,"%03d",Config.play_cur-Config.play_cur_start+1);
-  img.print(tme);
-  img.print("/");
-  sprintf(tme,"%03d",Config.play_count_files-Config.play_cur_start);
-  img.print(tme);
-  img.pushSprite(148,62);
-  img.deleteSprite();
+  if(Config.playerSource==PLAYER_MODE_SD){
+    //current Track / Tracks count
+    img.setColorDepth(8);
+    img.createSprite(12*7,8*2);
+    img.setFreeFont(&WildFont);
+    img.setTextSize(2);
+    img.fillScreen(0);
+    uint8_t shift=0;
+    img.setCursor(8,16);
+    img.setTextColor(WILD_CYAN,TFT_BLACK,true);
+    sprintf(tme,"%03d",Config.play_cur-Config.play_cur_start+1);
+    img.print(tme);
+    img.print("/");
+    sprintf(tme,"%03d",Config.play_count_files-Config.play_cur_start);
+    img.print(tme);
+    img.pushSprite(148,62);
+    img.deleteSprite();
+  }
   // file type
-  if(PlayerCTRL.music_type==TYPE_AY){
-    if(AY_GetNumSongs()==0){
-      sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
+  if(Config.playerSource==PLAYER_MODE_SD){
+    if(PlayerCTRL.music_type==TYPE_AY){
+      if(AY_GetNumSongs()==0){
+        sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
+      }else{
+        sprintf(tme, "%S %u/%u",file_ext_list[PlayerCTRL.music_type],ay_cur_song+1,AY_GetNumSongs()+1);
+      }
     }else{
-      sprintf(tme, "%S %u/%u",file_ext_list[PlayerCTRL.music_type],ay_cur_song+1,AY_GetNumSongs()+1);
+      sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
     }
-  }else{
-    sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
+  }else if(Config.playerSource==PLAYER_MODE_UART){
+    sprintf(tme,"%S","UART");
   }
   img.setColorDepth(8);
   img.createSprite((20*10)-2,16);
@@ -579,7 +592,7 @@ void showFileInfo(){
   img.pushSprite(9,220);
   img.deleteSprite();
   // is Turbo Sound
-  if(AYInfo.is_ts){
+  if(AYInfo.is_ts&&Config.playerSource==PLAYER_MODE_SD){
     img.createSprite((3*10)-2,16);
     img.fillScreen(0);
     img.setFreeFont(&WildFont);
@@ -591,51 +604,60 @@ void showFileInfo(){
     img.deleteSprite();
     colCh2=!colCh2;
   }
-  // Name
-  img.createSprite((5*10)-2,16);
-  img.fillScreen(0);
-  img.setTextSize(2);
-  img.setCursor(0,16);
-  img.setTextColor(WILD_CYAN);
-  img.print("Name");
-  img.setTextColor(TFT_RED);
-  img.print(":");
-  img.pushSprite(9,238);
-  img.deleteSprite();
-  scrollInfos(AYInfo.Name,2,TFT_YELLOW,170,16,60,238,1);
-  // Author
-  img.createSprite((7*10)-2,16);
-  img.fillScreen(0);
-  img.setTextSize(2);
-  img.setCursor(0,16);
-  img.setTextColor(WILD_CYAN);
-  img.print("Author");
-  img.setTextColor(TFT_RED);
-  img.print(":");
-  img.pushSprite(9,256);
-  img.deleteSprite();
-  scrollInfos(AYInfo.Author,2,TFT_YELLOW,150,16,80,256,2);
-  // File name
-  img.createSprite((5*10)-2,16);
-  img.fillScreen(0);
-  img.setTextSize(2);
-  img.setCursor(0,16);
-  img.setTextColor(WILD_CYAN);
-  img.print("File");
-  img.setTextColor(TFT_RED);
-  img.print(":");
-  img.pushSprite(9,274);
-  img.deleteSprite();
-  scrollInfos(playedFileName,2,TFT_YELLOW,170,16,60,274,3);
+  if(Config.playerSource==PLAYER_MODE_SD){
+    // Name
+    img.createSprite((5*10)-2,16);
+    img.fillScreen(0);
+    img.setTextSize(2);
+    img.setCursor(0,16);
+    img.setTextColor(WILD_CYAN);
+    img.print("Name");
+    img.setTextColor(TFT_RED);
+    img.print(":");
+    img.pushSprite(9,238);
+    img.deleteSprite();
+    scrollInfos(AYInfo.Name,2,TFT_YELLOW,170,16,60,238,1);
+    // Author
+    img.createSprite((7*10)-2,16);
+    img.fillScreen(0);
+    img.setTextSize(2);
+    img.setCursor(0,16);
+    img.setTextColor(WILD_CYAN);
+    img.print("Author");
+    img.setTextColor(TFT_RED);
+    img.print(":");
+    img.pushSprite(9,256);
+    img.deleteSprite();
+    scrollInfos(AYInfo.Author,2,TFT_YELLOW,150,16,80,256,2);
+    // File name
+    img.createSprite((5*10)-2,16);
+    img.fillScreen(0);
+    img.setTextSize(2);
+    img.setCursor(0,16);
+    img.setTextColor(WILD_CYAN);
+    img.print("File");
+    img.setTextColor(TFT_RED);
+    img.print(":");
+    img.pushSprite(9,274);
+    img.deleteSprite();
+    scrollInfos(playedFileName,2,TFT_YELLOW,170,16,60,274,3);
+  }
 }
 
 void playerFrameShow(){
   //show logo
   tft.pushImage(8,8,186,44,wildLogo186x44);
-  uint8_t shift = 10;
-  for (uint8_t i = 0; i < 36; i++) {
-    tft.fillRect(shift, 70, 2,2, TFT_BLUE);
-    shift += 4;
+  uint8_t shift=10;
+  if(Config.playerSource==PLAYER_MODE_SD){
+    for(uint8_t i=0;i<36;i++){
+      tft.fillRect(shift,70,2,2,TFT_BLUE);
+      shift+=4;
+    }
+  }else if(Config.playerSource==PLAYER_MODE_UART){
+    for(uint8_t i=0;i<56;i++) {
+      tft.fillRect(shift,70,2,2,TFT_BLUE);
+      shift+=4;
+    }
   }
   // blue delemiter under time
   img.setColorDepth(8);
@@ -712,6 +734,57 @@ void timeShow(){
   img.setTextColor(WILD_CYAN_D2,TFT_BLACK,true);
   img.print(tme);
   img.pushSprite(153,172+8);
+  img.deleteSprite();
+}
+
+void uartInfoShow(){
+  // UART mode label
+  sprintf(tme, "%S", "UART MODE");
+  img.setColorDepth(8);
+  img.createSprite((9*15)-2,12);
+  img.setFreeFont(&WildFont);
+  img.setTextSize(3);
+  img.fillScreen(0);
+  img.setCursor(0,24);
+  img.setTextColor(TFT_WHITE,TFT_BLACK,true);
+  img.print(tme);
+  img.pushSprite(54,162);
+  img.deleteSprite();
+  img.setColorDepth(8);
+  img.createSprite((9*15)-2,12);
+  img.setFreeFont(&WildFont);
+  img.setTextSize(3);
+  img.fillScreen(0);
+  img.setCursor(0,12);
+  img.setTextColor(WILD_CYAN_D2,TFT_BLACK,true);
+  img.print(tme);
+  img.pushSprite(54,162+12);
+  img.deleteSprite();
+  // print bottom info about UART mode (zero point sprite: 9,238(242?)) max width:222, max height: 52(48?)
+  img.setColorDepth(8);
+  img.createSprite((21*10)-2,16);
+  img.setFreeFont(&WildFont);
+  img.setTextSize(2);
+  img.fillScreen(0);
+  img.setTextColor(WILD_RED,TFT_BLACK,true);
+  img.setCursor(0,16);
+  img.print("Connect ESP32AY to PC");
+  img.pushSprite(16,246);
+  img.deleteSprite();
+
+  img.setColorDepth(8);
+  img.createSprite((14*10)-2,16);
+  img.setFreeFont(&WildFont);
+  img.setTextSize(2);
+  img.fillScreen(0);
+  img.setTextColor(WILD_RED,TFT_BLACK,true);
+  img.setCursor(0,16);
+  img.print("at ");
+  img.setTextColor(WILD_CYAN,TFT_BLACK,true);
+  img.print("57600");
+  img.setTextColor(WILD_RED,TFT_BLACK,true);
+  img.print(" baud.");
+  img.pushSprite(51,246+20);
   img.deleteSprite();
 }
 
@@ -792,10 +865,10 @@ void showPlayerIcons(){
 
 void vbUpdate(){
   tft.fillRect(12,62,10*13,8*2,0);
-  uint8_t shift = 10;
-  for (uint8_t i = 0; i < 36; i++) {
-    tft.fillRect(shift, 70, 2,2, TFT_BLUE);
-    shift += 4;
+  uint8_t shift=10;
+  for (uint8_t i=0;i<36;i++) {
+    tft.fillRect(shift,70,2,2,TFT_BLUE);
+    shift+=4;
   }
 }
 
@@ -807,7 +880,11 @@ void player_screen(){
   }
   if(dynRebuild){
     // show play mode
-    tft.drawBitmap(199,22,spModes[Config.play_mode],30,30,TFT_BLACK,WILD_CYAN);
+    if(Config.playerSource==PLAYER_MODE_SD){
+      tft.drawBitmap(199,22,spModes[Config.play_mode],30,30,TFT_BLACK,WILD_CYAN);
+    }else if(Config.playerSource==PLAYER_MODE_UART){
+      uartInfoShow();
+    }
     vbUpdate();
   }
   dynRebuild=false;
@@ -815,63 +892,68 @@ void player_screen(){
   voltage();
   ayClockShow();
   showFileInfo();
-  timeShow();
-  showPlayerIcons();
+  if(Config.playerSource==PLAYER_MODE_SD){
+    timeShow();
+    showPlayerIcons();
+  }
   fastEQ();
 
   //keypad survey
-  if(enc.hasClicks(1)){sound_play(SFX_SELECT); PlayerCTRL.isPlay=!PlayerCTRL.isPlay;}
-  if(!enc.holding()&&enc.right()){
-    sound_play(SFX_SELECT);
-    changeTrackIcon(true);
-    if(Config.play_mode==PLAY_MODE_SHUFFLE) player_shuffle_cur();
-    else Config.play_cur++;
-    PlayerCTRL.isFinish=true;
-    PlayerCTRL.autoPlay=false;
-    PlayerCTRL.isBrowserCommand=true;
-  }
-  if(!enc.holding()&&enc.left()){
-    sound_play(SFX_SELECT);
-    changeTrackIcon(false);
-    Config.play_cur--;
-    PlayerCTRL.isFinish=true;
-    PlayerCTRL.autoPlay=false;
-    PlayerCTRL.isBrowserCommand=true;
-  }
-  if(enc.rightH()){
-    if(PlayerCTRL.music_type!=TYPE_AY){
-      frame_max=PLAY_FAST;
-      PlayerCTRL.isSlowBackward=false;
-      PlayerCTRL.isFastForward=true;
-    }else{
+  if(Config.playerSource==PLAYER_MODE_SD){
+    if(enc.hasClicks(1)){sound_play(SFX_SELECT); PlayerCTRL.isPlay=!PlayerCTRL.isPlay;}
+    if(!enc.holding()&&enc.right()){
       sound_play(SFX_SELECT);
-      ay_cur_song++;
-      if(ay_cur_song>AY_GetNumSongs()) ay_cur_song=0;
       changeTrackIcon(true);
+      if(Config.play_mode==PLAY_MODE_SHUFFLE) player_shuffle_cur();
+      else Config.play_cur++;
       PlayerCTRL.isFinish=true;
       PlayerCTRL.autoPlay=false;
       PlayerCTRL.isBrowserCommand=true;
     }
-  }
-  if(enc.leftH()){
-    if(PlayerCTRL.music_type!=TYPE_AY){
-      frame_max=PLAY_SLOW;
-      PlayerCTRL.isFastForward=false;
-      PlayerCTRL.isSlowBackward=true;
-    }else{
+    if(!enc.holding()&&enc.left()){
       sound_play(SFX_SELECT);
-      ay_cur_song--;
-      if(ay_cur_song<0) ay_cur_song=AY_GetNumSongs();
       changeTrackIcon(false);
+      Config.play_cur--;
       PlayerCTRL.isFinish=true;
       PlayerCTRL.autoPlay=false;
       PlayerCTRL.isBrowserCommand=true;
     }
+    if(enc.rightH()){
+      if(PlayerCTRL.music_type!=TYPE_AY){
+        frame_max=PLAY_FAST;
+        PlayerCTRL.isSlowBackward=false;
+        PlayerCTRL.isFastForward=true;
+      }else{
+        sound_play(SFX_SELECT);
+        ay_cur_song++;
+        if(ay_cur_song>AY_GetNumSongs()) ay_cur_song=0;
+        changeTrackIcon(true);
+        PlayerCTRL.isFinish=true;
+        PlayerCTRL.autoPlay=false;
+        PlayerCTRL.isBrowserCommand=true;
+      }
+    }
+    if(enc.leftH()){
+      if(PlayerCTRL.music_type!=TYPE_AY){
+        frame_max=PLAY_SLOW;
+        PlayerCTRL.isFastForward=false;
+        PlayerCTRL.isSlowBackward=true;
+      }else{
+        sound_play(SFX_SELECT);
+        ay_cur_song--;
+        if(ay_cur_song<0) ay_cur_song=AY_GetNumSongs();
+        changeTrackIcon(false);
+        PlayerCTRL.isFinish=true;
+        PlayerCTRL.autoPlay=false;
+        PlayerCTRL.isBrowserCommand=true;
+      }
+    }
+    if(enc.release()){frame_max=PLAY_NORMAL; PlayerCTRL.isFastForward=false; PlayerCTRL.isSlowBackward=false;}
   }
-  if(enc.release()){frame_max=PLAY_NORMAL; PlayerCTRL.isFastForward=false; PlayerCTRL.isSlowBackward=false;}
-  if (up.hasClicks(1) || up.holding()) {
+
+  if (up.hasClicks(1) || up.holding()){
     if (!enc.holding()) {
-      if(Config.volume++ >=63) Config.volume=63;
+      if(Config.volume++>=63) Config.volume=63;
       writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
       img.createSprite(10*13,8*2);
       img.fillScreen(0);
@@ -887,19 +969,21 @@ void player_screen(){
       img.pushSprite(12,62);
       img.deleteSprite();
     }
-  }  
-  if(up.hasClicks(2)){
-    sound_play(SFX_SELECT);
-    switch(Config.play_mode){
-      case PLAY_MODE_ONE: Config.play_mode=PLAY_MODE_ALL;break;
-      case PLAY_MODE_ALL: Config.play_mode=PLAY_MODE_SHUFFLE;break;
-      case PLAY_MODE_SHUFFLE: Config.play_mode=PLAY_MODE_ONE;break;
-    }
-    dynRebuild=true;
   }
-  if(dn.hasClicks(1)||dn.holding()) {
+  if(Config.playerSource==PLAYER_MODE_SD){
+    if(up.hasClicks(2)){
+      sound_play(SFX_SELECT);
+      switch(Config.play_mode){
+        case PLAY_MODE_ONE: Config.play_mode=PLAY_MODE_ALL;break;
+        case PLAY_MODE_ALL: Config.play_mode=PLAY_MODE_SHUFFLE;break;
+        case PLAY_MODE_SHUFFLE: Config.play_mode=PLAY_MODE_ONE;break;
+      }
+      dynRebuild=true;
+    }
+  }
+  if(dn.hasClicks(1)||dn.holding()){
     if(!enc.holding()) {
-      if(Config.volume-- <=0) Config.volume=0;
+      if(Config.volume--<=0) Config.volume=0;
       writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
       img.createSprite(10*13,8*2);
       img.fillScreen(0);
@@ -925,6 +1009,7 @@ void player_screen(){
       case CLK_CPC: Config.ay_clock=CLK_ATARIST;break;
       case CLK_ATARIST: Config.ay_clock=CLK_SPECTRUM;break;
     }
+    ay_set_clock(Config.ay_clock);
     dynRebuild=true;
   }
   if(dn.timeout(2000)||up.timeout(2000)){
@@ -934,15 +1019,14 @@ void player_screen(){
 }
 
 void wait_frame(){
-  uint32_t prev = frame_cnt;
+  uint32_t prev=frame_cnt;
   while(frame_cnt==prev){yield(); vTaskDelay(1);}
 }
 
-void AYPlayTask(void * pvParameters){
-  while(1){
-    if(PlayerCTRL.isSDeject){
+void AYPlayTask(void *pvParameters){
+  while(true){
+    if (PlayerCTRL.isSDeject){
       muteAYBeep();
-      vTaskDelay(2);
     }else{
       if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
         music_play();
@@ -953,14 +1037,14 @@ void AYPlayTask(void * pvParameters){
           while(!Sound.buf_do_update){
             yield();
           }
-          Sound.buf_do_update = false;
-          if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish) {
+          Sound.buf_do_update=false;
+          if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
             AY_PlayBuf();
             frqHz=Sound.buf_rd[Sound.buf_ptr_rd];
             uint8_t beep=0;
             uint8_t lvlRemap=map(frqHz,0,96,0,16);
             for(uint8_t i=0;i<sizeof(bufEQ);i++){
-              if(FreqAY[i]>=frqHz&&FreqAY[i+1]<frqHz)beep=i;
+              if(FreqAY[i]>=frqHz&&FreqAY[i+1]<frqHz) beep=i;
             }
             bufEQ[beep]|=lvlRemap;
           }
@@ -968,19 +1052,21 @@ void AYPlayTask(void * pvParameters){
       }else{
         wait_frame();
       }
-      vTaskDelay(2);
     }
+    vTaskDelay(1);
+    esp_task_wdt_reset();
   }
   vTaskDelete(NULL);
 }
 
 void AYPlayCoreInit(){
   xTaskCreatePinnedToCore(
-    AYPlayTask, /* Function to implement the task */
-    "AYPlay", /* Name of the task */
-    10000,  /* Stack size in words */
-    NULL,  /* Task input parameter */
-    1,  /* Priority of the task */
-    &AYPlay,  /* Task handle. */
-    0); /* Core where the task should run */
+    AYPlayTask,  // Function to implement the task
+    "AYPlay",    // Name of the task
+    4096,       // Stack size in words
+    NULL,        // Task input parameter
+    1,           // Priority of the task
+    &ayPlayTaskHandle,     // Task handle.
+    0            // Core where the task should run
+  );
 }
