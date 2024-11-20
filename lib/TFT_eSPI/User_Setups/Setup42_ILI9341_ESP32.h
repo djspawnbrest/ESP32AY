@@ -18,7 +18,7 @@
 //#define TFT_INVERSION_ON
 #define TFT_INVERSION_OFF
 
-#define TFT_BL           14    // LED back-light control pin
+#define TFT_BL           -1    // LED back-light control pin
 #define TFT_BACKLIGHT_ON LOW  // Level to turn ON back-light (HIGH or LOW)
 
 //#define TFT_MISO 19

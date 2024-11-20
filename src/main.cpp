@@ -36,6 +36,7 @@
 #include "uart.h"
 
 void setup(){
+  blPinSetup();
   display_brightness(0);
   config_load();
   initVoltage();

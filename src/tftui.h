@@ -14,6 +14,11 @@
 #define VIEW_WDT	224
 #define VIEW_HGT	320
 
+#define LCD_BL 14 // lcd backlight pin
+const int pwmChannel = 2; // timer channel
+const int freq = 25000; // frequncy 20 kHz
+const int resolution = 8; // resolution 8 bit
+
 TFT_eSPI tft = TFT_eSPI();
 TFT_eSprite img = TFT_eSprite(&tft);
 
@@ -238,9 +243,15 @@ void voltage() {
   }
 }
 
+void blPinSetup(){
+  ledcSetup(pwmChannel, freq, resolution);
+  ledcAttachPin(LCD_BL, pwmChannel);
+  ledcWrite(pwmChannel, 255); // blackout
+}
+
 void display_brightness(uint8_t Value){
-  if (Value > 0 || Value < 100) {
-    analogWrite(TFT_BL, map(Value, 100, 0, 0, 100) * 2.55);
+  if (Value >= 0 || Value <= 100) {
+    ledcWrite(pwmChannel, map(Value, 100, 0, 0, 255));
   }
 }
 
@@ -254,7 +265,7 @@ void scrTimeout(){
     keysEvent=false;
   }
   if (Config.scr_timeout > 0 && millis() - mlsScr > Config.scr_timeout*1000) {
-    analogWrite(TFT_BL,255);
+    ledcWrite(pwmChannel, 255); // blackout
   }
 }
 
