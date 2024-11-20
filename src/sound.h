@@ -97,6 +97,7 @@ void sound_update(){
 
 void IRAM_ATTR DACTimer_ISR(){
   sigmaDeltaWrite(0,Sound.dac);
+  sigmaDeltaWrite(1,Sound.dac);
   sound_update();
   // counting frames
   if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
@@ -110,6 +111,7 @@ void IRAM_ATTR DACTimer_ISR(){
 
 void DACInit(){
   sigmaDeltaSetup(DAC1,0,F_CPU/256); // 312500 freq
+  sigmaDeltaSetup(DAC2,1,F_CPU/256); // 312500 freq
   DACTimer=timerBegin(0,80,true); // timer_id = 0; divider=80; countUp = true;
   timerAttachInterrupt(DACTimer,&DACTimer_ISR,true); // edge = true
   timerAlarmWrite(DACTimer,F_CPU/TIMER_RATE/(F_CPU/1000000),true); //1000 ms
