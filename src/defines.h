@@ -1,4 +1,4 @@
-#define VERSION         "3.2"
+#define VERSION         "3.21"
 
 #define CLK_SPECTRUM  	1773400
 #define CLK_PENTAGON  	1750000
