@@ -72,6 +72,10 @@ void loop(){
     case SCR_ABOUT:
       config_about_screen();
       break;
+    case SCR_NOFILES:
+      noFilesFound();
+      checkSDonStart();
+      break;
     case SCR_SDEJECT:
       sdEject();
       checkSDonStart();

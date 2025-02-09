@@ -335,6 +335,20 @@ void sdEject(){
   img.deleteSprite();
 }
 
+void noFilesFound(){
+  img.setColorDepth(8);
+  img.createSprite(224,304);
+  img.fillScreen(0);
+  img.setTextWrap(false);
+  img.setTextColor(TFT_RED);
+  img.setTextSize(2);
+  img.setFreeFont(&WildFont);
+  spr_println(img,0,9,PSTR("No supported"),2,ALIGN_CENTER,TFT_RED);
+  spr_println(img,0,10,PSTR("files found!"),2,ALIGN_CENTER,TFT_RED);
+  img.pushSprite(8,8);
+  img.deleteSprite();
+}
+
 void TFTInit(){
   tft.init(TFT_BLACK);
   tft.fillScreen(TFT_BLACK);

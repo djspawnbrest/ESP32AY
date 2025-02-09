@@ -13,7 +13,7 @@
 #define CFG_FILENAME  "/config.cfg"
 
 #define TIMER_RATE  44100
-#define SD_CONFIG SdSpiConfig(SS,SHARED_SPI,SD_SCK_MHZ(30))
+#define SD_CONFIG SdSpiConfig(SS,SHARED_SPI,SD_SCK_MHZ(8))
 
 #define MAX_PATH  260
 
@@ -127,6 +127,7 @@ enum{
   SCR_CONFIG,
   SCR_RESET_CONFIG,
   SCR_ABOUT,
+  SCR_NOFILES,
   SCR_SDEJECT,
 };
 

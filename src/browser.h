@@ -126,6 +126,147 @@ bool browser_full_path(int cur, char* path, int path_size){
   return false;
 }
 
+void insertion_sort_list(){
+  int i=1;
+  while(i<sort_list_len){
+    int j=i;
+    while(j>0){
+      int carry=1;
+      for(int k=SORT_HASH_LEN-1;k>=0;k--){
+        carry=((sort_list[j].hash[k]-sort_list[j-1].hash[k]-carry)<0)?1:0;
+      }
+      if(!carry) break;
+      sortStruct temp;
+      memcpy(&temp, &sort_list[j], sizeof(sortStruct));
+      memcpy(&sort_list[j], &sort_list[j - 1], sizeof(sortStruct));
+      memcpy(&sort_list[j - 1], &temp, sizeof(sortStruct));
+      j--;
+    }
+    i++;
+  }
+  // move variable Config.dir_cur
+  int file_id=-1;
+  for(int i=0;i<sort_list_len;i++){
+    if(sort_list[i].file_id == file_id){
+      Config.dir_cur=i;
+      break;
+    }
+  }
+  if(Config.dir_cur<0||Config.dir_cur>=sort_list_len) Config.dir_cur=0;
+}
+
+int search_files_in_dir(SdFile* dir, char* found_dir, bool* found_file, const char* current_path){
+  while(sd_file.openNext(dir,O_RDONLY)){
+    if(!sd_file.isHidden()&&sd_file.isFile()){
+      memset(lfn,0,SORT_HASH_LEN);
+      sd_file.getName(lfn, sizeof(lfn));
+      uint8_t file_type=browser_check_ext(lfn);
+      if(file_type!=TYPE_UNK){
+        if(sort_list_len>=SORT_FILES_MAX){
+          sd_file.close();
+          sort_list_len=0;
+          printf("Too many files\nin a folder\n(%u max)\n",SORT_FILES_MAX);
+          return FILE_ERR_OTHER;
+        }
+        sort_list[sort_list_len].file_id=sd_file.dirIndex();
+        for(int i=0;i<SORT_HASH_LEN;i++){
+          if(lfn[i]>='a'&&lfn[i]<='z') lfn[i]-=32; // to upper case just in case
+          if(lfn[i]=='_') lfn[i]=0x20; // put underscore names to the top
+          if(file_type==TYPE_AYL) lfn[i]=0x20; // put ayl on top
+        }
+        memcpy(sort_list[sort_list_len].hash,lfn,SORT_HASH_LEN);
+        if(file_type==TYPE_AYL) cursor_offset++;
+        sort_list_len++;
+        if(!*found_file){
+          snprintf(found_dir,512,"%s",current_path);
+          *found_file=true;
+        }
+      }
+    }else if(!sd_file.isHidden()&&sd_file.isSubDir()){
+      sort_list_len++;
+      cursor_offset++;
+    }
+    sd_file.close();
+  }
+  if(sort_list_len==0&&!*found_file){
+    return FILE_ERR_NO_FILE;
+  }
+  insertion_sort_list();
+  return FILE_ERR_NONE;
+}
+
+int recursive_search(SdFile* dir, char* found_dir, bool* found_file, const char* current_path){
+  // Searching files into current directory first
+  int result=search_files_in_dir(dir,found_dir,found_file,current_path);
+  if(*found_file){
+    return FILE_ERR_NONE;
+  }
+  // If not found supported files - entering into subfolders
+  dir->rewindDirectory();
+  while(sd_file.openNext(dir,O_RDONLY)){
+    char fileMsg[100];
+    sd_file.getName(fileMsg,sizeof(fileMsg));
+    if(sd_file.isSubDir()){
+      cursor_offset=0;
+      sort_list_len=0;
+      SdFile sub_dir;
+      if(sub_dir.open(dir,fileMsg,O_RDONLY)){
+        char sub_dir_path[512];
+        snprintf(sub_dir_path,sizeof(sub_dir_path),"%s/%s",current_path,fileMsg);
+        result=recursive_search(&sub_dir,found_dir,found_file, sub_dir_path);
+        sub_dir.close();
+        if(*found_file){
+          return FILE_ERR_NONE;
+        }
+      }
+    }
+    sd_file.close();
+  }
+  return FILE_ERR_NO_FILE;
+}
+
+int browser_search_files_in_sd_dir(bool fromPlayer=false){
+  memset(sort_list,0,sizeof(sort_list));
+  cursor_offset=0;
+  if(!sd_fat.begin(SD_CONFIG)){
+    PlayerCTRL.isSDeject=true;
+    PlayerCTRL.screen_mode=SCR_SDEJECT;
+    return FILE_ERR_NO_CARD;
+  }
+  if(!sd_dir.open(fromPlayer?Config.play_dir:Config.active_dir,O_RDONLY)){
+    return FILE_ERR_OTHER;
+  }
+  char found_dir[512]={0};
+  bool found_file=false;
+  const char* initial_path=fromPlayer?Config.play_dir:Config.active_dir;
+  snprintf(found_dir,sizeof(found_dir),"%s",initial_path);
+  int result=recursive_search(&sd_dir,found_dir,&found_file,initial_path);
+  sd_dir.close();
+  if(result==FILE_ERR_NONE){
+    // Setting up paths for Config.play_dir and Config.active_dir
+    snprintf(Config.play_dir,sizeof(Config.play_dir),"%s",found_dir);
+    snprintf(Config.active_dir,sizeof(Config.active_dir),"%s",found_dir);
+    // Remove the extra slash at the beginning of the path, if there is one
+    if(Config.play_dir[0]=='/'){
+      memmove(Config.play_dir,Config.play_dir+1,strlen(Config.play_dir));
+    }
+    if(Config.active_dir[0]=='/'){
+      memmove(Config.active_dir,Config.active_dir+1,strlen(Config.active_dir));
+    }
+    // Add a slash at the end of the path if there is none.
+    if(Config.play_dir[strlen(Config.play_dir)-1]!='/'){
+      strncat(Config.play_dir,"/",sizeof(Config.play_dir)-strlen(Config.play_dir)-1);
+    }
+    if(Config.active_dir[strlen(Config.active_dir)-1]!='/'){
+      strncat(Config.active_dir,"/",sizeof(Config.active_dir)-strlen(Config.active_dir)-1);
+    }
+    return FILE_ERR_NONE;
+  }
+  PlayerCTRL.isSDeject = true;
+  PlayerCTRL.screen_mode = SCR_NOFILES;
+  return FILE_ERR_NO_FILE;
+}
+
 int browser_build_list(bool fromPlayer=false){
   memset(sort_list,0,sizeof(sort_list));
   if(!sd_fat.begin(SD_CONFIG)){

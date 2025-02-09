@@ -203,14 +203,18 @@ int checkSDonStart(){
         PlayerCTRL.isBrowserCommand=true;
         return FILE_ERR_NONE;
       }else{
-        // reseting to root dir
+        // reseting
         configResetPlayingPath();
-        //now prepare default playing file
-        browser_build_list(true);
+        sort_list_len=0;
+        Config.play_count_files=sort_list_len;
+        Config.play_cur_start=0;
+        sort_list_len=0;
+        // now prepare default playing file
+        browser_search_files_in_sd_dir(true);
         memcpy(sort_list_play,sort_list,sizeof(sort_list));
         Config.play_count_files=sort_list_len;
         Config.play_cur_start=cursor_offset;
-        Config.play_cur=Config.dir_cur;
+        Config.play_cur=Config.dir_cur=cursor_offset;
         player_full_path(Config.play_cur,lfn,sizeof(lfn));
         if(sd_play_file.open(lfn,O_RDONLY)){
           sd_play_file.close();
@@ -220,14 +224,18 @@ int checkSDonStart(){
         }
       }
     }else{
-      // reset to root dir
+      // reseting
       configResetPlayingPath();
-      //now prepare default playing file
-      browser_build_list(true);
+      sort_list_len=0;
+      Config.play_count_files=sort_list_len;
+      Config.play_cur_start=0;
+      sort_list_len=0;
+      // now prepare default playing file
+      browser_search_files_in_sd_dir(true);
       memcpy(sort_list_play,sort_list,sizeof(sort_list));
       Config.play_count_files=sort_list_len;
       Config.play_cur_start=cursor_offset;
-      Config.play_cur=Config.dir_cur;
+      Config.play_cur=Config.dir_cur=cursor_offset;
       player_full_path(Config.play_cur,lfn,sizeof(lfn));
       if(sd_play_file.open(lfn,O_RDONLY)){
         sd_play_file.close();
@@ -246,8 +254,10 @@ int checkSDonStart(){
       memcpy(sort_list_play,sort_list,sizeof(sort_list));
       Config.play_count_files=sort_list_len;
       Config.play_cur_start=cursor_offset;
+      Config.dir_cur=Config.play_cur;
       player_full_path(Config.play_cur,lfn,sizeof(lfn));
-      if(sd_play_file.open(lfn,O_RDONLY)){
+      uint8_t file_type = browser_check_ext(lfn);
+      if(sd_play_file.open(lfn,O_RDONLY)&&sd_play_file.isFile()&&file_type!=TYPE_UNK){
         sd_play_file.close();
         PlayerCTRL.autoPlay=false;
         PlayerCTRL.isBrowserCommand=true;
@@ -255,12 +265,16 @@ int checkSDonStart(){
       }else{
         // reseting
         configResetPlayingPath();
-        //now prepare default playing file
-        browser_build_list(true);
+        sort_list_len=0;
+        Config.play_count_files=sort_list_len;
+        Config.play_cur_start=0;
+        sort_list_len=0;
+        // now prepare default playing file
+        browser_search_files_in_sd_dir(true);
         memcpy(sort_list_play,sort_list,sizeof(sort_list));
         Config.play_count_files=sort_list_len;
         Config.play_cur_start=cursor_offset;
-        Config.play_cur=Config.dir_cur;
+        Config.play_cur=Config.dir_cur=cursor_offset;
         player_full_path(Config.play_cur,lfn,sizeof(lfn));
         if(sd_play_file.open(lfn,O_RDONLY)){
           sd_play_file.close();
@@ -271,13 +285,18 @@ int checkSDonStart(){
         return FILE_ERR_NONE;
       }
     }else{
+      // reseting
       configResetPlayingPath();
-      //now prepare default playing file
-      browser_build_list(true);
+      sort_list_len=0;
+      Config.play_count_files=sort_list_len;
+      Config.play_cur_start=0;
+      sort_list_len=0;
+      // now prepare default playing file
+      browser_search_files_in_sd_dir(true);
       memcpy(sort_list_play,sort_list,sizeof(sort_list));
       Config.play_count_files=sort_list_len;
       Config.play_cur_start=cursor_offset;
-      Config.play_cur=Config.dir_cur;
+      Config.play_cur=Config.dir_cur=cursor_offset;
       player_full_path(Config.play_cur,lfn,sizeof(lfn));
       if(sd_play_file.open(lfn,O_RDONLY)){
         sd_play_file.close();
