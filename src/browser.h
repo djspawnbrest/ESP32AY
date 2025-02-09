@@ -428,7 +428,7 @@ void browser_dir_draw_item(int sx, int sy, int id){
       strcat(tmp,lfn);
       strcat(tmp,"/");
       // if(!strcmp(Config.play_dir,tmp)&&!Config.isPlayAYL){
-      if(strstr(Config.play_dir,tmp)!=NULL&&!Config.isPlayAYL){
+      if(strstr(Config.play_dir,tmp)!=NULL){
         spr_print(img,sx,sy,buf,2,TFT_VIOLET);
       }else{
         spr_print(img,sx,sy,buf,2,TFT_YELLOW);
