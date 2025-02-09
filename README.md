@@ -65,3 +65,6 @@ ESP32 based AY Turbo Sound multiformat player
 
 ### UPD 22.10.2024
 - Add new feature: "UART mode" with AVR-AY player through UART.
+
+### UPD 09.02.2025
+- when using the card for the first time or any initial launch of an "unknown" SD - now the player searches for any supported file on the entire memory card, including subfolders. Now there is no need to put at least one supported file in the root of the SD card.
