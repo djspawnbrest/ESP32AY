@@ -13,7 +13,8 @@
 #define CFG_FILENAME  "/config.cfg"
 
 #define TIMER_RATE  44100
-#define SD_CONFIG SdSpiConfig(SS,SHARED_SPI,SD_SCK_MHZ(8))
+SPIClass sharedSpi; // Need to use SdFat and TFT_eSPI library together
+#define SD_CONFIG SdSpiConfig(SS,SHARED_SPI,SD_SCK_MHZ(8),&sharedSpi)
 
 #define MAX_PATH  260
 

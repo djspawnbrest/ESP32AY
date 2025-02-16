@@ -355,4 +355,5 @@ void TFTInit(){
   tft.setTextColor(TFT_WHITE);
   tft.setFreeFont(&WildFont);
   display_brightness(Config.scr_bright);
+  sharedSpi = tft.getSPIinstance(); // for shared spi and one instance for SdFat and TFT_eSPI
 }
