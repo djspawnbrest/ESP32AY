@@ -6,7 +6,7 @@ void ay_writeay(AYSongInfo* ay,uint8_t reg,uint8_t val){
   ay_write_remap(0,reg,val);
 }
 
-void ay_writeay(AYSongInfo* ay, uint8_t reg, uint8_t val, uint8_t chip){
+void ay_writeay(AYSongInfo* ay,uint8_t reg,uint8_t val,uint8_t chip){
   if(!chip){
     ay_write_remap(0,reg,val);
   }else{

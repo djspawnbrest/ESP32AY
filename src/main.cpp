@@ -2,12 +2,10 @@
 #include <SPI.h>
 #include <SdFat.h>
 #include "esp_task_wdt.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include "defines.h"
-
-#include "res/select.h"
-#include "res/move.h"
-#include "res/cancel.h"
 
 #include "amp.h"
 #include "keypad.h"
@@ -31,13 +29,17 @@
 #include "players/STPPlay.h"
 #include "players/AYPlay.h"
 #include "players/PSGPlay.h"
+#include "players/MODPlay.h"
+#include "players/S3MPlay.h"
 
+// #include "sdTest.h"
 #include "player.h"
 #include "uart.h"
 
 void setup(){
   blPinSetup();
   display_brightness(0);
+  initSemaphore();
   config_load();
   initVoltage();
   TFTInit();
@@ -46,9 +48,11 @@ void setup(){
   AYInit();
   ampInit();
   introTFT();
+  // setupSD();
+  // loopSD();
   delay(2000);
   show_frame();
-  playerSourceChange(); // ayplaycore or uartplaycore
+  playerSourceChange(); // ay playcore or uart playcore
   checkSDonStart();
   muteAYBeep();
 }
@@ -81,6 +85,7 @@ void loop(){
       checkSDonStart();
       break;
   }
+  vTaskDelay(pdMS_TO_TICKS(1));
   scrTimeout();
   esp_task_wdt_reset();
 }

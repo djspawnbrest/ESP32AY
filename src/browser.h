@@ -1,4 +1,4 @@
-enum {
+enum{
   FILE_ERR_NONE=0,
   FILE_ERR_NO_CARD=-1,
   FILE_ERR_TOO_LARGE=-2,
@@ -11,21 +11,21 @@ enum {
 #define BROWSER_LINES       18
 // #define BROWSER_WAIT_SHOW   1000/10 //delay before showing wait screen
 
-enum {
-  BROWSE_DIR,
+enum{
+  BROWSE_DIR=0,
   BROWSE_AYL
 };
 
-enum {
+enum{
   MUS=0,
   DIR,
   AYL
 };
 
 #define SORT_HASH_LEN       4
-#define SORT_FILES_MAX      1280  //there are 1070 entries in the Tr_Songs/Authors currently
+#define SORT_FILES_MAX      1280 //there are 1070 entries in the Tr_Songs/Authors currently
 
-struct sortStruct {
+struct sortStruct{
   char hash[SORT_HASH_LEN];
   uint16_t file_id;
 };
@@ -36,7 +36,8 @@ int16_t sort_list_len,sort_list_play_len;
 int16_t cursor_offset;
 uint8_t browser_rebuild=1;
 
-void scrollString(char *txt, uint8_t textSize, uint16_t textColor, int width, int height, int xPos, int yPos, uint8_t scrollNumber=0){
+//not need semaphore
+void scrollString(char *txt,uint8_t textSize,uint16_t textColor,int width,int height,int xPos,int yPos,uint8_t scrollNumber=0){
   uint16_t strSize=tft_strlen(txt,textSize);
   if(millis()-mlsS[scrollNumber]>sUp[scrollNumber]){
     img.setColorDepth(8);
@@ -64,6 +65,7 @@ void scrollString(char *txt, uint8_t textSize, uint16_t textColor, int width, in
   }
 }
 
+//not need semaphore
 int browser_check_ext(const char* name){
   for(int i=strlen(name)-1;i>=0;i--){
     if(name[i]=='.'){
@@ -76,18 +78,23 @@ int browser_check_ext(const char* name){
   return TYPE_UNK;
 }
 
+//not need semaphore
 void browser_reset_directory(){
   strncpy(Config.active_dir,"/",sizeof(Config.active_dir)-1);
   strncpy(Config.prev_dir,"/",sizeof(Config.prev_dir)-1);
   strncpy(Config.ayl_file,"",sizeof(Config.ayl_file)-1);
 }
 
+//semaphored
 void browser_enter_directory(){
-  sd_dir.open(Config.active_dir, O_RDONLY);
-  sd_file.open(&sd_dir,sort_list[Config.dir_cur].file_id,O_RDONLY);
-  sd_file.getName(lfn, sizeof(lfn));
-  sd_file.close();
-  sd_dir.close();
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    sd_dir.open(Config.active_dir, O_RDONLY);
+    sd_file.open(&sd_dir,sort_list[Config.dir_cur].file_id,O_RDONLY);
+    sd_file.getName(lfn,sizeof(lfn));
+    sd_file.close();
+    sd_dir.close();
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  }
   strncat(Config.active_dir,lfn,sizeof(Config.active_dir)-1);
   strncat(Config.active_dir,"/",sizeof(Config.active_dir)-1);
   Config.active_dir[sizeof(Config.active_dir)-1]=0;
@@ -95,6 +102,7 @@ void browser_enter_directory(){
   Config.dir_cur=0;
 }
 
+//not need semaphore
 void browser_leave_directory(){
   memset(Config.prev_dir,0,sizeof(Config.prev_dir));
   for(int i=strlen(Config.active_dir)-2;i>=0;i--){
@@ -108,19 +116,23 @@ void browser_leave_directory(){
   Config.dir_cur_prev=0;
 }
 
-bool browser_full_path(int cur, char* path, int path_size){
+//semaphored
+bool browser_full_path(int cur,char* path,int path_size){
   char temp[MAX_PATH]={0};
   if(cur<0||cur>=sort_list_len) return false;
-  if(sd_dir.open(Config.active_dir,O_RDONLY)){
-    if(sd_file.open(&sd_dir,sort_list[cur].file_id,O_RDONLY)){
-      sd_file.getName(temp,sizeof(temp));
-      sd_file.close();
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    if(sd_dir.open(Config.active_dir,O_RDONLY)){
+      if(sd_file.open(&sd_dir,sort_list[cur].file_id,O_RDONLY)){
+        sd_file.getName(temp,sizeof(temp));
+        sd_file.close();
+      }
+      temp[sizeof(temp)-1]=0;
+      sd_dir.close();
+      strncpy(path,Config.active_dir,path_size-1);
+      strncat(path,temp,path_size-1);
+      return true;
     }
-    temp[sizeof(temp)-1]=0;
-    sd_dir.close();
-    strncpy(path,Config.active_dir,path_size-1);
-    strncat(path,temp,path_size-1);
-    return true;
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
   path[0]=0;
   return false;
@@ -137,9 +149,9 @@ void insertion_sort_list(){
       }
       if(!carry) break;
       sortStruct temp;
-      memcpy(&temp, &sort_list[j], sizeof(sortStruct));
-      memcpy(&sort_list[j], &sort_list[j - 1], sizeof(sortStruct));
-      memcpy(&sort_list[j - 1], &temp, sizeof(sortStruct));
+      memcpy(&temp,&sort_list[j],sizeof(sortStruct));
+      memcpy(&sort_list[j],&sort_list[j - 1],sizeof(sortStruct));
+      memcpy(&sort_list[j - 1],&temp,sizeof(sortStruct));
       j--;
     }
     i++;
@@ -147,7 +159,7 @@ void insertion_sort_list(){
   // move variable Config.dir_cur
   int file_id=-1;
   for(int i=0;i<sort_list_len;i++){
-    if(sort_list[i].file_id == file_id){
+    if(sort_list[i].file_id==file_id){
       Config.dir_cur=i;
       break;
     }
@@ -155,7 +167,7 @@ void insertion_sort_list(){
   if(Config.dir_cur<0||Config.dir_cur>=sort_list_len) Config.dir_cur=0;
 }
 
-int search_files_in_dir(SdFile* dir, char* found_dir, bool* found_file, const char* current_path){
+int search_files_in_dir(FsFile* dir,char* found_dir,bool* found_file,const char* current_path){
   while(sd_file.openNext(dir,O_RDONLY)){
     if(!sd_file.isHidden()&&sd_file.isFile()){
       memset(lfn,0,SORT_HASH_LEN);
@@ -195,7 +207,7 @@ int search_files_in_dir(SdFile* dir, char* found_dir, bool* found_file, const ch
   return FILE_ERR_NONE;
 }
 
-int recursive_search(SdFile* dir, char* found_dir, bool* found_file, const char* current_path){
+int recursive_search(FsFile* dir,char* found_dir,bool* found_file,const char* current_path){
   // Searching files into current directory first
   int result=search_files_in_dir(dir,found_dir,found_file,current_path);
   if(*found_file){
@@ -209,7 +221,7 @@ int recursive_search(SdFile* dir, char* found_dir, bool* found_file, const char*
     if(sd_file.isSubDir()){
       cursor_offset=0;
       sort_list_len=0;
-      SdFile sub_dir;
+      FsFile sub_dir;
       if(sub_dir.open(dir,fileMsg,O_RDONLY)){
         char sub_dir_path[512];
         snprintf(sub_dir_path,sizeof(sub_dir_path),"%s/%s",current_path,fileMsg);
@@ -228,13 +240,16 @@ int recursive_search(SdFile* dir, char* found_dir, bool* found_file, const char*
 int browser_search_files_in_sd_dir(bool fromPlayer=false){
   memset(sort_list,0,sizeof(sort_list));
   cursor_offset=0;
-  if(!sd_fat.begin(SD_CONFIG)){
-    PlayerCTRL.isSDeject=true;
-    PlayerCTRL.screen_mode=SCR_SDEJECT;
-    return FILE_ERR_NO_CARD;
-  }
-  if(!sd_dir.open(fromPlayer?Config.play_dir:Config.active_dir,O_RDONLY)){
-    return FILE_ERR_OTHER;
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    if(!sd_fat.begin(SD_CONFIG)){
+      PlayerCTRL.isSDeject=true;
+      PlayerCTRL.screen_mode=SCR_SDEJECT;
+      return FILE_ERR_NO_CARD;
+    }
+    if(!sd_dir.open(fromPlayer?Config.play_dir:Config.active_dir,O_RDONLY)){
+      return FILE_ERR_OTHER;
+    }
+    xSemaphoreGive(sdCardSemaphore); // Release the semaphore
   }
   char found_dir[512]={0};
   bool found_file=false;
@@ -262,61 +277,67 @@ int browser_search_files_in_sd_dir(bool fromPlayer=false){
     }
     return FILE_ERR_NONE;
   }
-  PlayerCTRL.isSDeject = true;
-  PlayerCTRL.screen_mode = SCR_NOFILES;
+  PlayerCTRL.isSDeject=true;
+  PlayerCTRL.screen_mode=SCR_NOFILES;
   return FILE_ERR_NO_FILE;
 }
 
+//semaphored
 int browser_build_list(bool fromPlayer=false){
   memset(sort_list,0,sizeof(sort_list));
-  if(!sd_fat.begin(SD_CONFIG)){
-    PlayerCTRL.isSDeject=true;
-    PlayerCTRL.screen_mode=SCR_SDEJECT;
-    return FILE_ERR_NO_CARD;
-  }
-  if(!sd_dir.open(fromPlayer?Config.play_dir:Config.active_dir,O_RDONLY)){
-    return FILE_ERR_OTHER;
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    if(!sd_fat.begin(SD_CONFIG)){
+      PlayerCTRL.isSDeject=true;
+      PlayerCTRL.screen_mode=SCR_SDEJECT;
+      return FILE_ERR_NO_CARD;
+    }
+    if(!sd_dir.open(fromPlayer?Config.play_dir:Config.active_dir,O_RDONLY)){
+      return FILE_ERR_OTHER;
+    }
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
   int file_id=-1;
   sort_list_len=0;
   cursor_offset=0;
-  int ptime=millis();
-  while(sd_file.openNext(&sd_dir,O_RDONLY)){
-    if(!sd_file.isHidden()){
-      memset(lfn,0,SORT_HASH_LEN);
-      sd_file.getName(lfn,sizeof(lfn)); //full long name is needed to be able to check the extension
-      uint8_t file_type=browser_check_ext(lfn);
-      if(sd_file.isSubDir()||(sd_file.isFile()&&file_type!=TYPE_UNK)){
-          if(sort_list_len>=SORT_FILES_MAX){
-            sd_file.close();
-            sd_dir.close();
-            sort_list_len=0;
-            char str[128];
-            snprintf(str,sizeof(str),"Too many files\nin a folder\n(%u max)",SORT_FILES_MAX);
-            return FILE_ERR_OTHER;
-          }
-          if(sd_file.isSubDir()){
-            if(strcasecmp(Config.prev_dir,lfn)==0) file_id=sd_file.dirIndex();
-          }
-          sort_list[sort_list_len].file_id=sd_file.dirIndex();
-          for(int i=0;i<SORT_HASH_LEN;i++){
-            if(lfn[i]>='a'&&lfn[i]<='z') lfn[i]-=32;  //to upper case just in case
-            if(lfn[i]=='_') lfn[i]=0x20; //put underscore names to the top
-            if(file_type==TYPE_AYL) lfn[i]=0x20; // put ayl on top
-          }
-          if(sd_file.isSubDir()){
-            sort_list[sort_list_len].hash[0]=1;
-            memcpy(&sort_list[sort_list_len].hash[1],lfn,SORT_HASH_LEN-1);
-          }else{
-            memcpy(sort_list[sort_list_len].hash,lfn,SORT_HASH_LEN);
-          }
-          if(sd_file.isSubDir()||file_type==TYPE_AYL) cursor_offset++;
-          sort_list_len++;
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    while(sd_file.openNext(&sd_dir,O_RDONLY)){
+      if(!sd_file.isHidden()){
+        memset(lfn,0,SORT_HASH_LEN);
+        sd_file.getName(lfn,sizeof(lfn)); //full long name is needed to be able to check the extension
+        uint8_t file_type=browser_check_ext(lfn);
+        if(sd_file.isSubDir()||(sd_file.isFile()&&file_type!=TYPE_UNK)){
+            if(sort_list_len>=SORT_FILES_MAX){
+              sd_file.close();
+              sd_dir.close();
+              sort_list_len=0;
+              char str[128];
+              snprintf(str,sizeof(str),"Too many files\nin a folder\n(%u max)",SORT_FILES_MAX);
+              return FILE_ERR_OTHER;
+            }
+            if(sd_file.isSubDir()){
+              if(strcasecmp(Config.prev_dir,lfn)==0) file_id=sd_file.dirIndex();
+            }
+            sort_list[sort_list_len].file_id=sd_file.dirIndex();
+            for(int i=0;i<SORT_HASH_LEN;i++){
+              if(lfn[i]>='a'&&lfn[i]<='z') lfn[i]-=32;  //to upper case just in case
+              if(lfn[i]=='_') lfn[i]=0x20; //put underscore names to the top
+              if(file_type==TYPE_AYL) lfn[i]=0x20; // put ayl on top
+            }
+            if(sd_file.isSubDir()){
+              sort_list[sort_list_len].hash[0]=1;
+              memcpy(&sort_list[sort_list_len].hash[1],lfn,SORT_HASH_LEN-1);
+            }else{
+              memcpy(sort_list[sort_list_len].hash,lfn,SORT_HASH_LEN);
+            }
+            if(sd_file.isSubDir()||file_type==TYPE_AYL) cursor_offset++;
+            sort_list_len++;
+        }
       }
+      sd_file.close();
     }
-    sd_file.close();
+    sd_dir.close();
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
-  sd_dir.close();
   if(sort_list_len==0){
     return FILE_ERR_OTHER;
   }
@@ -367,9 +388,9 @@ int browser_build_list(bool fromPlayer=false){
   return FILE_ERR_NONE;
 }
 
-bool browser_move_cur(int dir, bool loop){
+//not need semaphore
+bool browser_move_cur(int dir,bool loop){
   bool done=false;
-  // frame_cnt = 0;
   Config.dir_cur+=dir;
   if(loop){
     if(Config.dir_cur<0) Config.dir_cur=sort_list_len-1;
@@ -391,6 +412,7 @@ bool browser_move_cur(int dir, bool loop){
   return done;
 }
 
+//not need semaphore
 void browser_shuffle_cur(){
   int prev_cur=Config.dir_cur;
   while(1){
@@ -400,16 +422,24 @@ void browser_shuffle_cur(){
   }
 }
 
+//semaphored
 void browser_dir_draw_begin(int id){
-  sd_dir.open(Config.active_dir,O_RDONLY);
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    sd_dir.open(Config.active_dir,O_RDONLY);
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  }
 }
 
-void browser_dir_draw_item(int sx, int sy, int id){
+//semaphored
+void browser_dir_draw_item(int sx,int sy,int id){
   char tmp[MAX_PATH];
   memcpy(tmp,Config.active_dir,sizeof(Config.active_dir));
-  sd_file.open(&sd_dir,sort_list[id].file_id,O_RDONLY);
-  sd_file.getName(lfn,sizeof(lfn));
-  sd_file.close();
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    sd_file.open(&sd_dir,sort_list[id].file_id,O_RDONLY);
+    sd_file.getName(lfn,sizeof(lfn));
+    sd_file.close();
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  }
   lfn[sizeof(lfn)-1]=0;
   uint8_t type=MUS;
   if(sort_list[id].hash[0]==1) type=DIR;
@@ -427,8 +457,10 @@ void browser_dir_draw_item(int sx, int sy, int id){
       sprintf(buf,"[%s]",lfn);
       strcat(tmp,lfn);
       strcat(tmp,"/");
-      // if(!strcmp(Config.play_dir,tmp)&&!Config.isPlayAYL){
-      if(strstr(Config.play_dir,tmp)!=NULL){
+      // Processing and highlighting full playing path folders\file or playlist
+      if(strstr(Config.play_dir,tmp)!=NULL&&!Config.isPlayAYL){
+        spr_print(img,sx,sy,buf,2,TFT_VIOLET);
+      }else if(strstr(Config.play_ayl_file,tmp)!=NULL&&Config.isPlayAYL){
         spr_print(img,sx,sy,buf,2,TFT_VIOLET);
       }else{
         spr_print(img,sx,sy,buf,2,TFT_YELLOW);
@@ -446,15 +478,21 @@ void browser_dir_draw_item(int sx, int sy, int id){
   }
 }
 
+//semaphored
 void browser_dir_draw_end(){
-  sd_dir.close();
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    sd_dir.close();
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  }
 }
 
+//in playlist.h
 void browser_ayl_draw_begin(int id){
   playlist_open(Config.ayl_file,id);
 }
 
-void browser_ayl_draw_item(int sx, int sy, int id){
+//in playlist.h
+void browser_ayl_draw_item(int sx,int sy,int id){
   playlist_iterate(lfn,sizeof(lfn));
   playlist_file_name(lfn,sizeof(lfn));
   if(!strcmp(Config.ayl_file,Config.play_ayl_file)&&Config.play_cur==id&&Config.isPlayAYL){
@@ -464,6 +502,7 @@ void browser_ayl_draw_item(int sx, int sy, int id){
   }
 }
 
+//in playlist.h
 void browser_ayl_draw_end(){
   playlist_close();
 }
@@ -556,6 +595,7 @@ int browser_screen(int mode){
     PlayerCTRL.scr_mode_update[SCR_BROWSER]=false;
     img.pushSprite(8,8);
     img.deleteSprite();
+    // checkHeap();
   }
   //scroll
   if(scroll){
@@ -574,18 +614,15 @@ int browser_screen(int mode){
     }
   }
   //keypad survey
-  if(enc.left()){
-    sound_play(SFX_MOVE);
+  if(enc.left()&&lcdBlackout==false){
     PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
     browser_move_cur(-1,true);
   }
-  if(enc.right()){
-    sound_play(SFX_MOVE);
+  if(enc.right()&&lcdBlackout==false){
     PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
     browser_move_cur(1,true);
   }
-  if(enc.hasClicks(1)){
-    sound_play(SFX_SELECT);
+  if(enc.hasClicks(1)&&lcdBlackout==false){
     if(mode==BROWSE_DIR){
       if(sort_list[Config.dir_cur].hash[0]==1){ //directory
         browser_enter_directory();
@@ -604,6 +641,8 @@ int browser_screen(int mode){
             PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
             browser_rebuild=1;
             Config.isBrowserPlaylist=BROWSE_AYL;
+            xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+            delay(30);
             break;
           case TYPE_PT1:
           case TYPE_PT2:
@@ -617,6 +656,9 @@ int browser_screen(int mode){
           case TYPE_PSG:
           case TYPE_RSF:
           case TYPE_YRG:
+          case TYPE_MOD:
+          case TYPE_S3M:
+            PlayerCTRL.isPlay=false;
             memcpy(Config.play_dir,Config.active_dir,sizeof(Config.active_dir));
             memcpy(sort_list_play,sort_list,sizeof(sort_list));
             Config.play_count_files=sort_list_len;
@@ -632,10 +674,13 @@ int browser_screen(int mode){
             PlayerCTRL.isBrowserCommand=true;
             PlayerCTRL.autoPlay=false;
             PlayerCTRL.isFinish=true;
+            xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+            delay(30);
             break;
         }
       }
     }else{
+      PlayerCTRL.isPlay=false;
       playlist_get_entry_full_path(Config.dir_cur,lfn,sizeof(lfn));
       memcpy(Config.play_ayl_file,Config.ayl_file,sizeof(Config.ayl_file));
       Config.play_cur=Config.dir_cur;
@@ -650,15 +695,14 @@ int browser_screen(int mode){
       PlayerCTRL.isBrowserCommand=true;
       PlayerCTRL.autoPlay=false;
       PlayerCTRL.isFinish=true;
+      delay(30);
     }
     config_save();
     return Config.dir_cur;
   }
-  if(dn.click()){
-    sound_play(SFX_CANCEL);
+  if(dn.click()&&lcdBlackout==false){
     if(mode==BROWSE_DIR){
       browser_leave_directory();
-      // browser_build_list();
       PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
       browser_rebuild=1;
     }else{ // leave playlist
@@ -673,4 +717,21 @@ int browser_screen(int mode){
     return Config.dir_cur;
   }
   return 0;
+}
+
+void initSemaphore(){
+  sdCardSemaphore=xSemaphoreCreateMutex();
+  if(sdCardSemaphore==NULL){
+    // printf("Error creating sd semaphore\n");
+  }else{
+    // Give the semaphore so it's available for the first take
+    xSemaphoreGive(sdCardSemaphore);
+  }
+  outSemaphore=xSemaphoreCreateBinary();
+  if (outSemaphore==NULL){
+    // println("Failed to create outSemaphore\n");
+  }else{
+    // Give the semaphore so it's available for the first take
+    xSemaphoreGive(outSemaphore);
+  }
 }

@@ -3,7 +3,7 @@ static bool colCh2=false;
 int ay_cur_song=0;
 uint16_t prev_file_id=0;
 
-TaskHandle_t ayPlayTaskHandle = NULL;
+TaskHandle_t ayPlayTaskHandle=NULL;
 
 void player_shuffle_cur(){
   int prev_cur=Config.play_cur;
@@ -18,139 +18,159 @@ void player_shuffle_cur(){
 
 void muteAYBeep(){
   sound_clear_buf();
-  for (uint8_t chip=0; chip<2;chip++){
+  for(uint8_t chip=0; chip<2;chip++){
     ay_write(chip,0x07,0xff);
     ay_write(chip,0x08,0x00);
     ay_write(chip,0x09,0x00);
     ay_write(chip,0x0a,0x00);
   }
 }
-//subsong is only used for AY format
+
+//semaphored; subsong is only used for AY format
 int music_open(const char* filename,int ay_sub_song){
   int err=FILE_ERR_OTHER;
-  if(!sd_fat.begin(SD_CONFIG)) return FILE_ERR_NO_CARD;
-  if(sd_play_file.open(filename, O_RDONLY)){
-    sd_play_file.getName(lfn,sizeof(lfn));
-    memcpy(playedFileName,lfn,sizeof(lfn));
-    PlayerCTRL.music_type=browser_check_ext(lfn);
-    switch(PlayerCTRL.music_type){
-      case TYPE_UNK: break;
-      case TYPE_AYL: break;
-      case TYPE_PT1:
-      case TYPE_PT2:
-      case TYPE_PT3:
-      case TYPE_STC:
-      case TYPE_STP:
-      case TYPE_ASC:
-      case TYPE_PSC:
-      case TYPE_SQT:
-        memset(&AYInfo,0,sizeof(AYInfo));
-        music_data_size=sd_play_file.fileSize();
-        if(music_data_size<=sizeof(music_data)){
-          sd_play_file.read((char*)music_data,music_data_size);
-          err=FILE_ERR_NONE;
-        }else{
-          err=FILE_ERR_TOO_LARGE;
-        }
-        sd_play_file.close();
-        break;
-      case TYPE_AY:
-        memset(&AYInfo,0,sizeof(AYInfo));
-        err=AY_Load(AYInfo,ay_sub_song); //uses currently opened file stream
-        sd_play_file.close();
-        break;
-      case TYPE_PSG:
-        memset(&music_data,0,sizeof(music_data));
-        music_data_size=sd_play_file.fileSize();
-        memset(&AYInfo,0,sizeof(AYInfo));
-        AYInfo.Length=0;
-        AYInfo.Loop=0;
-        sd_play_file.read(fileInfoBuf,16);
-        memcpy(&AYInfo.Length,&fileInfoBuf[8],sizeof(unsigned long));
-        //check if present frames count info else calculate and write to file
-        if(AYInfo.Length==0){
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    if(!sd_fat.begin(SD_CONFIG)) return FILE_ERR_NO_CARD;
+    if(sd_play_file.open(filename,O_RDONLY)){
+      sd_play_file.getName(lfn,sizeof(lfn));
+      memcpy(playedFileName,lfn,sizeof(lfn));
+      PlayerCTRL.music_type=browser_check_ext(lfn);
+      switch(PlayerCTRL.music_type){
+        case TYPE_UNK: break;
+        case TYPE_AYL: break;
+        case TYPE_PT1:
+        case TYPE_PT2:
+        case TYPE_PT3:
+        case TYPE_STC:
+        case TYPE_STP:
+        case TYPE_ASC:
+        case TYPE_PSC:
+        case TYPE_SQT:
+          memset(&AYInfo,0,sizeof(AYInfo));
+          music_data_size=sd_play_file.fileSize();
+          if(music_data_size<=sizeof(music_data)){
+            sd_play_file.read((char*)music_data,music_data_size);
+            err=FILE_ERR_NONE;
+          }else{
+            err=FILE_ERR_TOO_LARGE;
+          }
           sd_play_file.close();
-          sd_play_file.open(filename, O_RDWR);
-          bool fe=false;
-          while(sd_play_file.available()){
-            byte b=sd_play_file.read();
-            switch(b){
-              case 0xFF:
-                AYInfo.Length++;
-                break;
-              case 0xFE:
-                fe=true;
-                break;
-              case 0xFD:
-                break;
-              default:
-                if(fe){AYInfo.Length+=b*4-1;fe=false;break;}
-                break;
+          break;
+        case TYPE_AY:
+          memset(&AYInfo,0,sizeof(AYInfo));
+          err=AY_Load(AYInfo,ay_sub_song); //uses currently opened file stream
+          sd_play_file.close();
+          break;
+        case TYPE_PSG:
+          memset(&music_data,0,sizeof(music_data));
+          music_data_size=sd_play_file.fileSize();
+          memset(&AYInfo,0,sizeof(AYInfo));
+          AYInfo.Length=0;
+          AYInfo.Loop=0;
+          // sd_play_file.read(fileInfoBuf,16);
+          // memcpy(&AYInfo.Length,&fileInfoBuf[8],sizeof(unsigned long));
+          //check if present frames count info else calculate and write to file
+          if(AYInfo.Length==0){
+            sd_play_file.close();
+            sd_play_file.open(filename, O_RDWR);
+            bool fe=false;
+            bool rd=true;
+            while(sd_play_file.available()&&rd){
+              byte b=sd_play_file.read();
+              switch(b){
+                case 0xFF:
+                  AYInfo.Length++;
+                  break;
+                case 0xFE:
+                  fe=true;
+                  break;
+                case 0xFD:
+                  rd=false;
+                  break;
+                default:
+                  if(fe){AYInfo.Length+=b*4-1;fe=false;break;}
+                  if(b<0xFC) sd_play_file.seekCur(1);
+                  break;
+              }
             }
+            sd_play_file.rewind();
+            sd_play_file.read(fileInfoBuf,8);
+            sd_play_file.write(&AYInfo.Length,sizeof(AYInfo.Length));
+            sd_play_file.close();
+            sd_play_file.open(filename, O_RDONLY);
           }
           sd_play_file.rewind();
-          sd_play_file.read(fileInfoBuf,8);
-          sd_play_file.write(&AYInfo.Length,sizeof(AYInfo.Length));
-          sd_play_file.close();
-          sd_play_file.open(filename, O_RDONLY);
-        }
-        sd_play_file.rewind();
-        //skip 16 info bytes
-        sd_play_file.seek(16);
-        memcpy(&AYInfo.Name,utf8rus(playedFileName),utf8_strlen(playedFileName)-4);
-        fillBuffer();
-        err=FILE_ERR_NONE;
-        break;
-      case TYPE_RSF:
-        memset(&music_data,0,sizeof(music_data));
-        music_data_size=sd_play_file.fileSize();
-        memset(&AYInfo,0,sizeof(AYInfo));
-        uint16_t freq,offset,loop;
-        if(sd_play_file.read(fileInfoBuf,4)<=0)break; // short file
-        //if(fileInfoBuf[0]!='R'||fileInfoBuf[1]!='S'||fileInfoBuf[2]!='F')return; //not RSF
-        switch(fileInfoBuf[3]){ // reading RSF HEADER v3 only supported!
-          case 3: // RSF ver.3
-            if(sd_play_file.read(fileInfoBuf,14)==0)break; // short file
-            memcpy(&freq,&fileInfoBuf[0],sizeof(uint16_t));
-            memcpy(&offset,&fileInfoBuf[2],sizeof(uint16_t));
-            memcpy(&AYInfo.Length,&fileInfoBuf[4],sizeof(uint32_t));
-            memcpy(&AYInfo.Loop,&fileInfoBuf[8],sizeof(uint32_t));
-            AYInfo.Loop=0;
-            sd_play_file.rewind();
-            sd_play_file.seek(20);
-            if(sd_play_file.read(fileInfoBuf,offset-20)==0)break; // short file
-            uint16_t offsetString=0; //20 -start position for strings - name, author, comment
-            uint8_t offsetBuf[4];
-            uint16_t bufPos = 0;
-            offsetBuf[bufPos]=0;
-            while(offsetString<=offset-21){
-              if(fileInfoBuf[offsetString]==0x00){
-                bufPos++;
-                offsetBuf[bufPos]=offsetString+1;
+          //skip 16 info bytes
+          sd_play_file.seekSet(16);
+          memcpy(&AYInfo.Name,utf8rus(playedFileName),utf8_strlen(playedFileName)-4);
+          fillBuffer();
+          err=FILE_ERR_NONE;
+          break;
+        case TYPE_RSF:
+          memset(&music_data,0,sizeof(music_data));
+          music_data_size=sd_play_file.fileSize();
+          memset(&AYInfo,0,sizeof(AYInfo));
+          uint16_t freq,offset,loop;
+          if(sd_play_file.read(fileInfoBuf,4)<=0)break; // short file
+          switch(fileInfoBuf[3]){ // reading RSF HEADER v3 only supported!
+            case 3: // RSF ver.3
+              if(sd_play_file.read(fileInfoBuf,14)==0)break; // short file
+              memcpy(&freq,&fileInfoBuf[0],sizeof(uint16_t));
+              memcpy(&offset,&fileInfoBuf[2],sizeof(uint16_t));
+              memcpy(&AYInfo.Length,&fileInfoBuf[4],sizeof(uint32_t));
+              memcpy(&AYInfo.Loop,&fileInfoBuf[8],sizeof(uint32_t));
+              AYInfo.Loop=0;
+              sd_play_file.rewind();
+              sd_play_file.seekSet(20);
+              if(sd_play_file.read(fileInfoBuf,offset-20)==0)break; // short file
+              uint16_t offsetString=0; //20 -start position for strings - name, author, comment
+              uint8_t offsetBuf[4];
+              uint16_t bufPos = 0;
+              offsetBuf[bufPos]=0;
+              while(offsetString<=offset-21){
+                if(fileInfoBuf[offsetString]==0x00){
+                  bufPos++;
+                  offsetBuf[bufPos]=offsetString+1;
+                }
+                offsetString++;
               }
-              offsetString++;
-            }
-            memcpy(&AYInfo.Name,&fileInfoBuf[offsetBuf[0]],offsetBuf[1]);
-            memcpy(&AYInfo.Author,&fileInfoBuf[offsetBuf[1]],offsetBuf[2]-offsetBuf[1]);
-            break;
-        }
-        sd_play_file.rewind();
-        sd_play_file.seek(offset);
-        fillBuffer();
-        err=FILE_ERR_NONE;
-        break;
-      case TYPE_YRG:
-        yrgFrame=0;
-        memset(&music_data,0,sizeof(music_data));
-        music_data_size=sd_play_file.fileSize();
-        memset(&AYInfo,0,sizeof(AYInfo));
-        AYInfo.Loop=0;
-        AYInfo.Length=(unsigned long)(music_data_size/16);
-        memcpy(&AYInfo.Name,utf8rus(playedFileName),utf8_strlen(playedFileName)-4);
-        fillBuffer();
-        err=FILE_ERR_NONE;
-        break;
+              memcpy(&AYInfo.Name,&fileInfoBuf[offsetBuf[0]],offsetBuf[1]);
+              memcpy(&AYInfo.Author,&fileInfoBuf[offsetBuf[1]],offsetBuf[2]-offsetBuf[1]);
+              break;
+          }
+          sd_play_file.rewind();
+          sd_play_file.seekSet(offset);
+          fillBuffer();
+          err=FILE_ERR_NONE;
+          break;
+        case TYPE_YRG:
+          yrgFrame=0;
+          memset(&music_data,0,sizeof(music_data));
+          music_data_size=sd_play_file.fileSize();
+          memset(&AYInfo,0,sizeof(AYInfo));
+          AYInfo.Loop=0;
+          AYInfo.Length=(unsigned long)(music_data_size/16);
+          memcpy(&AYInfo.Name,utf8rus(playedFileName),utf8_strlen(playedFileName)-4);
+          fillBuffer();
+          err=FILE_ERR_NONE;
+          break;
+        case TYPE_MOD:
+          sd_play_file.close();
+          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          memset(&music_data,0,sizeof(music_data));
+          memset(&AYInfo,0,sizeof(AYInfo));
+          MOD_GetInfo(filename);
+          break;
+        case TYPE_S3M:
+          sd_play_file.close();
+          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          memset(&music_data,0,sizeof(music_data));
+          memset(&AYInfo,0,sizeof(AYInfo));
+          S3M_GetInfo(filename);
+          break;
+      }
     }
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
   return err;
 }
@@ -175,10 +195,10 @@ bool player_full_path(int cur, char* path, int path_size){
 
 int checkSDonStart(){
   frame_cnt=0;
+  frame_max=frameMax(PLAY_NORMAL);
   int err=FILE_ERR_OTHER;
   while(!sd_fat.begin(SD_CONFIG)){ // while
     sdEject();
-    // return FILE_ERR_NO_CARD;
   }
   PlayerCTRL.screen_mode=SCR_PLAYER;
   PlayerCTRL.isSDeject=false;
@@ -203,18 +223,14 @@ int checkSDonStart(){
         PlayerCTRL.isBrowserCommand=true;
         return FILE_ERR_NONE;
       }else{
-        // reseting
+        // reseting to root dir
         configResetPlayingPath();
-        sort_list_len=0;
-        Config.play_count_files=sort_list_len;
-        Config.play_cur_start=0;
-        sort_list_len=0;
-        // now prepare default playing file
-        browser_search_files_in_sd_dir(true);
+        //now prepare default playing file
+        browser_build_list(true);
         memcpy(sort_list_play,sort_list,sizeof(sort_list));
         Config.play_count_files=sort_list_len;
         Config.play_cur_start=cursor_offset;
-        Config.play_cur=Config.dir_cur=cursor_offset;
+        Config.play_cur=Config.dir_cur;
         player_full_path(Config.play_cur,lfn,sizeof(lfn));
         if(sd_play_file.open(lfn,O_RDONLY)){
           sd_play_file.close();
@@ -325,16 +341,45 @@ void music_init(){
     case TYPE_ASC: ASC_Init(AYInfo); ASC_GetInfo(AYInfo); break;
     case TYPE_PSC: PSC_Init(AYInfo); PSC_GetInfo(AYInfo); break;
     case TYPE_SQT: SQT_Init(AYInfo); SQT_GetInfo(AYInfo); break;
-    case TYPE_AY: AY_Init(AYInfo); AY_GetInfo(AYInfo); break;
+    case TYPE_AY: AY_Init(AYInfo); AY_GetInfo(AYInfo); initOut(8); out->begin(); break;
     case TYPE_PSG: break;
     case TYPE_RSF: break;
     case TYPE_YRG: break;
+    case TYPE_MOD: initOut(); break;
+    case TYPE_S3M: initOut(); break;
   }
+  unMuteAmp();
 }
 
 void music_play(){
+  // calls debug times per second
+  // static uint32_t play_counter=0;
+  // static uint32_t last_time=millis();
+  // static uint32_t start_time=millis();
+  // static float calls_per_second=0.0;
+  // static uint32_t total_samples=0;
+  // static float average_rate=0.0;
+  // // Increment counters
+  // play_counter++;
+  // total_samples++;
+  // // Get current time
+  // uint32_t current_time=millis();
+  // uint32_t elapsed_time=current_time-last_time;
+  // uint32_t total_time = current_time-start_time;
+  // // Calculate every second
+  // if(elapsed_time>=1000){
+  //   // Current second rate
+  //   calls_per_second=(float)play_counter*1000.0f/elapsed_time;
+  //   // Average rate over total time
+  //   average_rate=(float)total_samples*1000.0f/total_time;
+  //   printf("Current rate: %.3f calls/sec | Average rate: %.3f calls/sec | Total time: %.3f sec\r",calls_per_second,average_rate,total_time/1000.0f);
+  //   // Reset per-second counter
+  //   play_counter=0;
+  //   last_time=current_time;
+  // }
+  // end debug calls
   if(Config.play_mode==PLAY_MODE_ONE){
-    if(PlayerCTRL.music_type!=TYPE_PSG&&PlayerCTRL.music_type!=TYPE_RSF&&PlayerCTRL.music_type!=TYPE_YRG&&PlayerCTRL.music_type!=TYPE_AY){
+    if(PlayerCTRL.music_type!=TYPE_PSG&&PlayerCTRL.music_type!=TYPE_RSF&&PlayerCTRL.music_type!=TYPE_YRG&&PlayerCTRL.music_type!=TYPE_AY&&PlayerCTRL.music_type!=TYPE_MOD&&PlayerCTRL.music_type!=TYPE_S3M){
       if(PlayerCTRL.trackFrame>=AYInfo.Length){
         if(AYInfo.Loop>0){
           PlayerCTRL.trackFrame=AYInfo.Loop;
@@ -363,14 +408,17 @@ void music_play(){
     case TYPE_ASC: ASC_Play(AYInfo); break;
     case TYPE_PSC: PSC_Play(AYInfo); break;
     case TYPE_SQT: SQT_Play(AYInfo); break;
-    case TYPE_AY: break; //AY files play differently, they're running Z80 emulation tied to the sound ISR
+    case TYPE_AY:  break; //AY files play differently, they're running Z80 emulation tied to the sound ISR
     case TYPE_PSG: PSG_Play(); break;
     case TYPE_RSF: RSF_Play(); break;
     case TYPE_YRG: YRG_Play(); break;
+    case TYPE_MOD: MOD_Play(); break;
+    case TYPE_S3M: S3M_Play(); break;
   }
 }
 
 void music_stop(){
+  muteAmp();
   ay_reset();
   switch(PlayerCTRL.music_type){
     case TYPE_PT1: PT1_Cleanup(AYInfo); break;
@@ -381,10 +429,12 @@ void music_stop(){
     case TYPE_ASC: ASC_Cleanup(AYInfo); break;
     case TYPE_PSC: PSC_Cleanup(AYInfo); break;
     case TYPE_SQT: SQT_Cleanup(AYInfo); break;
-    case TYPE_AY: AY_Cleanup(AYInfo); break;
+    case TYPE_AY: AY_Cleanup(AYInfo); out->stop(); initOut(); break;
     case TYPE_PSG: PSG_Cleanup(); break;
     case TYPE_RSF: RSF_Cleanup(); break;
     case TYPE_YRG: YRG_Cleanup(); break;
+    case TYPE_MOD: MOD_Cleanup(); break;
+    case TYPE_S3M: S3M_Cleanup(); break;
   }
   PlayerCTRL.trackFrame=0;
 }
@@ -407,7 +457,7 @@ void changeTrackIcon(bool next=true){
   }
 }
 
-void playFinish(){
+void playFinish(){ 
   //reset frames
   frame_cnt=0;
   PlayerCTRL.trackFrame=0;
@@ -474,15 +524,20 @@ void playFinish(){
 }
 
 void player(){
-  if(!sd_fat.card()->sectorCount()){
-    PlayerCTRL.isFinish=true;
-    PlayerCTRL.scr_mode_update[SCR_PLAYER]=true;
-    PlayerCTRL.screen_mode=SCR_SDEJECT;
-    PlayerCTRL.isSDeject=true;
-    return;
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    if(!sd_fat.card()->sectorCount()){
+      xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+      PlayerCTRL.isFinish=true;
+      PlayerCTRL.scr_mode_update[SCR_PLAYER]=true;
+      PlayerCTRL.isSDeject=true;
+      PlayerCTRL.screen_mode=SCR_SDEJECT;
+      return;
+    }
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
   if(Config.playerSource==PLAYER_MODE_SD){
     if(PlayerCTRL.isFinish){
+      xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
       playFinish();
       muteAYBeep();
       if(Config.isPlayAYL){
@@ -497,7 +552,7 @@ void player(){
       memcpy(playFileName,lfn,sizeof(lfn));
       music_open(playFileName,ay_cur_song);
       music_init();
-      muteAYBeep();
+      xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
       PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
       browser_rebuild=1;
       PlayerCTRL.isFinish=false;
@@ -517,9 +572,6 @@ void player(){
     if(!PlayerCTRL.isPlay){
       muteAYBeep();
     }
-  }
-  if(Config.playerSource==PLAYER_MODE_UART){
-
   }
 }
 
@@ -552,6 +604,7 @@ void scrollInfos(char *txt, uint8_t textSize, uint16_t textColor, int width, int
       img.deleteSprite();
     }
   } else {
+    img.setColorDepth(8);
     img.createSprite(width,height);
     img.fillScreen(0);
     img.setFreeFont(&WildFont);
@@ -592,6 +645,9 @@ void showFileInfo(){
       }else{
         sprintf(tme, "%S %u/%u",file_ext_list[PlayerCTRL.music_type],ay_cur_song+1,AY_GetNumSongs()+1);
       }
+    }else if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M){
+      // sprintf(tme, "%S %uCh",file_ext_list[PlayerCTRL.music_type],modChannels);
+      sprintf(tme,"%s %s%u%s",file_ext_list[PlayerCTRL.music_type],(modChannels>9)?"":" ",modChannels,"Ch");
     }else{
       sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
     }
@@ -612,6 +668,7 @@ void showFileInfo(){
   img.deleteSprite();
   // is Turbo Sound
   if(AYInfo.is_ts&&Config.playerSource==PLAYER_MODE_SD){
+    img.setColorDepth(8);
     img.createSprite((3*10)-2,16);
     img.fillScreen(0);
     img.setFreeFont(&WildFont);
@@ -625,6 +682,7 @@ void showFileInfo(){
   }
   if(Config.playerSource==PLAYER_MODE_SD){
     // Name
+    img.setColorDepth(8);
     img.createSprite((5*10)-2,16);
     img.fillScreen(0);
     img.setTextSize(2);
@@ -637,6 +695,7 @@ void showFileInfo(){
     img.deleteSprite();
     scrollInfos(AYInfo.Name,2,TFT_YELLOW,170,16,60,238,1);
     // Author
+    img.setColorDepth(8);
     img.createSprite((7*10)-2,16);
     img.fillScreen(0);
     img.setTextSize(2);
@@ -649,6 +708,7 @@ void showFileInfo(){
     img.deleteSprite();
     scrollInfos(AYInfo.Author,2,TFT_YELLOW,150,16,80,256,2);
     // File name
+    img.setColorDepth(8);
     img.createSprite((5*10)-2,16);
     img.fillScreen(0);
     img.setTextSize(2);
@@ -673,7 +733,7 @@ void playerFrameShow(){
       shift+=4;
     }
   }else if(Config.playerSource==PLAYER_MODE_UART){
-    for(uint8_t i=0;i<56;i++) {
+    for(uint8_t i=0;i<56;i++){
       tft.fillRect(shift,70,2,2,TFT_BLUE);
       shift+=4;
     }
@@ -683,7 +743,7 @@ void playerFrameShow(){
   img.createSprite(224,2);
   img.fillScreen(0);
   shift=0;
-  for (uint8_t i=0;i<56;i++) {
+  for(uint8_t i=0;i<56;i++){
     img.fillRect(shift,0,2,2,TFT_BLUE);
     shift+=4;
   }
@@ -809,19 +869,28 @@ void uartInfoShow(){
 
 void ayClockShow(){
   // ay clock show
-  switch(Config.ay_clock){
-    case CLK_SPECTRUM: sprintf(tme,"ZX 1.77MHz");break;
-    case CLK_PENTAGON: sprintf(tme,"PEN 1.75MHz");break;
-    case CLK_MSX: sprintf(tme,"MSX 1.78MHz");break;
-    case CLK_CPC: sprintf(tme,"CPC 1.0MHz");break;
-    case CLK_ATARIST: sprintf(tme,"ST 2.0MHz");break;
+  if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M){
+    switch(Config.modStereoSeparation){
+      case MOD_FULLSTEREO: sprintf(tme,"Full Stereo");break;
+      case MOD_HALFSTEREO: sprintf(tme,"Half Stereo");break;
+      case MOD_MONO: sprintf(tme,"Mono");break;
+    }
+  }else{
+    switch(Config.ay_clock){
+      case CLK_SPECTRUM: sprintf(tme,"ZX 1.77MHz");break;
+      case CLK_PENTAGON: sprintf(tme,"PEN 1.75MHz");break;
+      case CLK_MSX: sprintf(tme,"MSX 1.78MHz");break;
+      case CLK_CPC: sprintf(tme,"CPC 1.0MHz");break;
+      case CLK_ATARIST: sprintf(tme,"ST 2.0MHz");break;
+    }
   }
   img.setColorDepth(8);
   img.createSprite((22*10)-2,16);
   img.setTextSize(2);
   img.setCursor(0,16);
   img.setTextColor(WILD_CYAN);
-  img.print("AY clock ");
+  if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M) img.print("Stereo ");
+  else img.print("AY clock ");
   img.setTextColor(TFT_RED);
   img.print(": ");
   img.setTextColor(TFT_YELLOW);
@@ -858,6 +927,7 @@ void showPlayerIcons(){
   if(PlayerCTRL.isFastForward&&PlayerCTRL.isPlay){
     static bool pse=true;
     if(millis()-mls>500){
+      img.setColorDepth(8);
       img.createSprite(13,13);
       img.fillScreen(0);
       if(pse) img.drawBitmap(0,0,playerIcons13x13[FWD],13,13,TFT_BLACK,TFT_YELLOW);
@@ -871,6 +941,7 @@ void showPlayerIcons(){
   if(PlayerCTRL.isSlowBackward&&PlayerCTRL.isPlay){
     static bool pse=true;
     if(millis()-mls>500){
+      img.setColorDepth(8);
       img.createSprite(13,13);
       img.setPivot(114+12,173+12);
       if(pse) img.drawBitmap(0,0,playerIcons13x13[FWD],13,13,TFT_BLACK,TFT_YELLOW);
@@ -885,7 +956,7 @@ void showPlayerIcons(){
 void vbUpdate(){
   tft.fillRect(12,62,10*13,8*2,0);
   uint8_t shift=10;
-  for (uint8_t i=0;i<36;i++) {
+  for(uint8_t i=0;i<36;i++){
     tft.fillRect(shift,70,2,2,TFT_BLUE);
     shift+=4;
   }
@@ -916,34 +987,39 @@ void player_screen(){
     showPlayerIcons();
   }
   fastEQ();
-
   //keypad survey
   if(Config.playerSource==PLAYER_MODE_SD){
-    if(enc.hasClicks(1)){sound_play(SFX_SELECT); PlayerCTRL.isPlay=!PlayerCTRL.isPlay;}
-    if(!enc.holding()&&enc.right()){
-      sound_play(SFX_SELECT);
+    if(enc.hasClicks(1)&&lcdBlackout==false){PlayerCTRL.isPlay=!PlayerCTRL.isPlay;}
+    if(!enc.holding()&&enc.right()&&lcdBlackout==false){
       changeTrackIcon(true);
       if(Config.play_mode==PLAY_MODE_SHUFFLE) player_shuffle_cur();
       else Config.play_cur++;
-      PlayerCTRL.isFinish=true;
-      PlayerCTRL.autoPlay=false;
       PlayerCTRL.isBrowserCommand=true;
+      PlayerCTRL.autoPlay=false;
+      PlayerCTRL.isFinish=true;
+      delay(30);
     }
-    if(!enc.holding()&&enc.left()){
-      sound_play(SFX_SELECT);
+    if(!enc.holding()&&enc.left()&&lcdBlackout==false){
       changeTrackIcon(false);
-      Config.play_cur--;
-      PlayerCTRL.isFinish=true;
-      PlayerCTRL.autoPlay=false;
+      if(millis()-mlsPrevTrack<PREVTRACKDELAY) Config.play_cur--;
+      mlsPrevTrack=millis();
       PlayerCTRL.isBrowserCommand=true;
+      PlayerCTRL.autoPlay=false;
+      PlayerCTRL.isFinish=true;
+      delay(30);
     }
-    if(enc.rightH()){
+    if(enc.rightH()&&lcdBlackout==false){
       if(PlayerCTRL.music_type!=TYPE_AY){
-        frame_max=PLAY_FAST;
+        if(PlayerCTRL.music_type==TYPE_MOD){
+          if(mod&&mod->isRunning()) mod->setSpeed(2);
+        }
+        if(PlayerCTRL.music_type==TYPE_S3M){
+          if(s3m&&s3m->isRunning()) s3m->setSpeed(2);
+        }
+        frame_max=frameMax(PLAY_FAST);
         PlayerCTRL.isSlowBackward=false;
         PlayerCTRL.isFastForward=true;
-      }else{
-        sound_play(SFX_SELECT);
+      }else if(PlayerCTRL.music_type==TYPE_AY){
         ay_cur_song++;
         if(ay_cur_song>AY_GetNumSongs()) ay_cur_song=0;
         changeTrackIcon(true);
@@ -952,13 +1028,18 @@ void player_screen(){
         PlayerCTRL.isBrowserCommand=true;
       }
     }
-    if(enc.leftH()){
+    if(enc.leftH()&&lcdBlackout==false){
       if(PlayerCTRL.music_type!=TYPE_AY){
-        frame_max=PLAY_SLOW;
+        if(PlayerCTRL.music_type==TYPE_MOD){
+          if(mod&&mod->isRunning()) mod->setSpeed(0);
+        }
+        if(PlayerCTRL.music_type==TYPE_S3M){
+          if(s3m&&s3m->isRunning()) s3m->setSpeed(0);
+        }
+        frame_max=frameMax(PLAY_SLOW);
         PlayerCTRL.isFastForward=false;
         PlayerCTRL.isSlowBackward=true;
-      }else{
-        sound_play(SFX_SELECT);
+      }else if(PlayerCTRL.music_type==TYPE_AY){
         ay_cur_song--;
         if(ay_cur_song<0) ay_cur_song=AY_GetNumSongs();
         changeTrackIcon(false);
@@ -967,13 +1048,23 @@ void player_screen(){
         PlayerCTRL.isBrowserCommand=true;
       }
     }
-    if(enc.release()){frame_max=PLAY_NORMAL; PlayerCTRL.isFastForward=false; PlayerCTRL.isSlowBackward=false;}
+    if(enc.release()){
+      if(PlayerCTRL.music_type==TYPE_MOD){
+        if(mod&&mod->isRunning()) mod->setSpeed(1);
+      }
+      if(PlayerCTRL.music_type==TYPE_S3M){
+        if(s3m&&s3m->isRunning()) s3m->setSpeed(1);
+      }
+      frame_max=frameMax(PLAY_NORMAL);
+      PlayerCTRL.isFastForward=false;
+      PlayerCTRL.isSlowBackward=false;
+    }
   }
-
-  if (up.hasClicks(1) || up.holding()){
-    if (!enc.holding()) {
+  if((up.hasClicks(1)||up.holding())&&lcdBlackout==false){
+    if(!enc.holding()){
       if(Config.volume++>=63) Config.volume=63;
       writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
+      img.setColorDepth(8);
       img.createSprite(10*13,8*2);
       img.fillScreen(0);
       img.setFreeFont(&WildFont);
@@ -991,7 +1082,6 @@ void player_screen(){
   }
   if(Config.playerSource==PLAYER_MODE_SD){
     if(up.hasClicks(2)){
-      sound_play(SFX_SELECT);
       switch(Config.play_mode){
         case PLAY_MODE_ONE: Config.play_mode=PLAY_MODE_ALL;break;
         case PLAY_MODE_ALL: Config.play_mode=PLAY_MODE_SHUFFLE;break;
@@ -1000,10 +1090,11 @@ void player_screen(){
       dynRebuild=true;
     }
   }
-  if(dn.hasClicks(1)||dn.holding()){
-    if(!enc.holding()) {
+  if((dn.hasClicks(1)||dn.holding())&&lcdBlackout==false){
+    if(!enc.holding()){
       if(Config.volume--<=0) Config.volume=0;
       writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
+      img.setColorDepth(8);
       img.createSprite(10*13,8*2);
       img.fillScreen(0);
       img.setFreeFont(&WildFont);
@@ -1019,19 +1110,28 @@ void player_screen(){
       img.deleteSprite();
     }
   }
-  if(dn.hasClicks(2)){
-    sound_play(SFX_SELECT);
-    switch(Config.ay_clock){
-      case CLK_SPECTRUM: Config.ay_clock=CLK_PENTAGON;break;
-      case CLK_PENTAGON: Config.ay_clock=CLK_MSX;break;
-      case CLK_MSX: Config.ay_clock=CLK_CPC;break;
-      case CLK_CPC: Config.ay_clock=CLK_ATARIST;break;
-      case CLK_ATARIST: Config.ay_clock=CLK_SPECTRUM;break;
+  if(dn.hasClicks(2)&&lcdBlackout==false){
+    if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M){
+      switch(Config.modStereoSeparation){
+        case MOD_FULLSTEREO: Config.modStereoSeparation=MOD_HALFSTEREO;break;
+        case MOD_HALFSTEREO: Config.modStereoSeparation=MOD_MONO;break;
+        case MOD_MONO: Config.modStereoSeparation=MOD_FULLSTEREO;break;
+      }
+      if(PlayerCTRL.music_type==TYPE_MOD) setModSeparation();
+      if(PlayerCTRL.music_type==TYPE_S3M) setS3mSeparation();
+    }else{
+      switch(Config.ay_clock){
+        case CLK_SPECTRUM: Config.ay_clock=CLK_PENTAGON;break;
+        case CLK_PENTAGON: Config.ay_clock=CLK_MSX;break;
+        case CLK_MSX: Config.ay_clock=CLK_CPC;break;
+        case CLK_CPC: Config.ay_clock=CLK_ATARIST;break;
+        case CLK_ATARIST: Config.ay_clock=CLK_SPECTRUM;break;
+      }
+      ay_set_clock(Config.ay_clock);
     }
-    ay_set_clock(Config.ay_clock);
     dynRebuild=true;
   }
-  if(dn.timeout(2000)||up.timeout(2000)){
+  if((dn.timeout(2000)||up.timeout(2000))&&lcdBlackout==false){
     dynRebuild=true;
     config_save();
   }
@@ -1039,40 +1139,39 @@ void player_screen(){
 
 void wait_frame(){
   uint32_t prev=frame_cnt;
-  while(frame_cnt==prev){yield(); vTaskDelay(1);}
+  while(frame_cnt==prev&&frame_max!=frameMax(PLAY_FAST)&&PlayerCTRL.isPlay){
+    yield();
+    vTaskDelay(1);
+    esp_task_wdt_reset();
+  }
 }
 
 void AYPlayTask(void *pvParameters){
   while(true){
-    if (PlayerCTRL.isSDeject){
+    if(PlayerCTRL.isSDeject){
       muteAYBeep();
+      vTaskDelay(/*pdMS_TO_TICKS(1)*/1);
+      esp_task_wdt_reset();
     }else{
       if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
         music_play();
-        PlayerCTRL.trackFrame++;
       }
       if(PlayerCTRL.music_type==TYPE_AY){
         if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
           while(!Sound.buf_do_update){
             yield();
+            vTaskDelay(1);
+            esp_task_wdt_reset();
           }
           Sound.buf_do_update=false;
-          if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
-            AY_PlayBuf();
-            frqHz=Sound.buf_rd[Sound.buf_ptr_rd];
-            uint8_t beep=0;
-            uint8_t lvlRemap=map(frqHz,0,96,0,16);
-            for(uint8_t i=0;i<sizeof(bufEQ);i++){
-              if(FreqAY[i]>=frqHz&&FreqAY[i+1]<frqHz) beep=i;
-            }
-            bufEQ[beep]|=lvlRemap;
-          }
+          AY_PlayBuf();
         }
       }else{
-        wait_frame();
+        if(PlayerCTRL.music_type!=TYPE_MOD&&PlayerCTRL.music_type!=TYPE_S3M) wait_frame();
       }
     }
-    vTaskDelay(1);
+    yield();
+    vTaskDelay(10);
     esp_task_wdt_reset();
   }
   vTaskDelete(NULL);
@@ -1082,9 +1181,9 @@ void AYPlayCoreInit(){
   xTaskCreatePinnedToCore(
     AYPlayTask,  // Function to implement the task
     "AYPlay",    // Name of the task
-    4096,       // Stack size in words
+    8192,       // Stack size in words
     NULL,        // Task input parameter
-    1,           // Priority of the task
+    2,           // Priority of the task
     &ayPlayTaskHandle,     // Task handle.
     0            // Core where the task should run
   );

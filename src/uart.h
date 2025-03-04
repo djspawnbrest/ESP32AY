@@ -7,7 +7,7 @@ bool prevIsPlayState=true;
 
 TaskHandle_t uartTaskHandle=NULL;
 
-void UARTTask(void *pvParameters) {
+void UARTTask(void *pvParameters){
   while(1){
     if(Serial.available()){
       byte r=Serial.read(); // read byte from FIFO
@@ -27,7 +27,7 @@ void UARTTask(void *pvParameters) {
   vTaskDelete(NULL);
 }
 
-void UARTPlayCoreInit() {
+void UARTPlayCoreInit(){
   xTaskCreatePinnedToCore(
     UARTTask,  // Function to implement the task
     "UARTTask",    // Name of the task
@@ -39,7 +39,7 @@ void UARTPlayCoreInit() {
   );
 }
 
-void playerSourceChange() {
+void playerSourceChange(){
   if(Config.playerSource==PLAYER_MODE_SD){
     muteAYBeep();
     PlayerCTRL.isPlay=prevIsPlayState;

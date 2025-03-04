@@ -1,21 +1,25 @@
+//semaphored
 bool playlist_iterate(char* buf,int buf_size,bool fromPlayer=false){
   bool skip=false;
-  while(1){
-    if(fromPlayer?!sd_play_file.fgets(buf,buf_size):!sd_file.fgets(buf,buf_size)) return false;
-    if(buf[0]=='<'){
-      skip = true;
-      continue;
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    while(1){
+      if(fromPlayer?!sd_play_file.fgets(buf,buf_size):!sd_file.fgets(buf,buf_size)){xSemaphoreGive(sdCardSemaphore); return false;}
+      if(buf[0]=='<'){
+        skip = true;
+        continue;
+      }
+      if(buf[0]=='>'){
+        skip=false;
+        continue;
+      }
+      if(skip) continue;
+      buf[buf_size-1]=0; //in case of entries exceeding read buffer
+      buf[strcspn(buf,"\r\n")]=0;  //remove trailing newline
+      int type=browser_check_ext(buf);
+      if(type==TYPE_UNK||type==TYPE_AYL) continue;
+      break;
     }
-    if(buf[0]=='>'){
-      skip=false;
-      continue;
-    }
-    if(skip) continue;
-    buf[buf_size-1]=0; //in case of entries exceeding read buffer
-    buf[strcspn(buf,"\r\n")]=0;  //remove trailing newline
-    int type=browser_check_ext(buf);
-    if(type==TYPE_UNK||type==TYPE_AYL) continue;
-    break;
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
   for(int i=0;i<buf_size;i++){
     if(buf[i]=='\\') buf[i]='/';
@@ -23,17 +27,39 @@ bool playlist_iterate(char* buf,int buf_size,bool fromPlayer=false){
   return true;
 }
 
+//semaphored
 void playlist_close(bool fromPlayer=false){
-  fromPlayer?sd_play_file.close():sd_file.close();
+  if(fromPlayer){
+    if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+      sd_play_file.close();
+      xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+    }
+  }else{
+    if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+      sd_file.close();
+      xSemaphoreGive(sdCardSemaphore);
+    }
+  }
 }
 
-bool playlist_open(const char* filename, int cur, bool fromPlayer=false){
+//semaphored
+bool playlist_open(const char* filename,int cur,bool fromPlayer=false){
   char temp[16];
-  if(!sd_fat.begin(SD_CONFIG)){
-    return false;
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    if(!sd_fat.begin(SD_CONFIG)){
+      xSemaphoreGive(sdCardSemaphore);
+      return false;
+    }
+    if(fromPlayer?!sd_play_file.open(filename,O_RDONLY):!sd_file.open(filename,O_RDONLY)){
+      xSemaphoreGive(sdCardSemaphore);
+      return false;
+    }
+    if(fromPlayer?!sd_play_file.fgets(temp,sizeof(temp)):!sd_file.fgets(temp,sizeof(temp))){
+      xSemaphoreGive(sdCardSemaphore);
+      return false;
+    }
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
-  if(fromPlayer?!sd_play_file.open(filename,O_RDONLY):!sd_file.open(filename,O_RDONLY)) return false;
-  if(fromPlayer?!sd_play_file.fgets(temp,sizeof(temp)):!sd_file.fgets(temp,sizeof(temp))) return false;
   if(memcmp(temp,"ZX Spectrum",11)!=0) return false;
   for(int i=0;i<cur;i++){
     if(!playlist_iterate(lfn,sizeof(lfn),fromPlayer)){
@@ -44,7 +70,8 @@ bool playlist_open(const char* filename, int cur, bool fromPlayer=false){
   return true;
 }
 
-void playlist_absolute_path(char* path, int path_size){
+//not need semaphore
+void playlist_absolute_path(char* path,int path_size){
   int up_count=1;
   int con_offset=0;
   int i=0;
@@ -72,7 +99,8 @@ void playlist_absolute_path(char* path, int path_size){
   strncpy(path,temp,path_size-1);
 }
 
-void playlist_file_name(char* path, int path_size){
+//not need semaphore
+void playlist_file_name(char* path,int path_size){
   for(int i=path_size-1;i>=0;i--){
     if(path[i]=='/'){
       strcpy(path,&path[i+1]);
@@ -81,7 +109,8 @@ void playlist_file_name(char* path, int path_size){
   }
 }
 
-bool playlist_get_entry_full_path(int cur, char* path, int path_len, bool fromPlayer=false){
+//not need semaphore
+bool playlist_get_entry_full_path(int cur,char* path,int path_len,bool fromPlayer=false){
   if(!playlist_open(fromPlayer?Config.play_ayl_file:Config.ayl_file,cur)) return false;
   bool done=true;
   if(!playlist_iterate(path,path_len)){

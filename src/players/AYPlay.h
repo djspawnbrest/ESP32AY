@@ -7,6 +7,7 @@
 
 #include "z80/z80emu.h"
 
+
 extern "C" {
   void mem_remap_wr(unsigned short int adr, unsigned char val);
   unsigned char mem_remap_rd(unsigned short int adr);
@@ -22,7 +23,7 @@ extern "C" {
 
 #define PLAY_LOOP_ADR	0x4000
 
-#define PAGE_SIZE 		256	//must be a power of two!
+#define PAGE_SIZE 		512	//must be a power of two!
 #define PAGE_SIZE_MASK	(PAGE_SIZE-1)
 #define PAGE_UNDEF		255
 #define PAGES_MAX		sizeof(music_data)/PAGE_SIZE
@@ -71,7 +72,7 @@ void mem_remap_wr(unsigned short int adr,unsigned char val){
       page=AyPlayer.mem_remap_ptr;
       AyPlayer.mem_remap_ptr++;
     }else{
-      //printf("remap fail, out of memory\n");
+      // printf("remap fail, out of memory\n");
       AyPlayer.mem_remap_fail = true;
       return;
     }
@@ -249,6 +250,7 @@ int AY_FlushBuf(int cycles){
   cycles=(cycles<<8);
   if(AyPlayer.speaker_state) AyPlayer.sample_acc+=cycles;
   AyPlayer.cycles_acc+=cycles;
+
   while(AyPlayer.cycles_acc>=AyPlayer.cycles_per_sample_fp){
     AyPlayer.cycles_acc-=AyPlayer.cycles_per_sample_fp;
     int s=AyPlayer.sample_acc;

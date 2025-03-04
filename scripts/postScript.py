@@ -12,7 +12,7 @@ def firmware_action(source, target, env):
 # Добавление действий после сборки для копирования файлов
 env.AddPostAction("$BUILD_DIR/bootloader.bin", firmware_action)
 env.AddPostAction("$BUILD_DIR/partitions.bin", firmware_action)
-env.AddPostAction("$BUILD_DIR/littlefs.bin", firmware_action)
+# env.AddPostAction("$BUILD_DIR/littlefs.bin", firmware_action)
 env.AddPostAction("$BUILD_DIR/firmware.bin", firmware_action)
 
 # Копирование boot_app0.bin
@@ -29,7 +29,7 @@ flash_images = [
     "0x8000 partitions.bin",
     "0xe000 boot_app0.bin",
     "0x10000 firmware.bin",
-    "0x290000 littlefs.bin"
+    # "0x290000 littlefs.bin"
 ]
 
 # Полные пути к файлам прошивки

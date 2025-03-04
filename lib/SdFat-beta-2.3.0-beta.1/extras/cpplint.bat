@@ -1,0 +1,2 @@
+bash cpplint.sh
+pause

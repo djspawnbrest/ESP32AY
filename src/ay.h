@@ -2,7 +2,7 @@
 
 #define AY_CLK       15
 // HC595 define
-#define OUT_SHIFT_DATA_PIN  0 // -> pin 14 of 74HC595 - data input, slave in SI (DS)
+#define OUT_SHIFT_DATA_PIN  0 // -> pin 14 of 74HC595 - data input,slave in SI (DS)
 #define OUT_SHIFT_LATCH_PIN 2 // -> pin 12 of 74HC595 - data output latch (ST_CP)
 #define OUT_SHIFT_CLOCK_PIN 4 // -> pin 11 of 74HC595 - clock pin SCK (SH_CP)
 //2nd hc595 control bits
@@ -18,24 +18,24 @@ int skipCnt=0;
 bool writeFlag=true;
 
 const uint32_t ay_channel_remap_table[6*16]={
-  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15, //LAY_ABC
-  0,1,4,5,2,3,6,7,8,10,9,11,12,13,14,15, //LAY_ACB
-  2,3,0,1,4,5,6,7,9,8,10,11,12,13,14,15, //LAY_BAC
-  2,3,4,5,0,1,6,7,9,10,9,11,12,13,14,15, //LAY_BCA
-  4,5,0,1,2,3,6,7,10,8,9,11,12,13,14,15, //LAY_CAB
-  4,5,2,3,0,1,6,7,10,9,8,11,12,13,14,15, //LAY_CBA
+  0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,//LAY_ABC
+  0,1,4,5,2,3,6,7,8,10,9,11,12,13,14,15,//LAY_ACB
+  2,3,0,1,4,5,6,7,9,8,10,11,12,13,14,15,//LAY_BAC
+  2,3,4,5,0,1,6,7,9,10,9,11,12,13,14,15,//LAY_BCA
+  4,5,0,1,2,3,6,7,10,8,9,11,12,13,14,15,//LAY_CAB
+  4,5,2,3,0,1,6,7,10,9,8,11,12,13,14,15,//LAY_CBA
 };
 
 const uint32_t ay_mixer_remap_table[6*3]={
-  0,1,2, //LAY_ABC
-  0,2,1, //LAY_ACB,
-  1,0,2, //LAY_BAC,
-  1,2,0, //LAY_BCA,
-  2,0,1, //LAY_CAB,
-  2,1,0, //LAY_CBA
+  0,1,2,//LAY_ABC
+  0,2,1,//LAY_ACB,
+  1,0,2,//LAY_BAC,
+  1,2,0,//LAY_BCA,
+  2,0,1,//LAY_CAB,
+  2,1,0,//LAY_CBA
 };
 
-static void initAYClock(uint32_t clock) {
+static void initAYClock(uint32_t clock){
   ledc_timer_config_t ledc_timer={};
   ledc_timer.speed_mode=LEDC_HIGH_SPEED_MODE;
   ledc_timer.timer_num=LEDC_TIMER_0;
@@ -84,30 +84,25 @@ void ay_set_clock(uint32_t f){
 
 void ay_write(uint8_t chip,uint8_t reg,uint8_t val){
   chip?ay_reg_1[reg]=val:ay_reg_2[reg]=val;
-  bitClear(outHi, BIT_AY_BC1); // set zero to BC1, BDIR
-  (!chip)?bitClear(outHi, BIT_AY_BDIR1):bitClear(outHi, BIT_AY_BDIR2);
+  bitClear(outHi,BIT_AY_BC1); // set zero to BC1,BDIR
+  (!chip)?bitClear(outHi,BIT_AY_BDIR1):bitClear(outHi,BIT_AY_BDIR2);
   sendAY();
-  // delayMicroseconds(5);
-  outLo = (reg & B00001111); // set AY port 0...15 to D0...D3, set zero to D4...D7
+  outLo=(reg&B00001111); // set AY port 0...15 to D0...D3,set zero to D4...D7
   sendAY();
-  bitSet(outHi, BIT_AY_BC1); // set 1 to BC1, BDIR
-  (!chip)?bitSet(outHi, BIT_AY_BDIR1):bitSet(outHi, BIT_AY_BDIR2);
+  bitSet(outHi,BIT_AY_BC1); // set 1 to BC1,BDIR
+  (!chip)?bitSet(outHi,BIT_AY_BDIR1):bitSet(outHi,BIT_AY_BDIR2);
   sendAY();
-  // delayMicroseconds(5);
-  bitClear(outHi, BIT_AY_BC1); // set zero to BC1, BDIR
-  (!chip)?bitClear(outHi, BIT_AY_BDIR1):bitClear(outHi, BIT_AY_BDIR2);
+  bitClear(outHi,BIT_AY_BC1); // set zero to BC1,BDIR
+  (!chip)?bitClear(outHi,BIT_AY_BDIR1):bitClear(outHi,BIT_AY_BDIR2);
   sendAY();
-  // delayMicroseconds(5);
-  outLo = val; // set data bits to D0...D7
+  outLo=val; // set data bits to D0...D7
   sendAY();
-  (!chip)?bitSet(outHi, BIT_AY_BDIR1):bitSet(outHi, BIT_AY_BDIR2); // set 1 to BDIR
+  (!chip)?bitSet(outHi,BIT_AY_BDIR1):bitSet(outHi,BIT_AY_BDIR2); // set 1 to BDIR
   sendAY();
-  // delayMicroseconds(5);
-  bitClear(outHi, BIT_AY_BC1); // set zero to BC1, BDIR
-  (!chip)?bitClear(outHi, BIT_AY_BDIR1):bitClear(outHi, BIT_AY_BDIR2);
+  bitClear(outHi,BIT_AY_BC1); // set zero to BC1,BDIR
+  (!chip)?bitClear(outHi,BIT_AY_BDIR1):bitClear(outHi,BIT_AY_BDIR2);
   sendAY();
-  // delayMicroseconds(1);
-  if(PlayerCTRL.screen_mode==SCR_PLAYER) readEQ(reg,val,/*AY_EQ,*/chip);
+  if(PlayerCTRL.screen_mode==SCR_PLAYER) readEQ(reg,val,chip);
 }
 
 void ay_write_remap(uint8_t chip,uint8_t reg,uint8_t val){
@@ -127,7 +122,7 @@ void ay_write_remap(uint8_t chip,uint8_t reg,uint8_t val){
   ay_write(chip,reg,val);
 }
 
-uint8_t ay_read(u_int8_t chip, uint8_t reg){
+uint8_t ay_read(u_int8_t chip,uint8_t reg){
   // pseudo read
   if (reg<16){
     if(!chip) return ay_reg_1[reg]; else return ay_reg_2[reg];
@@ -136,10 +131,10 @@ uint8_t ay_read(u_int8_t chip, uint8_t reg){
 }
 
 void ay_mute(uint8_t chip){
-  ay_write(chip, 0x07, 0xff);
-  ay_write(chip, 0x08, 0x00);
-  ay_write(chip, 0x09, 0x00);
-  ay_write(chip, 0x0a, 0x00);
+  ay_write(chip,0x07,0xff);
+  ay_write(chip,0x08,0x00);
+  ay_write(chip,0x09,0x00);
+  ay_write(chip,0x0a,0x00);
 }
 
 void ay_reset(){
@@ -160,9 +155,9 @@ void ay_reset(){
 
 void AYInit(){
   ay_set_clock(Config.ay_clock);
-  pinMode(OUT_SHIFT_LATCH_PIN, OUTPUT);
-  pinMode(OUT_SHIFT_DATA_PIN, OUTPUT);
-  pinMode(OUT_SHIFT_CLOCK_PIN, OUTPUT);
-  digitalWrite(OUT_SHIFT_LATCH_PIN, HIGH);
+  pinMode(OUT_SHIFT_LATCH_PIN,OUTPUT);
+  pinMode(OUT_SHIFT_DATA_PIN,OUTPUT);
+  pinMode(OUT_SHIFT_CLOCK_PIN,OUTPUT);
+  digitalWrite(OUT_SHIFT_LATCH_PIN,HIGH);
   ay_reset();
 }

@@ -21,20 +21,14 @@ void buttonsSetup(){
   up.setHoldTimeout(300);
 }
 
-void playerModeChange(){
-
-}
-
 bool isRight=false,isLeft=false;
 
 void generalTick(){
   enc.tick();
   up.tick();
   dn.tick();
-
   if(enc.hold()){
     if(PlayerCTRL.screen_mode!=SCR_CONFIG&&PlayerCTRL.screen_mode!=SCR_RESET_CONFIG&&PlayerCTRL.screen_mode!=SCR_ABOUT){
-      sound_play(SFX_SELECT);
       PlayerCTRL.screen_mode++;
       if(PlayerCTRL.screen_mode==SCR_CONFIG) PlayerCTRL.screen_mode=SCR_PLAYER;
       PlayerCTRL.scr_mode_update[PlayerCTRL.screen_mode]=true;
@@ -42,7 +36,6 @@ void generalTick(){
   }
   if(enc.hasClicks(2)){
     if(PlayerCTRL.screen_mode!=SCR_CONFIG&&PlayerCTRL.screen_mode!=SCR_RESET_CONFIG&&PlayerCTRL.screen_mode!=SCR_ABOUT){
-      sound_play(SFX_SELECT);
       PlayerCTRL.prev_screen_mode=PlayerCTRL.screen_mode;
       PlayerCTRL.screen_mode=SCR_CONFIG;
       PlayerCTRL.scr_mode_update[PlayerCTRL.screen_mode]=true;

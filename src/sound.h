@@ -1,30 +1,22 @@
-#define SOUND_BUF_MAX_SIZE  (TIMER_RATE/50)
+#include <Arduino.h>
+#include "driver/i2s.h"
+#include <AudioOutputI2S.h>
+
+AudioOutputI2S *out;
+
+#define SOUND_BUF_MAX_SIZE (TIMER_RATE/50)
+
+int16_t sampleZX[2];
 
 hw_timer_t* DACTimer=NULL;
 
-enum{
-  PLAY_FAST=TIMER_RATE*1000/100000,
-  PLAY_NORMAL=TIMER_RATE*1000/50000,
-  PLAY_SLOW=TIMER_RATE*1000/25000
-};
-
-volatile uint32_t frame_cnt=0;
-volatile uint32_t frame_div=0;
-volatile uint32_t frame_max=PLAY_NORMAL;
-
-const uint8_t* const sounds_list[] = {
-  cancel_data,
-  move_data,
-  select_data
+struct SoundData{
+  const unsigned char* data;
+  size_t size;
 };
 
 struct{
   volatile uint8_t dac;
-  volatile const uint8_t* sample_data;
-  volatile int32_t sample_ptr;
-  volatile int32_t sample_ptr_prev;
-  volatile int32_t sample_step;
-  volatile int32_t sample_len;
   uint8_t buf_1[SOUND_BUF_MAX_SIZE];
   uint8_t buf_2[SOUND_BUF_MAX_SIZE];
   uint8_t* buf_rd;
@@ -34,6 +26,22 @@ struct{
   bool buf_do_update;
   int int_counter;  //counts samples, can be used for profiling purposes
 }Sound;
+
+uint16_t frameMax(uint8_t speed=1){ // NORMAL default
+  uint16_t frMax=(Config.zx_int)?TIMER_RATE*1000/50000:TIMER_RATE*1000/48828;
+  switch(speed){
+    case 0: // SLOW
+    frMax=(Config.zx_int)?TIMER_RATE*1000/25000:TIMER_RATE*1000/24414;
+      break;
+    case 1: // NORMAL
+      frMax=(Config.zx_int)?TIMER_RATE*1000/50000:TIMER_RATE*1000/48828;
+      break;
+    case 2: // FAST
+      frMax=(Config.zx_int)?TIMER_RATE*1000/100000:TIMER_RATE*1000/97656;
+      break;
+  }
+  return frMax;
+}
 
 void sound_clear_buf(){
   memset(Sound.buf_1,0,sizeof(Sound.buf_1));
@@ -47,37 +55,12 @@ void sound_clear_buf(){
 
 void sound_init(){
   memset(&Sound,0,sizeof(Sound));
-  Sound.dac=0x80;
-  sound_clear_buf();
-}
-
-void sound_play(int id){
-  Sound.sample_data=NULL;
-  const uint8_t* data=sounds_list[id];
-  int sample_rate=pgm_read_byte((const void*)&data[24])+(pgm_read_byte((const void*)&data[25])<<8);
-  Sound.sample_ptr=44<<8;
-  Sound.sample_ptr_prev=-1;
-  Sound.sample_step=(sample_rate<<8)/TIMER_RATE;
-  Sound.sample_len=(pgm_read_byte((const void*)&data[40])+(pgm_read_byte((const void*)&data[41])<<8)+(pgm_read_byte((const void*)&data[42])<<16))<<8;
-  Sound.sample_data=data;
+  Sound.dac=0x00; // silent on dac
 }
 
 void sound_update(){
-  if(Sound.sample_data){  //either a system sound or emulated beeper sound is active at a given moment, to avoid clipping (playing raw wav)
-    if(Config.sound_vol){
-      if((Sound.sample_ptr&~0xff)!=(Sound.sample_ptr_prev&~0xff)){
-        Sound.dac=0x80+((pgm_read_byte((const void*)&Sound.sample_data[Sound.sample_ptr>>8])-128)*Config.sound_vol/2);
-        Sound.sample_ptr_prev=Sound.sample_ptr;
-      }
-    }
-    Sound.sample_ptr+=Sound.sample_step;
-    Sound.sample_len-=Sound.sample_step;
-    if(Sound.sample_len<=0){
-      Sound.sample_data=NULL;
-      Sound.dac=0x00; // silent on dac
-    }
-  }else if(Sound.buf_rd&&PlayerCTRL.isPlay){  //else if AY buffer not empty (playing AY beeper)
-    Sound.dac=(PlayerCTRL.isPlay)?0x80+Sound.buf_rd[Sound.buf_ptr_rd++]:0x80;  //rendered beeper sound is always unsigned
+  if(Sound.buf_rd&&PlayerCTRL.isPlay&&PlayerCTRL.music_type==TYPE_AY){  // else if AY buffer not empty (playing AY beeper)
+    Sound.dac=0x80+((Sound.buf_rd[Sound.buf_ptr_rd++])*7/10);  // rendered beeper sound is always unsigned
     if (Sound.buf_ptr_rd>=SOUND_BUF_MAX_SIZE){
       Sound.buf_ptr_rd=0;
       Sound.buf_do_update=true;
@@ -89,32 +72,52 @@ void sound_update(){
         Sound.buf_wr=Sound.buf_2;
       }
     }
-  }else{  // else silent on dac
-    Sound.dac=0x00;
+  }else{ 
+    Sound.dac=0x00; // silent on dac
   }
   Sound.int_counter++;
 }
 
 void IRAM_ATTR DACTimer_ISR(){
-  sigmaDeltaWrite(0,Sound.dac);
-  sigmaDeltaWrite(1,Sound.dac);
+  BaseType_t xHigherPriorityTaskWoken=pdFALSE;
+  // DAC only for ay format
+  if(PlayerCTRL.music_type==TYPE_AY){
+    if(Sound.dac){
+      sampleZX[0]=sampleZX[1]=Sound.dac<<8;
+      if(xSemaphoreTakeFromISR(outSemaphore,&xHigherPriorityTaskWoken)==pdTRUE){  
+        if(!out->ConsumeSample(sampleZX)){
+          xSemaphoreGiveFromISR(outSemaphore,&xHigherPriorityTaskWoken);  // Release the semaphore
+          goto done;
+        }
+        xSemaphoreGiveFromISR(outSemaphore,&xHigherPriorityTaskWoken);  // Release the semaphore
+      }
+    }
+  }
   sound_update();
+done:
+  if(xHigherPriorityTaskWoken==pdTRUE){
+    portYIELD_FROM_ISR();
+  }
   // counting frames
-  if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
+  if(PlayerCTRL.isPlay){
     frame_div++;
     if(frame_div>=frame_max){
       frame_div=0;
       frame_cnt++;
+      if(PlayerCTRL.music_type!=TYPE_MOD&&PlayerCTRL.music_type!=TYPE_S3M) PlayerCTRL.trackFrame++;
     }
   }
 }
 
+void initOut(int buf=32){
+  out=new AudioOutputI2S(0,AudioOutputI2S::INTERNAL_DAC,buf);  // I2S output
+}
+
 void DACInit(){
-  sigmaDeltaSetup(DAC1,0,F_CPU/512); // 312500 freq
-  sigmaDeltaSetup(DAC2,1,F_CPU/512); // 312500 freq
-  DACTimer=timerBegin(0,80,true); // timer_id = 0; divider=80; countUp = true;
+  initOut();
+  DACTimer=timerBegin(0,79,true); // timer_id = 0; divider=79;(old 80) countUp = true;
   timerAttachInterrupt(DACTimer,&DACTimer_ISR,true); // edge = true
-  timerAlarmWrite(DACTimer,F_CPU/TIMER_RATE/(F_CPU/1000000),true); //1000 ms
+  timerAlarmWrite(DACTimer,(uint64_t)ceil((float)F_CPU/TIMER_RATE/(F_CPU/1000000L)),true); // round up from 22.675737 to 23
   timerAlarmEnable(DACTimer);
   sound_init();
 }

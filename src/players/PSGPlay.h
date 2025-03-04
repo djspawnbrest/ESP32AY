@@ -1,27 +1,33 @@
 #include <GyverFIFO.h>
 
-const int bufSize=512; // select a multiple of 16
+const int bufSize=256; // select a multiple of 16
 GyverFIFO<byte,bufSize>playBuf;
 byte yrgFrame=0;
 
 void fillBuffer(){
-  if(sd_fat.card()->sectorCount()){
-    while(playBuf.availableForWrite()&&sd_play_file.available()){
-      playBuf.write(sd_play_file.read());
+  // if (xSemaphoreTake(sdCardSemaphore, portMAX_DELAY) == pdTRUE) {
+    if(sd_fat.card()->sectorCount()){
+      while(playBuf.availableForWrite()&&sd_play_file.available()){
+        playBuf.write(sd_play_file.read());
+      }
+      if(PlayerCTRL.music_type==TYPE_PSG||PlayerCTRL.music_type==TYPE_RSF){
+        if(playBuf.availableForWrite()&&!sd_play_file.available()) playBuf.write(0xFD);
+      }
+    }else{
+      muteAYBeep();
+      playBuf.clear();
+      // playerCTRL.isSDeject=true;
     }
-    if(PlayerCTRL.music_type==TYPE_PSG||PlayerCTRL.music_type==TYPE_RSF){
-      if(playBuf.availableForWrite()&&!sd_play_file.available()) playBuf.write(0xFD);
-    }
-  }else{
-    muteAYBeep();
-    playBuf.clear();
-    // playerCTRL.isSDeject=true;
-  }
+  //   xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  // }
 }
 
 void PSG_Cleanup(){
   playBuf.clear();
-  sd_play_file.close();
+  // if (xSemaphoreTake(sdCardSemaphore, portMAX_DELAY) == pdTRUE) {
+    sd_play_file.close();
+  //   xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  // }
 }
 
 void PSG_Play(){
@@ -54,7 +60,10 @@ void PSG_Play(){
 
 void RSF_Cleanup(){
   playBuf.clear();
-  sd_play_file.close();
+  // if (xSemaphoreTake(sdCardSemaphore, portMAX_DELAY) == pdTRUE) {
+    sd_play_file.close();
+  //   xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  // }
 }
 
 void RSF_Play(){
@@ -118,7 +127,10 @@ void RSF_Play(){
 
 void YRG_Cleanup(){
   playBuf.clear();
-  sd_play_file.close();
+  // if (xSemaphoreTake(sdCardSemaphore, portMAX_DELAY) == pdTRUE) {
+    sd_play_file.close();
+  //   xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  // }
 }
 
 void YRG_Play(){

@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-const uint16_t FreqAY[]={
+static const uint16_t FreqAY[]PROGMEM={
 3600,			// C	1	32.703
 3228,			// C#	1	34.648
 3047,			// D	1	36.708

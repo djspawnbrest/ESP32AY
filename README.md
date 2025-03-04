@@ -1,7 +1,21 @@
-# ESP32AY multiformat Turbo Sound player
+# ZxPod - multiformat Turbo Sound player
 ESP32 based AY Turbo Sound multiformat player
 
 ## Fast flash firmware avaliable on [Alex Spawn OTA web page](https://ota.alexspawn.ru)
+
+## IMPORTANT:
+Firmwares from version 3.4 supports only PCB revision C! But you can soldering upgrade revision A and B to C:
+
+### From rev.A to B and C:
+You need to cut the input track on the resistor R33(see Pic.2) and solder the wire from the ESP32 (see Pic.1) to the cut contact of the resistor. See the images below.
+![Fig. 1](PCB/UpgradeToRevC/fromAtoBC1.JPG)
+![Fig. 2](PCB/UpgradeToRevC/fromAtoBC2.JPG)
+![Fig. 3](PCB/UpgradeToRevC/fromAtoBC3.JPG)
+![Fig. 4](PCB/UpgradeToRevC/fromAtoBC4.JPG)
+
+### From rev. A and B to C:
+You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully strip the tracks from the solder mask and solder the wires (green lines) to the ESP32.
+![Fig. 5](PCB/UpgradeToRevC/fromAandBtoC.JPG)
 
 ## Features
 ### Supported formats:
@@ -18,6 +32,8 @@ ESP32 based AY Turbo Sound multiformat player
 - .psg - Programmable Sound Generator file format
 - .rsf - Registers Stream Flow file format
 - .yrg - [Custom AVR-AY format](https://www.avray.ru/ru/avr-ay-player/)
+- .mod - Amiga MOD tracker format designed for creating, storing and playing music on an Amiga PC
+- .s3m - (Scream Tracker 3 Module) is a module file format, based on the original MOD format used on the Amiga computer.
 - UART mode (available in player settings menu as Player source)
 
 ### Controls
@@ -28,7 +44,7 @@ ESP32 based AY Turbo Sound multiformat player
 - Encoder Push and turn left - slow down (for ay format change previous subsong)
 - Left button click/hold - volume - (in player mode); cancel - in config mode
 - Right button click/hold - volume + (in player mode)
-- Left button double click - change AY clock (in player mode)
+- Left button double click - change AY clock (in player mode) for PSG formats or change stereo panning for formats over DAC (mod,s3m etc.)
 - Right button double click - change play mode: all/shuffle/once (in player mode)
 
 ### Playing modes:
@@ -66,5 +82,6 @@ ESP32 based AY Turbo Sound multiformat player
 ### UPD 22.10.2024
 - Add new feature: "UART mode" with AVR-AY player through UART.
 
-### UPD 09.02.2025
-- when using the card for the first time or any initial launch of an "unknown" SD - now the player searches for any supported file on the entire memory card, including subfolders. Now there is no need to put at least one supported file in the root of the SD card.
+### UPD 04.03.2025
+- Add new formats: .mod and .s3m tracker module formats
+- Change PCB to revision C
