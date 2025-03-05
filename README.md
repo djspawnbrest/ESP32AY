@@ -6,7 +6,7 @@ ESP32 based AY Turbo Sound multiformat player
 ## IMPORTANT:
 Firmwares from version 3.4 supports only PCB revision C! But you can soldering upgrade revision A and B to C:
 
-Cut JP1 jumper on revisions A and B
+Cut JP1 jumper on revisions A and B first!
 
 ### From rev.A to B and C:
 You need to cut the input track on the resistor R33(see Pic.2) and solder the wire from the ESP32 (see Pic.1) to the cut contact of the resistor. See the images below.
