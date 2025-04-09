@@ -7,6 +7,13 @@
 		(legacy_teardrops no)
 	)
 	(paper "A4")
+	(title_block
+		(title "ZxPod Player")
+		(date "2025-04-10")
+		(rev "C")
+		(company "Spawn")
+		(comment 2 "Spawn")
+	)
 	(layers
 		(0 "F.Cu" signal)
 		(2 "B.Cu" signal)

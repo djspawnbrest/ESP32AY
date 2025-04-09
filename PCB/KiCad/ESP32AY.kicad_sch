@@ -5,8 +5,9 @@
 	(uuid "425f36ea-ae27-435f-aa55-f13e69cbacb6")
 	(paper "A3")
 	(title_block
-		(title "ZxPod Player Rev.C")
-		(date "2025-03-03")
+		(title "ZxPod Player")
+		(date "2025-04-10")
+		(rev "C")
 		(company "Spawn")
 		(comment 2 "Spawn")
 	)
