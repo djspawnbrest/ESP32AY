@@ -32,6 +32,7 @@ void generalTick(){
       PlayerCTRL.screen_mode++;
       if(PlayerCTRL.screen_mode==SCR_CONFIG) PlayerCTRL.screen_mode=SCR_PLAYER;
       PlayerCTRL.scr_mode_update[PlayerCTRL.screen_mode]=true;
+      if(PlayerCTRL.screen_mode==SCR_BROWSER) scrNotPlayer=true;
     }
   }
   if(enc.hasClicks(2)){
@@ -39,6 +40,7 @@ void generalTick(){
       PlayerCTRL.prev_screen_mode=PlayerCTRL.screen_mode;
       PlayerCTRL.screen_mode=SCR_CONFIG;
       PlayerCTRL.scr_mode_update[PlayerCTRL.screen_mode]=true;
+      scrNotPlayer=true;
     }
   }
 }

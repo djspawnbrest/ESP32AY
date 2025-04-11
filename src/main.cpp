@@ -48,8 +48,6 @@ void setup(){
   AYInit();
   ampInit();
   introTFT();
-  // setupSD();
-  // loopSD();
   delay(2000);
   show_frame();
   playerSourceChange(); // ay playcore or uart playcore

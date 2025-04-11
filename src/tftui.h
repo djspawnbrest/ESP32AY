@@ -264,6 +264,16 @@ void scrTimeout(){
   }
 }
 
+void keysTimeOut(){
+  if(enc.action()||dn.action()||up.action()){
+    keysEvent=true;
+  }
+  if(keysEvent&&scrNotPlayer&&!enc.busy()&&!dn.busy()&&!up.busy()){
+    keysEvent=false;
+    scrNotPlayer=false;
+  }
+}
+
 void show_frame(){
   tft.fillScreen(0);
   tft.setTextWrap(false);

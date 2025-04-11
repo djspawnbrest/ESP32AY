@@ -194,6 +194,7 @@ bool player_full_path(int cur, char* path, int path_size){
 }
 
 int checkSDonStart(){
+  muteAmp();
   frame_cnt=0;
   frame_max=frameMax(PLAY_NORMAL);
   int err=FILE_ERR_OTHER;
@@ -327,6 +328,7 @@ int checkSDonStart(){
 }
 
 void music_init(){
+  muteAmp();
   AYInfo.module=music_data;
   AYInfo.module_len=music_data_size;
   AYInfo.file_data=music_data;
@@ -458,6 +460,7 @@ void changeTrackIcon(bool next=true){
 }
 
 void playFinish(){ 
+  muteAmp();
   //reset frames
   frame_cnt=0;
   PlayerCTRL.trackFrame=0;
@@ -989,7 +992,7 @@ void player_screen(){
   fastEQ();
   //keypad survey
   if(Config.playerSource==PLAYER_MODE_SD){
-    if(enc.hasClicks(1)&&lcdBlackout==false){PlayerCTRL.isPlay=!PlayerCTRL.isPlay;}
+    if(enc.hasClicks(1)&&lcdBlackout==false){PlayerCTRL.isPlay=!PlayerCTRL.isPlay;PlayerCTRL.isPlay?unMuteAmp():muteAmp();}
     if(!enc.holding()&&enc.right()&&lcdBlackout==false){
       changeTrackIcon(true);
       if(Config.play_mode==PLAY_MODE_SHUFFLE) player_shuffle_cur();
@@ -999,7 +1002,7 @@ void player_screen(){
       PlayerCTRL.isFinish=true;
       delay(30);
     }
-    if(!enc.holding()&&enc.left()&&lcdBlackout==false){
+    if(!enc.holding()&&enc.left()&&lcdBlackout==false&&scrNotPlayer==false){
       changeTrackIcon(false);
       if(millis()-mlsPrevTrack<PREVTRACKDELAY) Config.play_cur--;
       mlsPrevTrack=millis();
@@ -1008,7 +1011,7 @@ void player_screen(){
       PlayerCTRL.isFinish=true;
       delay(30);
     }
-    if(enc.rightH()&&lcdBlackout==false){
+    if(enc.rightH()&&lcdBlackout==false&&scrNotPlayer==false){
       if(PlayerCTRL.music_type!=TYPE_AY){
         if(PlayerCTRL.music_type==TYPE_MOD){
           if(mod&&mod->isRunning()) mod->setSpeed(2);
@@ -1028,7 +1031,7 @@ void player_screen(){
         PlayerCTRL.isBrowserCommand=true;
       }
     }
-    if(enc.leftH()&&lcdBlackout==false){
+    if(enc.leftH()&&lcdBlackout==false&&scrNotPlayer==false){
       if(PlayerCTRL.music_type!=TYPE_AY){
         if(PlayerCTRL.music_type==TYPE_MOD){
           if(mod&&mod->isRunning()) mod->setSpeed(0);
@@ -1060,7 +1063,7 @@ void player_screen(){
       PlayerCTRL.isSlowBackward=false;
     }
   }
-  if((up.hasClicks(1)||up.holding())&&lcdBlackout==false){
+  if((up.hasClicks(1)||up.holding())&&lcdBlackout==false&&scrNotPlayer==false){
     if(!enc.holding()){
       if(Config.volume++>=63) Config.volume=63;
       writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
@@ -1081,7 +1084,7 @@ void player_screen(){
     }
   }
   if(Config.playerSource==PLAYER_MODE_SD){
-    if(up.hasClicks(2)){
+    if(up.hasClicks(2)&&lcdBlackout==false&&scrNotPlayer==false){
       switch(Config.play_mode){
         case PLAY_MODE_ONE: Config.play_mode=PLAY_MODE_ALL;break;
         case PLAY_MODE_ALL: Config.play_mode=PLAY_MODE_SHUFFLE;break;
@@ -1090,7 +1093,7 @@ void player_screen(){
       dynRebuild=true;
     }
   }
-  if((dn.hasClicks(1)||dn.holding())&&lcdBlackout==false){
+  if((dn.hasClicks(1)||dn.holding())&&lcdBlackout==false&&scrNotPlayer==false){
     if(!enc.holding()){
       if(Config.volume--<=0) Config.volume=0;
       writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
@@ -1110,7 +1113,7 @@ void player_screen(){
       img.deleteSprite();
     }
   }
-  if(dn.hasClicks(2)&&lcdBlackout==false){
+  if(dn.hasClicks(2)&&lcdBlackout==false&&scrNotPlayer==false){
     if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M){
       switch(Config.modStereoSeparation){
         case MOD_FULLSTEREO: Config.modStereoSeparation=MOD_HALFSTEREO;break;
@@ -1135,6 +1138,7 @@ void player_screen(){
     dynRebuild=true;
     config_save();
   }
+  keysTimeOut();
 }
 
 void wait_frame(){

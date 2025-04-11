@@ -1,6 +1,6 @@
 #include <AudioFileSourceSDFAT.h>
 
-#define VERSION         "3.4"
+#define VERSION         "3.41"
 
 #define CLK_SPECTRUM  	1773400
 #define CLK_PENTAGON  	1750000
@@ -56,6 +56,7 @@ bool batChange=true;
 //--------------------------------------
 bool keysEvent=false;
 bool lcdBlackout=false;
+bool scrNotPlayer=false;
 unsigned long mlsScr=0;
 unsigned long mlsPrevTrack=0;
 #define PREVTRACKDELAY 2000

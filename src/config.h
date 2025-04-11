@@ -92,12 +92,16 @@ void config_about_screen(){
     img.setFreeFont(&WildFont);
     spr_println(img,0,1,PSTR("About"),2,ALIGN_CENTER,WILD_CYAN);
     //print message
-    sprintf(buf,"ESP32 AY Player v.%s",VERSION);
-    spr_println(img,0,8,buf,2,ALIGN_CENTER,TFT_RED);
-    spr_println(img,0,9,PSTR("by Spawn 10'24"),2,ALIGN_CENTER,TFT_YELLOW);
-    spr_println(img,0,10,PSTR("powered with"),2,ALIGN_CENTER,TFT_CYAN);
-    spr_println(img,0,11,PSTR("  and"),2,ALIGN_CENTER,TFT_CYAN);
-    spr_println(img,0,11,PSTR("libayfly     z80emu"),2,ALIGN_CENTER,WILD_GREEN);
+    sprintf(buf,"ZxPod Player v.%s",VERSION);
+    spr_println(img,0,7,buf,2,ALIGN_CENTER,TFT_RED);
+    spr_println(img,0,8,PSTR("by"),2,ALIGN_CENTER,TFT_CYAN);
+    spr_println(img,0,9,PSTR("       ,"),2,ALIGN_LEFT,WILD_GREEN);
+    spr_println(img,0,9,PSTR("  Spawn"),2,ALIGN_LEFT,TFT_YELLOW);
+    spr_println(img,0,9,PSTR("Andy Karpov  "),2,ALIGN_RIGHT,TFT_YELLOW);
+    spr_println(img,0,10,PSTR("04'25"),2,ALIGN_CENTER,WILD_RED);
+    spr_println(img,0,11,PSTR("powered with"),2,ALIGN_CENTER,TFT_CYAN);
+    spr_println(img,0,12,PSTR("libayfly, z80emu,"),2,ALIGN_CENTER,WILD_GREEN);
+    spr_println(img,0,13,PSTR("ESP8266Audio"),2,ALIGN_CENTER,WILD_GREEN);
     img.pushSprite(8,8);
     img.deleteSprite();
   }
