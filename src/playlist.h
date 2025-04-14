@@ -111,7 +111,7 @@ void playlist_file_name(char* path,int path_size){
 
 //not need semaphore
 bool playlist_get_entry_full_path(int cur,char* path,int path_len,bool fromPlayer=false){
-  if(!playlist_open(fromPlayer?Config.play_ayl_file:Config.ayl_file,cur)) return false;
+  if(!playlist_open(fromPlayer?sdConfig.play_ayl_file:sdConfig.ayl_file,cur)) return false;
   bool done=true;
   if(!playlist_iterate(path,path_len)){
     done=false;

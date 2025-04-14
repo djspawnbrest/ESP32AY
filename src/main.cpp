@@ -37,10 +37,10 @@
 #include "uart.h"
 
 void setup(){
+  initSemaphore();
   blPinSetup();
   display_brightness(0);
-  initSemaphore();
-  config_load();
+  startup_config_load();
   checkStartUpConfig();
   initVoltage();
   TFTInit();
@@ -64,7 +64,7 @@ void loop(){
       player_screen();
       break;
     case SCR_BROWSER:
-      browser_screen(Config.isBrowserPlaylist);
+      browser_screen(sdConfig.isBrowserPlaylist);
       break;
     case SCR_CONFIG:
       config_screen();

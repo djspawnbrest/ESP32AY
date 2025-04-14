@@ -105,33 +105,36 @@ volatile uint32_t frame_div=0;
 volatile uint32_t frame_max=TIMER_RATE*1000/48828; // Pentagon int
 
 struct{
-  uint8_t playerSource;
-  int8_t ay_layout;
-  uint32_t ay_clock;
-  uint16_t scr_timeout;
-  int8_t scr_bright;
-  int16_t dir_cur;
-  int16_t dir_cur_prev;
-  int8_t play_mode;
-  int8_t cfg_cur;
-  uint8_t sound_vol;
-  uint16_t play_count_files;
-  int16_t play_cur;
-  int16_t play_prev_cur;
-  uint16_t play_cur_start;
-  uint8_t volume;
-  uint8_t modStereoSeparation;
-  uint8_t encType;
-  char play_dir[MAX_PATH];
-  char active_dir[MAX_PATH];
-  char prev_dir[MAX_PATH];
-  char ayl_file[MAX_PATH];  // browser ayl file
-  char play_ayl_file[MAX_PATH]; // used for now playing playlist
-  bool isBrowserPlaylist; // browser mode
-  bool isPlayAYL; // player mode
-  bool zx_int;
-  float batCalib;
-}Config;
+  bool isBrowserPlaylist;       // browser mode
+  bool isPlayAYL;               // player mode
+  int16_t dir_cur;              // Browser cursor pointer
+  int16_t play_cur;             // Player pointer
+  int16_t dir_cur_prev;         // Previous browser pointer
+  int16_t play_prev_cur;        // Previous player pointer
+  uint8_t volume;               // Amp current volume 32 (0...63)
+  uint16_t play_count_files;    // Player count files in dir
+  uint16_t play_cur_start;      // Start from pointer
+  char play_dir[MAX_PATH];      // Play dir path
+  char active_dir[MAX_PATH];    // Browser active dir path
+  char prev_dir[MAX_PATH];      // Previous dir path
+  char ayl_file[MAX_PATH];      // Browser ayl file path
+  char play_ayl_file[MAX_PATH]; // Current playing playlist file path
+}sdConfig;
+
+struct{
+  bool zx_int;                  // ZX/PENTAGON
+  int8_t ay_layout;             // ABC/BCA/ACB e.t.c.
+  int8_t play_mode;             // ALL/Shuffle/One
+  int8_t scr_bright;            // Screen brightness
+  int8_t cfg_cur;               // Config menu pointer
+  uint8_t volume;               // Amp default volume 32 (0...63)
+  uint8_t encType;              // Encoder type
+  uint8_t playerSource;         // SD/UART
+  uint8_t modStereoSeparation;  // DAC channels panning
+  uint16_t scr_timeout;         // Screen off timeout
+  uint32_t ay_clock;            // 1.75 MHz e.t.c.
+  float batCalib;               // Battery calibration
+}lfsConfig;
 
 enum{
   PENT_INT=0,

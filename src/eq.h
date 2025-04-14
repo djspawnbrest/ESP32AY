@@ -239,7 +239,7 @@ void fastEQ(){
     img.print("B");
     img.setCursor(149,20);
     img.print("C");
-    if(AYInfo.is_ts&&Config.playerSource==PLAYER_MODE_SD){
+    if(AYInfo.is_ts&&lfsConfig.playerSource==PLAYER_MODE_SD){
       if(tA1>0){
         int w=(58/2)*tA1/8;
         if(w>58) w=58;

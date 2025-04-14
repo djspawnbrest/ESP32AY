@@ -80,40 +80,40 @@ int browser_check_ext(const char* name){
 
 //not need semaphore
 void browser_reset_directory(){
-  strncpy(Config.active_dir,"/",sizeof(Config.active_dir)-1);
-  strncpy(Config.prev_dir,"/",sizeof(Config.prev_dir)-1);
-  strncpy(Config.ayl_file,"",sizeof(Config.ayl_file)-1);
+  strncpy(sdConfig.active_dir,"/",sizeof(sdConfig.active_dir)-1);
+  strncpy(sdConfig.prev_dir,"/",sizeof(sdConfig.prev_dir)-1);
+  strncpy(sdConfig.ayl_file,"",sizeof(sdConfig.ayl_file)-1);
 }
 
 //semaphored
 void browser_enter_directory(){
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
-    sd_dir.open(Config.active_dir, O_RDONLY);
-    sd_file.open(&sd_dir,sort_list[Config.dir_cur].file_id,O_RDONLY);
+    sd_dir.open(sdConfig.active_dir,O_RDONLY);
+    sd_file.open(&sd_dir,sort_list[sdConfig.dir_cur].file_id,O_RDONLY);
     sd_file.getName(lfn,sizeof(lfn));
     sd_file.close();
     sd_dir.close();
     xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
-  strncat(Config.active_dir,lfn,sizeof(Config.active_dir)-1);
-  strncat(Config.active_dir,"/",sizeof(Config.active_dir)-1);
-  Config.active_dir[sizeof(Config.active_dir)-1]=0;
-  Config.dir_cur_prev=Config.dir_cur;
-  Config.dir_cur=0;
+  strncat(sdConfig.active_dir,lfn,sizeof(sdConfig.active_dir)-1);
+  strncat(sdConfig.active_dir,"/",sizeof(sdConfig.active_dir)-1);
+  sdConfig.active_dir[sizeof(sdConfig.active_dir)-1]=0;
+  sdConfig.dir_cur_prev=sdConfig.dir_cur;
+  sdConfig.dir_cur=0;
 }
 
 //not need semaphore
 void browser_leave_directory(){
-  memset(Config.prev_dir,0,sizeof(Config.prev_dir));
-  for(int i=strlen(Config.active_dir)-2;i>=0;i--){
-    if(Config.active_dir[i]=='/'){
-      strncpy(Config.prev_dir,&Config.active_dir[i+1],sizeof(Config.prev_dir)-1);
-      Config.active_dir[i+1]=0;
+  memset(sdConfig.prev_dir,0,sizeof(sdConfig.prev_dir));
+  for(int i=strlen(sdConfig.active_dir)-2;i>=0;i--){
+    if(sdConfig.active_dir[i]=='/'){
+      strncpy(sdConfig.prev_dir,&sdConfig.active_dir[i+1],sizeof(sdConfig.prev_dir)-1);
+      sdConfig.active_dir[i+1]=0;
       break;
     }
   }
-  Config.dir_cur=Config.dir_cur_prev;
-  Config.dir_cur_prev=0;
+  sdConfig.dir_cur=sdConfig.dir_cur_prev;
+  sdConfig.dir_cur_prev=0;
 }
 
 //semaphored
@@ -121,14 +121,14 @@ bool browser_full_path(int cur,char* path,int path_size){
   char temp[MAX_PATH]={0};
   if(cur<0||cur>=sort_list_len) return false;
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
-    if(sd_dir.open(Config.active_dir,O_RDONLY)){
+    if(sd_dir.open(sdConfig.active_dir,O_RDONLY)){
       if(sd_file.open(&sd_dir,sort_list[cur].file_id,O_RDONLY)){
         sd_file.getName(temp,sizeof(temp));
         sd_file.close();
       }
       temp[sizeof(temp)-1]=0;
       sd_dir.close();
-      strncpy(path,Config.active_dir,path_size-1);
+      strncpy(path,sdConfig.active_dir,path_size-1);
       strncat(path,temp,path_size-1);
       return true;
     }
@@ -150,8 +150,8 @@ void insertion_sort_list(){
       if(!carry) break;
       sortStruct temp;
       memcpy(&temp,&sort_list[j],sizeof(sortStruct));
-      memcpy(&sort_list[j],&sort_list[j - 1],sizeof(sortStruct));
-      memcpy(&sort_list[j - 1],&temp,sizeof(sortStruct));
+      memcpy(&sort_list[j],&sort_list[j-1],sizeof(sortStruct));
+      memcpy(&sort_list[j-1],&temp,sizeof(sortStruct));
       j--;
     }
     i++;
@@ -160,18 +160,18 @@ void insertion_sort_list(){
   int file_id=-1;
   for(int i=0;i<sort_list_len;i++){
     if(sort_list[i].file_id==file_id){
-      Config.dir_cur=i;
+      sdConfig.dir_cur=i;
       break;
     }
   }
-  if(Config.dir_cur<0||Config.dir_cur>=sort_list_len) Config.dir_cur=0;
+  if(sdConfig.dir_cur<0||sdConfig.dir_cur>=sort_list_len) sdConfig.dir_cur=0;
 }
 
 int search_files_in_dir(FsFile* dir,char* found_dir,bool* found_file,const char* current_path){
   while(sd_file.openNext(dir,O_RDONLY)){
     if(!sd_file.isHidden()&&sd_file.isFile()){
       memset(lfn,0,SORT_HASH_LEN);
-      sd_file.getName(lfn, sizeof(lfn));
+      sd_file.getName(lfn,sizeof(lfn));
       uint8_t file_type=browser_check_ext(lfn);
       if(file_type!=TYPE_UNK){
         if(sort_list_len>=SORT_FILES_MAX){
@@ -246,34 +246,34 @@ int browser_search_files_in_sd_dir(bool fromPlayer=false){
       PlayerCTRL.screen_mode=SCR_SDEJECT;
       return FILE_ERR_NO_CARD;
     }
-    if(!sd_dir.open(fromPlayer?Config.play_dir:Config.active_dir,O_RDONLY)){
+    if(!sd_dir.open(fromPlayer?sdConfig.play_dir:sdConfig.active_dir,O_RDONLY)){
       return FILE_ERR_OTHER;
     }
     xSemaphoreGive(sdCardSemaphore); // Release the semaphore
   }
   char found_dir[512]={0};
   bool found_file=false;
-  const char* initial_path=fromPlayer?Config.play_dir:Config.active_dir;
+  const char* initial_path=fromPlayer?sdConfig.play_dir:sdConfig.active_dir;
   snprintf(found_dir,sizeof(found_dir),"%s",initial_path);
   int result=recursive_search(&sd_dir,found_dir,&found_file,initial_path);
   sd_dir.close();
   if(result==FILE_ERR_NONE){
     // Setting up paths for Config.play_dir and Config.active_dir
-    snprintf(Config.play_dir,sizeof(Config.play_dir),"%s",found_dir);
-    snprintf(Config.active_dir,sizeof(Config.active_dir),"%s",found_dir);
+    snprintf(sdConfig.play_dir,sizeof(sdConfig.play_dir),"%s",found_dir);
+    snprintf(sdConfig.active_dir,sizeof(sdConfig.active_dir),"%s",found_dir);
     // Remove the extra slash at the beginning of the path, if there is one
-    if(Config.play_dir[0]=='/'){
-      memmove(Config.play_dir,Config.play_dir+1,strlen(Config.play_dir));
+    if(sdConfig.play_dir[0]=='/'){
+      memmove(sdConfig.play_dir,sdConfig.play_dir+1,strlen(sdConfig.play_dir));
     }
-    if(Config.active_dir[0]=='/'){
-      memmove(Config.active_dir,Config.active_dir+1,strlen(Config.active_dir));
+    if(sdConfig.active_dir[0]=='/'){
+      memmove(sdConfig.active_dir,sdConfig.active_dir+1,strlen(sdConfig.active_dir));
     }
     // Add a slash at the end of the path if there is none.
-    if(Config.play_dir[strlen(Config.play_dir)-1]!='/'){
-      strncat(Config.play_dir,"/",sizeof(Config.play_dir)-strlen(Config.play_dir)-1);
+    if(sdConfig.play_dir[strlen(sdConfig.play_dir)-1]!='/'){
+      strncat(sdConfig.play_dir,"/",sizeof(sdConfig.play_dir)-strlen(sdConfig.play_dir)-1);
     }
-    if(Config.active_dir[strlen(Config.active_dir)-1]!='/'){
-      strncat(Config.active_dir,"/",sizeof(Config.active_dir)-strlen(Config.active_dir)-1);
+    if(sdConfig.active_dir[strlen(sdConfig.active_dir)-1]!='/'){
+      strncat(sdConfig.active_dir,"/",sizeof(sdConfig.active_dir)-strlen(sdConfig.active_dir)-1);
     }
     return FILE_ERR_NONE;
   }
@@ -291,7 +291,7 @@ int browser_build_list(bool fromPlayer=false){
       PlayerCTRL.screen_mode=SCR_SDEJECT;
       return FILE_ERR_NO_CARD;
     }
-    if(!sd_dir.open(fromPlayer?Config.play_dir:Config.active_dir,O_RDONLY)){
+    if(!sd_dir.open(fromPlayer?sdConfig.play_dir:sdConfig.active_dir,O_RDONLY)){
       return FILE_ERR_OTHER;
     }
     xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
@@ -315,7 +315,7 @@ int browser_build_list(bool fromPlayer=false){
               return FILE_ERR_OTHER;
             }
             if(sd_file.isSubDir()){
-              if(strcasecmp(Config.prev_dir,lfn)==0) file_id=sd_file.dirIndex();
+              if(strcasecmp(sdConfig.prev_dir,lfn)==0) file_id=sd_file.dirIndex();
             }
             sort_list[sort_list_len].file_id=sd_file.dirIndex();
             for(int i=0;i<SORT_HASH_LEN;i++){
@@ -380,28 +380,28 @@ int browser_build_list(bool fromPlayer=false){
   */
   for(int i=0;i<sort_list_len;i++){
     if(sort_list[i].file_id==file_id){
-      Config.dir_cur=i;
+      sdConfig.dir_cur=i;
       break;
     }
   }
-  if(Config.dir_cur<0||Config.dir_cur>=sort_list_len) Config.dir_cur=0;
+  if(sdConfig.dir_cur<0||sdConfig.dir_cur>=sort_list_len) sdConfig.dir_cur=0;
   return FILE_ERR_NONE;
 }
 
 //not need semaphore
 bool browser_move_cur(int dir,bool loop){
   bool done=false;
-  Config.dir_cur+=dir;
+  sdConfig.dir_cur+=dir;
   if(loop){
-    if(Config.dir_cur<0) Config.dir_cur=sort_list_len-1;
-    if(Config.dir_cur>=sort_list_len) Config.dir_cur=0;
+    if(sdConfig.dir_cur<0) sdConfig.dir_cur=sort_list_len-1;
+    if(sdConfig.dir_cur>=sort_list_len) sdConfig.dir_cur=0;
   }else{
-    if(Config.dir_cur<0){
-      Config.dir_cur=0;
+    if(sdConfig.dir_cur<0){
+      sdConfig.dir_cur=0;
       done=true;
     }
-    if(Config.dir_cur>=sort_list_len){
-      Config.dir_cur=sort_list_len-1;
+    if(sdConfig.dir_cur>=sort_list_len){
+      sdConfig.dir_cur=sort_list_len-1;
       done=true;
     }
   }
@@ -414,10 +414,10 @@ bool browser_move_cur(int dir,bool loop){
 
 //not need semaphore
 void browser_shuffle_cur(){
-  int prev_cur=Config.dir_cur;
+  int prev_cur=sdConfig.dir_cur;
   while(1){
-    Config.dir_cur=rand()%sort_list_len;
-    if(Config.dir_cur!=prev_cur) break;
+    sdConfig.dir_cur=rand()%sort_list_len;
+    if(sdConfig.dir_cur!=prev_cur) break;
     yield();
   }
 }
@@ -425,7 +425,7 @@ void browser_shuffle_cur(){
 //semaphored
 void browser_dir_draw_begin(int id){
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
-    sd_dir.open(Config.active_dir,O_RDONLY);
+    sd_dir.open(sdConfig.active_dir,O_RDONLY);
     xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
 }
@@ -433,7 +433,7 @@ void browser_dir_draw_begin(int id){
 //semaphored
 void browser_dir_draw_item(int sx,int sy,int id){
   char tmp[MAX_PATH];
-  memcpy(tmp,Config.active_dir,sizeof(Config.active_dir));
+  memcpy(tmp,sdConfig.active_dir,sizeof(sdConfig.active_dir));
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
     sd_file.open(&sd_dir,sort_list[id].file_id,O_RDONLY);
     sd_file.getName(lfn,sizeof(lfn));
@@ -447,7 +447,7 @@ void browser_dir_draw_item(int sx,int sy,int id){
   char buf[MAX_PATH];
   switch(type){
     case MUS:
-      if(!strcmp(Config.active_dir,Config.play_dir)&&Config.play_cur==id&&!Config.isPlayAYL){
+      if(!strcmp(sdConfig.active_dir,sdConfig.play_dir)&&sdConfig.play_cur==id&&!sdConfig.isPlayAYL){
         spr_print(img,sx,sy,lfn,2,TFT_BLUE);
       }else{
         spr_print(img,sx,sy,lfn,2,WILD_CYAN_D2);
@@ -458,9 +458,9 @@ void browser_dir_draw_item(int sx,int sy,int id){
       strcat(tmp,lfn);
       strcat(tmp,"/");
       // Processing and highlighting full playing path folders\file or playlist
-      if(strstr(Config.play_dir,tmp)!=NULL&&!Config.isPlayAYL){
+      if(strstr(sdConfig.play_dir,tmp)!=NULL&&!sdConfig.isPlayAYL){
         spr_print(img,sx,sy,buf,2,TFT_VIOLET);
-      }else if(strstr(Config.play_ayl_file,tmp)!=NULL&&Config.isPlayAYL){
+      }else if(strstr(sdConfig.play_ayl_file,tmp)!=NULL&&sdConfig.isPlayAYL){
         spr_print(img,sx,sy,buf,2,TFT_VIOLET);
       }else{
         spr_print(img,sx,sy,buf,2,TFT_YELLOW);
@@ -469,7 +469,7 @@ void browser_dir_draw_item(int sx,int sy,int id){
     case AYL:
       sprintf(buf,"<%s>",lfn);
       strcat(tmp,lfn);
-      if(!strcmp(Config.play_ayl_file,tmp)&&Config.isPlayAYL){
+      if(!strcmp(sdConfig.play_ayl_file,tmp)&&sdConfig.isPlayAYL){
         spr_print(img,sx,sy,buf,2,TFT_VIOLET);
       }else{
         spr_print(img,sx,sy,buf,2,WILD_GREEN);
@@ -488,14 +488,14 @@ void browser_dir_draw_end(){
 
 //in playlist.h
 void browser_ayl_draw_begin(int id){
-  playlist_open(Config.ayl_file,id);
+  playlist_open(sdConfig.ayl_file,id);
 }
 
 //in playlist.h
 void browser_ayl_draw_item(int sx,int sy,int id){
   playlist_iterate(lfn,sizeof(lfn));
   playlist_file_name(lfn,sizeof(lfn));
-  if(!strcmp(Config.ayl_file,Config.play_ayl_file)&&Config.play_cur==id&&Config.isPlayAYL){
+  if(!strcmp(sdConfig.ayl_file,sdConfig.play_ayl_file)&&sdConfig.play_cur==id&&sdConfig.isPlayAYL){
     spr_print(img,sx,sy,lfn,2,TFT_BLUE);
   }else{
     spr_print(img,sx,sy,lfn,2,WILD_CYAN_D2);
@@ -527,7 +527,7 @@ int browser_screen(int mode){
   }else{
     if(browser_rebuild){
       browser_rebuild=0;
-      if(!playlist_open(Config.ayl_file,0)) return FILE_ERR_NO_CARD;
+      if(!playlist_open(sdConfig.ayl_file,0)) return FILE_ERR_NO_CARD;
       sort_list_len=0;
       while(playlist_iterate(lfn,sizeof(lfn))){
         sort_list_len++;
@@ -536,7 +536,7 @@ int browser_screen(int mode){
     }
   }
   if(PlayerCTRL.scr_mode_update[SCR_BROWSER]){ 
-    int id=Config.dir_cur-BROWSER_LINES/2;
+    int id=sdConfig.dir_cur-BROWSER_LINES/2;
     if(id>=sort_list_len-BROWSER_LINES) id=sort_list_len-BROWSER_LINES;
     if(id<0) id=0;
     img.setColorDepth(8);
@@ -558,7 +558,7 @@ int browser_screen(int mode){
     }
     for(int i=0;i<BROWSER_LINES;i++){
       if(id>=0&&id<sort_list_len){
-        if(Config.dir_cur==id){
+        if(sdConfig.dir_cur==id){
           // draw cursor
           img.fillRoundRect(sx,sy-(8*2),img.width(),8*2,3,TFT_RED);
         }
@@ -567,7 +567,7 @@ int browser_screen(int mode){
         }else{
           browser_ayl_draw_item(sx,sy,id);
         }
-        if(Config.dir_cur==id){
+        if(sdConfig.dir_cur==id){
           if(tft_strlen(lfn,2)>img.width()){
             memcpy(scrollbuf,lfn,sizeof(lfn));
             sUp[0]=S_UPD_DIR;
@@ -599,14 +599,14 @@ int browser_screen(int mode){
   }
   //scroll
   if(scroll){
-    if(Config.isPlayAYL){
-      if(!strcmp(Config.ayl_file,Config.play_ayl_file)&&Config.play_cur==Config.dir_cur){
+    if(sdConfig.isPlayAYL){
+      if(!strcmp(sdConfig.ayl_file,sdConfig.play_ayl_file)&&sdConfig.play_cur==sdConfig.dir_cur){
         scrollString(scrollbuf,2,TFT_BLUE,224,16,8,scrollSY-8,0);
       }else{
         scrollString(scrollbuf,2,WILD_CYAN_D2,224,16,8,scrollSY-8,0);
       }
     }else{
-      if(!strcmp(Config.active_dir,Config.play_dir)&&Config.play_cur==Config.dir_cur){
+      if(!strcmp(sdConfig.active_dir,sdConfig.play_dir)&&sdConfig.play_cur==sdConfig.dir_cur){
         scrollString(scrollbuf,2,TFT_BLUE,224,16,8,scrollSY-8,0);
       }else{
         scrollString(scrollbuf,2,WILD_CYAN_D2,224,16,8,scrollSY-8,0);
@@ -624,23 +624,23 @@ int browser_screen(int mode){
   }
   if(enc.hasClicks(1)&&lcdBlackout==false){
     if(mode==BROWSE_DIR){
-      if(sort_list[Config.dir_cur].hash[0]==1){ //directory
+      if(sort_list[sdConfig.dir_cur].hash[0]==1){ //directory
         browser_enter_directory();
         PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
         browser_rebuild=1;
       }else{ //file
-        browser_full_path(Config.dir_cur,lfn,sizeof(lfn));
+        browser_full_path(sdConfig.dir_cur,lfn,sizeof(lfn));
         switch(browser_check_ext(lfn)){
           case TYPE_UNK:
             return FILE_ERR_UNK_FORMAT;
             break;
           case TYPE_AYL: //enter playlist mode
-            strncpy(Config.ayl_file,lfn,sizeof(Config.ayl_file)-1);
-            Config.dir_cur_prev=Config.dir_cur;
-            Config.dir_cur=0;
+            strncpy(sdConfig.ayl_file,lfn,sizeof(sdConfig.ayl_file)-1);
+            sdConfig.dir_cur_prev=sdConfig.dir_cur;
+            sdConfig.dir_cur=0;
             PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
             browser_rebuild=1;
-            Config.isBrowserPlaylist=BROWSE_AYL;
+            sdConfig.isBrowserPlaylist=BROWSE_AYL;
             xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
             delay(30);
             break;
@@ -659,14 +659,14 @@ int browser_screen(int mode){
           case TYPE_MOD:
           case TYPE_S3M:
             PlayerCTRL.isPlay=false;
-            memcpy(Config.play_dir,Config.active_dir,sizeof(Config.active_dir));
+            memcpy(sdConfig.play_dir,sdConfig.active_dir,sizeof(sdConfig.active_dir));
             memcpy(sort_list_play,sort_list,sizeof(sort_list));
-            Config.play_count_files=sort_list_len;
-            Config.play_cur_start=cursor_offset;
-            Config.play_cur=Config.dir_cur;
+            sdConfig.play_count_files=sort_list_len;
+            sdConfig.play_cur_start=cursor_offset;
+            sdConfig.play_cur=sdConfig.dir_cur;
             // leave AYL play
-            Config.play_ayl_file[0]=0;
-            Config.isPlayAYL=false;
+            sdConfig.play_ayl_file[0]=0;
+            sdConfig.isPlayAYL=false;
             // rebuild browser list command
             browser_rebuild=1;
             PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
@@ -681,13 +681,13 @@ int browser_screen(int mode){
       }
     }else{
       PlayerCTRL.isPlay=false;
-      playlist_get_entry_full_path(Config.dir_cur,lfn,sizeof(lfn));
-      memcpy(Config.play_ayl_file,Config.ayl_file,sizeof(Config.ayl_file));
-      Config.play_cur=Config.dir_cur;
+      playlist_get_entry_full_path(sdConfig.dir_cur,lfn,sizeof(lfn));
+      memcpy(sdConfig.play_ayl_file,sdConfig.ayl_file,sizeof(sdConfig.ayl_file));
+      sdConfig.play_cur=sdConfig.dir_cur;
       // enter AYL play
-      Config.play_count_files=sort_list_len;
-      Config.play_cur_start=0;
-      Config.isPlayAYL=true;
+      sdConfig.play_count_files=sort_list_len;
+      sdConfig.play_cur_start=0;
+      sdConfig.isPlayAYL=true;
       // rebuild browser list command
       browser_rebuild=1;
       PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
@@ -697,8 +697,8 @@ int browser_screen(int mode){
       PlayerCTRL.isFinish=true;
       delay(30);
     }
-    config_save();
-    return Config.dir_cur;
+    sd_config_save();
+    return sdConfig.dir_cur;
   }
   if(dn.click()&&lcdBlackout==false){
     if(mode==BROWSE_DIR){
@@ -706,15 +706,15 @@ int browser_screen(int mode){
       PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
       browser_rebuild=1;
     }else{ // leave playlist
-      Config.dir_cur=Config.dir_cur_prev;
-      Config.dir_cur_prev=0;
-      Config.ayl_file[0]=0;
+      sdConfig.dir_cur=sdConfig.dir_cur_prev;
+      sdConfig.dir_cur_prev=0;
+      sdConfig.ayl_file[0]=0;
       PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
       browser_rebuild=1;
-      Config.isBrowserPlaylist=BROWSE_DIR;
+      sdConfig.isBrowserPlaylist=BROWSE_DIR;
     }
-    config_save();
-    return Config.dir_cur;
+    sd_config_save();
+    return sdConfig.dir_cur;
   }
   return 0;
 }
@@ -722,14 +722,14 @@ int browser_screen(int mode){
 void initSemaphore(){
   sdCardSemaphore=xSemaphoreCreateMutex();
   if(sdCardSemaphore==NULL){
-    // printf("Error creating sd semaphore\n");
+    printf("Error creating sd semaphore\n");
   }else{
     // Give the semaphore so it's available for the first take
     xSemaphoreGive(sdCardSemaphore);
   }
   outSemaphore=xSemaphoreCreateBinary();
-  if (outSemaphore==NULL){
-    // println("Failed to create outSemaphore\n");
+  if(outSemaphore==NULL){
+    printf("Failed to create outSemaphore\n");
   }else{
     // Give the semaphore so it's available for the first take
     xSemaphoreGive(outSemaphore);
