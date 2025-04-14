@@ -900,7 +900,7 @@
 				)
 			)
 		)
-		(property "Value" "0"
+		(property "Value" "8,2К*"
 			(at 0 1.65 270)
 			(layer "F.Fab")
 			(uuid "4832baaf-85f7-49e4-be18-5d4180661f6d")
