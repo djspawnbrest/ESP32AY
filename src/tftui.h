@@ -192,7 +192,7 @@ void voltage(){
       InVolt+=analogReadMilliVolts(VOLTPIN);
     }
     InVolt=InVolt/READ_CNT;
-    volt=((InVolt/1000.0)*VoltMult)+Config.batCalib;
+    volt=((InVolt/1000.0)*VoltMult)+lfsConfig.batCalib;
     if(volt<=v_min){
       precent=0;
     }else if(volt>=v_max){
@@ -252,13 +252,13 @@ void scrTimeout(){
   if(enc.action()||dn.action()||up.action()){
     keysEvent=true;
   }
-  if(keysEvent&&Config.scr_timeout>0&&lcdBlackout&&!enc.busy()&&!dn.busy()&&!up.busy()){
-    display_brightness(Config.scr_bright);
+  if(keysEvent&&lfsConfig.scr_timeout>0&&lcdBlackout&&!enc.busy()&&!dn.busy()&&!up.busy()){
+    display_brightness(lfsConfig.scr_bright);
     mlsScr=millis();
     keysEvent=false;
     lcdBlackout=false;
   }
-  if(Config.scr_timeout>0&&millis()-mlsScr>Config.scr_timeout*1000){
+  if(lfsConfig.scr_timeout>0&&millis()-mlsScr>lfsConfig.scr_timeout*1000){
     ledcWrite(pwmChannel,255); // blackout
     lcdBlackout=true;
   }
@@ -358,5 +358,5 @@ void TFTInit(){
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_WHITE);
   tft.setFreeFont(&WildFont);
-  display_brightness(Config.scr_bright);
+  display_brightness(lfsConfig.scr_bright);
 }

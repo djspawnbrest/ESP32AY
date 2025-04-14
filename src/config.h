@@ -1,66 +1,109 @@
 #include <LittleFS.h>
 
 bool cfgSet=false;
+bool sdFlag=false;
 
-uint32_t getLittleFSFreeSpaceKB(){
-  if(!LittleFS.begin()) return 0;
-  uint32_t totalBytes=LittleFS.totalBytes();
-  uint32_t usedBytes=LittleFS.usedBytes();
-  uint32_t freeBytes=totalBytes-usedBytes;
-  uint32_t freeKB=freeBytes/1024;
-  LittleFS.end();
-  return freeKB;
+void lfs_config_default(){
+  memset(&lfsConfig,0,sizeof(lfsConfig));
+  lfsConfig.playerSource=PLAYER_MODE_SD;
+  lfsConfig.zx_int=PENT_INT;
+  lfsConfig.ay_layout=LAY_ABC;
+  lfsConfig.ay_clock=CLK_PENTAGON;
+  lfsConfig.volume=32;
+  lfsConfig.scr_bright=100;
+  lfsConfig.scr_timeout=0;
+  lfsConfig.play_mode=PLAY_MODE_ALL;
+  lfsConfig.modStereoSeparation=MOD_HALFSTEREO;
+  lfsConfig.batCalib=0.0;
+  lfsConfig.encType=EB_STEP2;
 }
 
-uint32_t getLittleFSTotalSpaceKB(){
-  if(!LittleFS.begin()) return 0;
-  uint32_t totalBytes=LittleFS.totalBytes();
-  uint32_t totalKB=totalBytes/1024;
-  LittleFS.end();
-  return totalKB;
-}
-
-void config_default(){
-  memset(&Config,0,sizeof(Config));
-  Config.playerSource=PLAYER_MODE_SD;
-  Config.zx_int=PENT_INT;
-  Config.ay_layout=LAY_ABC;
-  Config.ay_clock=CLK_PENTAGON;
-  Config.volume=32;
-  Config.scr_bright=100;
-  Config.scr_timeout=0;
-  Config.play_mode=PLAY_MODE_ALL;
-  Config.modStereoSeparation=MOD_HALFSTEREO;
-  Config.batCalib=0.0;
-  Config.encType=EB_STEP2;
+void sd_config_default(){
+  memset(&sdConfig,0,sizeof(sdConfig));
+  sdConfig.volume=32;
   browser_reset_directory();
 }
 
-void config_load(){
-  config_default();
+void sd_config_load(){
+  printf("sdConfig file load!\n");
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    if(sd_fat.begin(SD_CONFIG)){
+      printf("SD BEGIN successfully!\n");
+      bool result=false;
+      uint32_t fileSize=0;
+      FsFile f;
+      result=f.open(CFG_FILENAME,O_RDONLY);
+      if(result){
+        printf("Config file exists on SD: %s\n",result?"yes":"no");
+        f.read(&sdConfig,sizeof(sdConfig));
+        f.close();
+      }else{
+        printf("No config file! RESETING and write new file!\n");
+        result=f.open(CFG_FILENAME,O_RDWR|O_CREAT|O_TRUNC);
+        if(result){
+          f.write(&sdConfig,sizeof(sdConfig));
+        }
+        f.close();
+      }
+    }else printf("sd BEGIN on load error\n");
+    xSemaphoreGive(sdCardSemaphore);
+  }
+}
+
+void lfs_config_load(){
+  printf("lfsConfig file load!\n");
   LittleFS.begin(true);
   fs::File f=LittleFS.open(CFG_FILENAME,"r");
   if(f){
-    if(f.size()==sizeof(Config)){
-      f.readBytes((char*)&Config,sizeof(Config));
+    if(f.size()==sizeof(lfsConfig)){
+      f.readBytes((char*)&lfsConfig,sizeof(lfsConfig));
     }
     f.close();
   }else{
     if(!LittleFS.exists(CFG_FILENAME)){
       fs::File f=LittleFS.open(CFG_FILENAME,"w");
       if(f){
-        f.write((const uint8_t*)&Config,sizeof(Config));
+        f.write((const uint8_t*)&lfsConfig,sizeof(lfsConfig));
         f.close();
       }
     }
   }
 }
 
-void config_save(){
+void startup_config_load(){
+  lfs_config_default();
+  lfs_config_load();
+  sd_config_default();
+  sd_config_load();
+}
+
+void sd_config_save(){
+  printf("sdConfig file save!\n");
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    if(sd_fat.begin(SD_CONFIG)){
+      // printf("sd Config file save begin successfully\n");
+      // uint32_t fileSize=0;
+      bool result=false;
+      FsFile f;
+      result=f.open(CFG_FILENAME,O_RDWR/*|O_TRUNC*/);
+      if(result){
+        size_t writtenBytes=0;
+        writtenBytes=f.write(&sdConfig,sizeof(sdConfig));
+        // fileSize=f.fileSize();
+        printf("Saved SD config: written %d bytes, config size: %d bytes\n",writtenBytes,sizeof(sdConfig));
+      }else printf("sd Config file save error\n");
+      f.close();
+    }else printf("sd BEGIN on save error\n");
+    xSemaphoreGive(sdCardSemaphore);
+  }
+}
+
+void lfs_config_save(){
+  printf("lfsConfig file save!\n");
   if(xSemaphoreTake(outSemaphore,portMAX_DELAY)==pdTRUE){
     fs::File f=LittleFS.open(CFG_FILENAME,"w");
     if(f){
-      f.write((const uint8_t*)&Config,sizeof(Config));
+      f.write((const uint8_t*)&lfsConfig,sizeof(lfsConfig));
       f.close();
     }
     xSemaphoreGive(outSemaphore);
@@ -68,17 +111,17 @@ void config_save(){
 }
 
 void configResetPlayingPath(){
-  strncpy(Config.play_dir,"/",sizeof(Config.play_dir)-1);
-  strncpy(Config.active_dir,"/",sizeof(Config.active_dir)-1);
-  strncpy(Config.prev_dir,"/",sizeof(Config.prev_dir)-1);
-  Config.isPlayAYL=false;
-  Config.isBrowserPlaylist=false;
-  Config.play_count_files=0;
-  Config.play_ayl_file[0]=0;
-  Config.ayl_file[0]=0;
-  Config.play_cur=0;
-  Config.dir_cur=0;
-  config_save();
+  strncpy(sdConfig.play_dir,"/",sizeof(sdConfig.play_dir)-1);
+  strncpy(sdConfig.active_dir,"/",sizeof(sdConfig.active_dir)-1);
+  strncpy(sdConfig.prev_dir,"/",sizeof(sdConfig.prev_dir)-1);
+  sdConfig.isPlayAYL=false;
+  sdConfig.isBrowserPlaylist=false;
+  sdConfig.play_count_files=0;
+  sdConfig.play_ayl_file[0]=0;
+  sdConfig.ayl_file[0]=0;
+  sdConfig.play_cur=0;
+  sdConfig.dir_cur=0;
+  sd_config_save();
 }
 
 void config_about_screen(){
@@ -152,8 +195,10 @@ void config_reset_default_screen(){
   if(enc.click()&&lcdBlackout==false){
     switch(PlayerCTRL.msg_cur){
     case YES:
-      config_default();
-      config_save();
+      lfs_config_default();
+      lfs_config_save();
+      sd_config_default();
+      sd_config_save();
       ESP.restart();
       break;
     case NO:
@@ -177,7 +222,7 @@ void config_screen(){
   char buf[32];
   if(PlayerCTRL.scr_mode_update[SCR_CONFIG]){
     PlayerCTRL.scr_mode_update[SCR_CONFIG]=false;
-    int8_t ccur=Config.cfg_cur;
+    int8_t ccur=lfsConfig.cfg_cur;
     img.setColorDepth(8);
     img.createSprite(224,288); //224,304 without voltage debug
     img.fillScreen(0);
@@ -185,11 +230,11 @@ void config_screen(){
     img.setTextSize(1);
     img.setFreeFont(&WildFont);
     spr_println(img,0,1,PSTR("Settings"),2,ALIGN_CENTER,WILD_CYAN);
-    spr_printmenu_item(img,2,2,PSTR("Player source"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,player_sources[Config.playerSource],TFT_YELLOW);
-    spr_printmenu_item(img,3,2,PSTR("ZX INT"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,zx_int[Config.zx_int],TFT_YELLOW);
-    sprintf(buf,"%s%s%s",(cfgSet&&ccur==2)?"<":"",ay_layout_names[Config.ay_layout],(cfgSet&&ccur==2)?">":"");
+    spr_printmenu_item(img,2,2,PSTR("Player source"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,player_sources[lfsConfig.playerSource],TFT_YELLOW);
+    spr_printmenu_item(img,3,2,PSTR("ZX INT"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,zx_int[lfsConfig.zx_int],TFT_YELLOW);
+    sprintf(buf,"%s%s%s",(cfgSet&&ccur==2)?"<":"",ay_layout_names[lfsConfig.ay_layout],(cfgSet&&ccur==2)?">":"");
     spr_printmenu_item(img,4,2,PSTR("Stereo"),(cfgSet&&ccur==2)?WILD_RED:WILD_CYAN_D2,ccur==2?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==2)?WILD_RED:TFT_YELLOW);
-    switch(Config.ay_clock){
+    switch(lfsConfig.ay_clock){
       case CLK_SPECTRUM: sprintf(buf,"%sZX 1.77MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
       case CLK_PENTAGON: sprintf(buf,"%sPEN 1.75MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
       case CLK_MSX: sprintf(buf,"%sMSX 1.78MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
@@ -197,23 +242,23 @@ void config_screen(){
       case CLK_ATARIST: sprintf(buf,"%sST 2.0MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
     }
     spr_printmenu_item(img,5,2,PSTR("AY Clock"),(cfgSet&&ccur==3)?WILD_RED:WILD_CYAN_D2,ccur==3?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==3)?WILD_RED:TFT_YELLOW);
-    sprintf(buf,"%s%s%s",(cfgSet&&ccur==4)?"<":"",play_modes[Config.play_mode],(cfgSet&&ccur==4)?">":"");
+    sprintf(buf,"%s%s%s",(cfgSet&&ccur==4)?"<":"",play_modes[lfsConfig.play_mode],(cfgSet&&ccur==4)?">":"");
     spr_printmenu_item(img,6,2,PSTR("Play mode"),(cfgSet&&ccur==4)?WILD_RED:WILD_CYAN_D2,ccur==4?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==4)?WILD_RED:TFT_YELLOW);
-    sprintf(buf,"%s%2u%%%s",(cfgSet&&ccur==5)?"<":"",Config.scr_bright,(cfgSet&&ccur==5)?">":"");
+    sprintf(buf,"%s%2u%%%s",(cfgSet&&ccur==5)?"<":"",lfsConfig.scr_bright,(cfgSet&&ccur==5)?">":"");
     spr_printmenu_item(img,7,2,PSTR("Scr.brightness"),(cfgSet&&ccur==5)?WILD_RED:WILD_CYAN_D2,ccur==5?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==5)?WILD_RED:TFT_YELLOW);
-    if(!Config.scr_timeout){
+    if(!lfsConfig.scr_timeout){
       sprintf(buf,"%sOff%s",(cfgSet&&ccur==6)?"<":"",(cfgSet&&ccur==6)?">":"");
     }else{
-      sprintf(buf,"%s%2us%s",(cfgSet&&ccur==6)?"<":"",Config.scr_timeout,(cfgSet&&ccur==6)?">":"");
+      sprintf(buf,"%s%2us%s",(cfgSet&&ccur==6)?"<":"",lfsConfig.scr_timeout,(cfgSet&&ccur==6)?">":"");
     }
     spr_printmenu_item(img,8,2,PSTR("Scr.timeout"),(cfgSet&&ccur==6)?WILD_RED:WILD_CYAN_D2,ccur==6?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==6)?WILD_RED:TFT_YELLOW);
-    switch(Config.modStereoSeparation){
+    switch(lfsConfig.modStereoSeparation){
       case MOD_FULLSTEREO: sprintf(buf,"%sFull Stereo%s",(cfgSet&&ccur==7)?"<":"",(cfgSet&&ccur==7)?">":"");break;
       case MOD_HALFSTEREO: sprintf(buf,"%sHalf Stereo%s",(cfgSet&&ccur==7)?"<":"",(cfgSet&&ccur==7)?">":"");break;
       case MOD_MONO: sprintf(buf,"%sMono%s",(cfgSet&&ccur==7)?"<":"",(cfgSet&&ccur==7)?">":"");break;
     }
     spr_printmenu_item(img,9,2,PSTR("DAC Pan."),(cfgSet&&ccur==7)?WILD_RED:WILD_CYAN_D2,ccur==7?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==7)?WILD_RED:TFT_YELLOW);
-    sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==8)?(Config.batCalib>0.0)?"<+":"<":(Config.batCalib>0.0)?"+":"",Config.batCalib,(cfgSet&&ccur==8)?">":"");
+    sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==8)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==8)?">":"");
     spr_printmenu_item(img,10,2,PSTR("Batt calib"),(cfgSet&&ccur==8)?WILD_RED:WILD_CYAN_D2,ccur==8?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==8)?WILD_RED:TFT_YELLOW);
     spr_printmenu_item(img,11,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==9?TFT_RED:TFT_BLACK);
     spr_printmenu_item(img,12,2,PSTR("About"),WILD_CYAN_D2,ccur==10?TFT_RED:TFT_BLACK);
@@ -231,7 +276,7 @@ void config_screen(){
     }
     InVolt=InVolt/READ_CNT;
     // printf("InVolt: %llu\n",InVolt);
-    volt=((InVolt/1000.0)*VoltMult)+Config.batCalib;//+0.1;
+    volt=((InVolt/1000.0)*VoltMult)+lfsConfig.batCalib;//+0.1;
     img.setColorDepth(8);
     img.createSprite(224,16);
     img.fillScreen(0);
@@ -250,65 +295,65 @@ void config_screen(){
   if(enc.left()&&lcdBlackout==false){
     if(!cfgSet){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-      Config.cfg_cur--;
-      if(Config.cfg_cur<0)Config.cfg_cur=10;
+      lfsConfig.cfg_cur--;
+      if(lfsConfig.cfg_cur<0)lfsConfig.cfg_cur=10;
     }else{
-      switch(Config.cfg_cur){
+      switch(lfsConfig.cfg_cur){
         case 2:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          Config.ay_layout--;
-          if(Config.ay_layout<0) Config.ay_layout=LAY_ALL-1;
+          lfsConfig.ay_layout--;
+          if(lfsConfig.ay_layout<0) lfsConfig.ay_layout=LAY_ALL-1;
           break;
         case 3:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          switch(Config.ay_clock){
-            case CLK_SPECTRUM: Config.ay_clock=CLK_ATARIST;break;
-            case CLK_PENTAGON: Config.ay_clock=CLK_SPECTRUM;break;
-            case CLK_MSX: Config.ay_clock=CLK_PENTAGON;break;
-            case CLK_CPC: Config.ay_clock=CLK_MSX;break;
-            case CLK_ATARIST: Config.ay_clock=CLK_CPC;break;
+          switch(lfsConfig.ay_clock){
+            case CLK_SPECTRUM: lfsConfig.ay_clock=CLK_ATARIST;break;
+            case CLK_PENTAGON: lfsConfig.ay_clock=CLK_SPECTRUM;break;
+            case CLK_MSX: lfsConfig.ay_clock=CLK_PENTAGON;break;
+            case CLK_CPC: lfsConfig.ay_clock=CLK_MSX;break;
+            case CLK_ATARIST: lfsConfig.ay_clock=CLK_CPC;break;
           }
-          ay_set_clock(Config.ay_clock);
+          ay_set_clock(lfsConfig.ay_clock);
           break;
         case 4:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          Config.play_mode--;
-          if(Config.play_mode<PLAY_MODE_ONE) Config.play_mode=PLAY_MODES_ALL-1;
+          lfsConfig.play_mode--;
+          if(lfsConfig.play_mode<PLAY_MODE_ONE) lfsConfig.play_mode=PLAY_MODES_ALL-1;
           break;
         case 5:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          Config.scr_bright-=10;
-          if (Config.scr_bright<10) Config.scr_bright=100;
-          display_brightness(Config.scr_bright);
+          lfsConfig.scr_bright-=10;
+          if(lfsConfig.scr_bright<10) lfsConfig.scr_bright=100;
+          display_brightness(lfsConfig.scr_bright);
           break;
         case 6:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          switch(Config.scr_timeout){
-            case 0: Config.scr_timeout=90;break;
-            case 1: Config.scr_timeout=0;break;
-            case 3: Config.scr_timeout=1;break;
-            case 5: Config.scr_timeout=3;break;
-            case 10: Config.scr_timeout=5;break;
-            case 20: Config.scr_timeout=10;break;
-            case 30: Config.scr_timeout=20;break;
-            case 60: Config.scr_timeout=30;break;
-            case 90: Config.scr_timeout=60;break;
+          switch(lfsConfig.scr_timeout){
+            case 0: lfsConfig.scr_timeout=90;break;
+            case 1: lfsConfig.scr_timeout=0;break;
+            case 3: lfsConfig.scr_timeout=1;break;
+            case 5: lfsConfig.scr_timeout=3;break;
+            case 10: lfsConfig.scr_timeout=5;break;
+            case 20: lfsConfig.scr_timeout=10;break;
+            case 30: lfsConfig.scr_timeout=20;break;
+            case 60: lfsConfig.scr_timeout=30;break;
+            case 90: lfsConfig.scr_timeout=60;break;
           }
           break;
         case 7:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          switch(Config.modStereoSeparation){
-            case MOD_FULLSTEREO: Config.modStereoSeparation=MOD_MONO;break;
-            case MOD_HALFSTEREO: Config.modStereoSeparation=MOD_FULLSTEREO;break;
-            case MOD_MONO: Config.modStereoSeparation=MOD_HALFSTEREO;break;
+          switch(lfsConfig.modStereoSeparation){
+            case MOD_FULLSTEREO: lfsConfig.modStereoSeparation=MOD_MONO;break;
+            case MOD_HALFSTEREO: lfsConfig.modStereoSeparation=MOD_FULLSTEREO;break;
+            case MOD_MONO: lfsConfig.modStereoSeparation=MOD_HALFSTEREO;break;
           }
           if(PlayerCTRL.music_type==TYPE_MOD) setModSeparation();
           if(PlayerCTRL.music_type==TYPE_S3M) setS3mSeparation();
           break;
         case 8:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          Config.batCalib-=0.1;
-          if(Config.batCalib<-1.0) Config.batCalib=1.0;
+          lfsConfig.batCalib-=0.1;
+          if(lfsConfig.batCalib<-1.0) lfsConfig.batCalib=1.0;
           break;
       }
     }
@@ -316,85 +361,87 @@ void config_screen(){
   if(enc.right()&&lcdBlackout==false){
     if(!cfgSet){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-      Config.cfg_cur++;
-      if(Config.cfg_cur>10) Config.cfg_cur=0;
+      lfsConfig.cfg_cur++;
+      if(lfsConfig.cfg_cur>10) lfsConfig.cfg_cur=0;
     }else{
-      switch(Config.cfg_cur){
+      switch(lfsConfig.cfg_cur){
         case 2:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          Config.ay_layout++;
-          if(Config.ay_layout>=LAY_ALL) Config.ay_layout=0;
+          lfsConfig.ay_layout++;
+          if(lfsConfig.ay_layout>=LAY_ALL) lfsConfig.ay_layout=0;
           break;
         case 3:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          switch(Config.ay_clock){
-            case CLK_SPECTRUM: Config.ay_clock=CLK_PENTAGON;break;
-            case CLK_PENTAGON: Config.ay_clock=CLK_MSX;break;
-            case CLK_MSX: Config.ay_clock=CLK_CPC;break;
-            case CLK_CPC: Config.ay_clock=CLK_ATARIST;break;
-            case CLK_ATARIST: Config.ay_clock=CLK_SPECTRUM;break;
+          switch(lfsConfig.ay_clock){
+            case CLK_SPECTRUM: lfsConfig.ay_clock=CLK_PENTAGON;break;
+            case CLK_PENTAGON: lfsConfig.ay_clock=CLK_MSX;break;
+            case CLK_MSX: lfsConfig.ay_clock=CLK_CPC;break;
+            case CLK_CPC: lfsConfig.ay_clock=CLK_ATARIST;break;
+            case CLK_ATARIST: lfsConfig.ay_clock=CLK_SPECTRUM;break;
           }
-          ay_set_clock(Config.ay_clock);
+          ay_set_clock(lfsConfig.ay_clock);
           break;
         case 4:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          Config.play_mode++;
-          if(Config.play_mode>=PLAY_MODES_ALL) Config.play_mode=PLAY_MODE_ONE;
+          lfsConfig.play_mode++;
+          if(lfsConfig.play_mode>=PLAY_MODES_ALL) lfsConfig.play_mode=PLAY_MODE_ONE;
           break;
         case 5:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          Config.scr_bright+=10;
-          if (Config.scr_bright>100) Config.scr_bright=10;
-          display_brightness(Config.scr_bright);
+          lfsConfig.scr_bright+=10;
+          if (lfsConfig.scr_bright>100) lfsConfig.scr_bright=10;
+          display_brightness(lfsConfig.scr_bright);
           break;
         case 6:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          switch(Config.scr_timeout){
-            case 0: Config.scr_timeout=1;break;
-            case 1: Config.scr_timeout=3;break;
-            case 3: Config.scr_timeout=5;break;
-            case 5: Config.scr_timeout=10;break;
-            case 10: Config.scr_timeout=20;break;
-            case 20: Config.scr_timeout=30;break;
-            case 30: Config.scr_timeout=60;break;
-            case 60: Config.scr_timeout=90;break;
-            case 90: Config.scr_timeout=0;break;
+          switch(lfsConfig.scr_timeout){
+            case 0: lfsConfig.scr_timeout=1;break;
+            case 1: lfsConfig.scr_timeout=3;break;
+            case 3: lfsConfig.scr_timeout=5;break;
+            case 5: lfsConfig.scr_timeout=10;break;
+            case 10: lfsConfig.scr_timeout=20;break;
+            case 20: lfsConfig.scr_timeout=30;break;
+            case 30: lfsConfig.scr_timeout=60;break;
+            case 60: lfsConfig.scr_timeout=90;break;
+            case 90: lfsConfig.scr_timeout=0;break;
           }
           break;
         case 7:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          switch(Config.modStereoSeparation){
-            case MOD_FULLSTEREO: Config.modStereoSeparation=MOD_HALFSTEREO;break;
-            case MOD_HALFSTEREO: Config.modStereoSeparation=MOD_MONO;break;
-            case MOD_MONO: Config.modStereoSeparation=MOD_FULLSTEREO;break;
+          switch(lfsConfig.modStereoSeparation){
+            case MOD_FULLSTEREO: lfsConfig.modStereoSeparation=MOD_HALFSTEREO;break;
+            case MOD_HALFSTEREO: lfsConfig.modStereoSeparation=MOD_MONO;break;
+            case MOD_MONO: lfsConfig.modStereoSeparation=MOD_FULLSTEREO;break;
           }
           if(PlayerCTRL.music_type==TYPE_MOD) setModSeparation();
           if(PlayerCTRL.music_type==TYPE_S3M) setS3mSeparation();
           break;
         case 8:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-          Config.batCalib+=0.1;
-          if(Config.batCalib>1.0) Config.batCalib=-1.0;
+          lfsConfig.batCalib+=0.1;
+          if(lfsConfig.batCalib>1.0) lfsConfig.batCalib=-1.0;
           break;
       }
     }
   }
-  if(dn.click()&&lcdBlackout==false){
+  if(dn.click()&&lcdBlackout==false){ //  Exit from menu
     cfgSet=false;
     PlayerCTRL.screen_mode=PlayerCTRL.prev_screen_mode;
     PlayerCTRL.scr_mode_update[PlayerCTRL.screen_mode]=true;
+    lfs_config_save();
+    sdFlag=true;
     return;
   }
   if(enc.click()&&lcdBlackout==false){
     PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
-    switch (Config.cfg_cur){
+    switch(lfsConfig.cfg_cur){
       case 0:
-        Config.playerSource++;
-        if(Config.playerSource>=PLAYER_MODE_ALL) Config.playerSource=PLAYER_MODE_SD;
+      lfsConfig.playerSource++;
+        if(lfsConfig.playerSource>=PLAYER_MODE_ALL) lfsConfig.playerSource=PLAYER_MODE_SD;
         playerSourceChange();
         break;
       case 1:
-        Config.zx_int=!Config.zx_int;
+        lfsConfig.zx_int=!lfsConfig.zx_int;
         frame_max=frameMax(PLAY_NORMAL);
         break;
       case 2:
@@ -416,7 +463,6 @@ void config_screen(){
         PlayerCTRL.scr_mode_update[SCR_ABOUT]=true;
         break;
     }
-    config_save();
   }
 }
 
@@ -451,7 +497,6 @@ void startUpConfig(){
     generalTick();
     if(scrUpdate){
       scrUpdate=false;
-      int8_t ccur=Config.cfg_cur;
       img.setColorDepth(8);
       img.createSprite(224,304);
       img.fillScreen(0);
@@ -459,7 +504,7 @@ void startUpConfig(){
       img.setTextSize(1);
       img.setFreeFont(&WildFont);
       spr_println(img,0,1,PSTR("Root Settings"),2,ALIGN_CENTER,WILD_CYAN);
-      sprintf(buf,"%s%s%s",(ptr==0&&itemSet)?"<":"",enc_types[Config.encType],(ptr==0&&itemSet)?">":"");
+      sprintf(buf,"%s%s%s",(ptr==0&&itemSet)?"<":"",enc_types[lfsConfig.encType],(ptr==0&&itemSet)?">":"");
       spr_printmenu_item(img,2,2,PSTR("Encoder type"),WILD_CYAN_D2,ptr==0?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
       sprintf(buf,"%s%s",(ptr==1&&itemSet)?"<Reset config":"Reset config",(ptr==1&&itemSet)?">":"");
       spr_printmenu_item(img,3,2,buf,(ptr==1&&itemSet)?TFT_YELLOW:WILD_CYAN_D2,ptr==1?TFT_RED:TFT_BLACK);
@@ -485,16 +530,18 @@ void startUpConfig(){
       if(itemSet){
         switch(ptr){
           case 0:
-            switch(Config.encType){
-              case EB_STEP4_LOW: Config.encType=EB_STEP4_HIGH;break;
-              case EB_STEP4_HIGH: Config.encType=EB_STEP2;break;
-              case EB_STEP2: Config.encType=EB_STEP1;break;
-              case EB_STEP1: Config.encType=EB_STEP4_LOW;break;
+            switch(lfsConfig.encType){
+              case EB_STEP4_LOW: lfsConfig.encType=EB_STEP4_HIGH;break;
+              case EB_STEP4_HIGH: lfsConfig.encType=EB_STEP2;break;
+              case EB_STEP2: lfsConfig.encType=EB_STEP1;break;
+              case EB_STEP1: lfsConfig.encType=EB_STEP4_LOW;break;
             }
             break;
           case 1:
-            config_default();
-            config_save();
+            lfs_config_default();
+            lfs_config_save();
+            sd_config_default();
+            sd_config_save();
             ESP.restart();
             break;
         }
@@ -508,16 +555,18 @@ void startUpConfig(){
       if(itemSet){
         switch(ptr){
           case 0:
-            switch(Config.encType){
-              case EB_STEP1: Config.encType=EB_STEP2;break;
-              case EB_STEP2: Config.encType=EB_STEP4_HIGH;break;
-              case EB_STEP4_HIGH: Config.encType=EB_STEP4_LOW;break;
-              case EB_STEP4_LOW: Config.encType=EB_STEP1;break;
+            switch(lfsConfig.encType){
+              case EB_STEP1: lfsConfig.encType=EB_STEP2;break;
+              case EB_STEP2: lfsConfig.encType=EB_STEP4_HIGH;break;
+              case EB_STEP4_HIGH: lfsConfig.encType=EB_STEP4_LOW;break;
+              case EB_STEP4_LOW: lfsConfig.encType=EB_STEP1;break;
             }
             break;
           case 1:
-            config_default();
-            config_save();
+            lfs_config_default();
+            lfs_config_save();
+            sd_config_default();
+            sd_config_save();
             ESP.restart();
             break;
         }
@@ -527,7 +576,7 @@ void startUpConfig(){
       }
       scrUpdate=true;
     }
-    if(enc.holding()&&!itemSet){config_save(); ESP.restart(); break;} // Exit
+    if(enc.holding()&&!itemSet){lfs_config_save(); ESP.restart(); break;} // Exit
     yield();
   }
 }
@@ -539,7 +588,9 @@ void checkStartUpConfig(){
     startUpConfig();
   }
   if(digitalRead(UP_BTN)==LOW){
-    config_default();
-    config_save();
+    lfs_config_default();
+    lfs_config_save();
+    sd_config_default();
+    sd_config_save();
   }
 }

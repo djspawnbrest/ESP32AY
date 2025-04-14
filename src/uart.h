@@ -40,7 +40,7 @@ void UARTPlayCoreInit(){
 }
 
 void playerSourceChange(){
-  if(Config.playerSource==PLAYER_MODE_SD){
+  if(lfsConfig.playerSource==PLAYER_MODE_SD){
     muteAYBeep();
     PlayerCTRL.isPlay=prevIsPlayState;
     if(uartTaskHandle!=NULL){
@@ -52,7 +52,7 @@ void playerSourceChange(){
       AYPlayCoreInit();
     }
   }
-  if(Config.playerSource==PLAYER_MODE_UART){
+  if(lfsConfig.playerSource==PLAYER_MODE_UART){
     prevIsPlayState=PlayerCTRL.isPlay;
     PlayerCTRL.isPlay=false;
     muteAYBeep();

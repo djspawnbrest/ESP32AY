@@ -3,7 +3,7 @@
 AudioGeneratorS3M *s3m;
 
 void setS3mSeparation(){
-  if(s3m) s3m->SetSeparation(Config.modStereoSeparation);
+  if(s3m) s3m->SetSeparation(lfsConfig.modStereoSeparation);
 }
 
 void S3M_Cleanup(){
@@ -26,7 +26,7 @@ void S3M_Cleanup(){
 void S3M_GetInfo(const char *filename){
   modFile=new AudioFileSourceSDFAT(sdCardSemaphore);
   s3m=new AudioGeneratorS3M();
-  s3m->SetStereoSeparation(Config.modStereoSeparation);
+  s3m->SetStereoSeparation(lfsConfig.modStereoSeparation);
   modFile->open(filename);
   s3m->initializeFile(modFile);
   s3m->initEQBuffers(bufEQ,modEQchn);

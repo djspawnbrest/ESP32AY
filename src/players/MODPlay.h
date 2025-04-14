@@ -3,7 +3,7 @@
 AudioGeneratorMOD *mod;
 
 void setModSeparation(){
-  if(mod) mod->SetSeparation(Config.modStereoSeparation);
+  if(mod) mod->SetSeparation(lfsConfig.modStereoSeparation);
 }
 
 void MOD_Cleanup(){
@@ -27,7 +27,7 @@ void MOD_GetInfo(const char *filename){
   modFile=new AudioFileSourceSDFAT(sdCardSemaphore);
   mod=new AudioGeneratorMOD();
   mod->SetBufferSize(1024*6);
-  mod->SetStereoSeparation(Config.modStereoSeparation);
+  mod->SetStereoSeparation(lfsConfig.modStereoSeparation);
   modFile->open(filename);
   mod->initializeFile(modFile);
   mod->initEQBuffers(bufEQ,modEQchn);

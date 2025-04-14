@@ -28,16 +28,16 @@ struct{
 }Sound;
 
 uint16_t frameMax(uint8_t speed=1){ // NORMAL default
-  uint16_t frMax=(Config.zx_int)?TIMER_RATE*1000/50000:TIMER_RATE*1000/48828;
+  uint16_t frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/50000:TIMER_RATE*1000/48828;
   switch(speed){
     case 0: // SLOW
-    frMax=(Config.zx_int)?TIMER_RATE*1000/25000:TIMER_RATE*1000/24414;
+    frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/25000:TIMER_RATE*1000/24414;
       break;
     case 1: // NORMAL
-      frMax=(Config.zx_int)?TIMER_RATE*1000/50000:TIMER_RATE*1000/48828;
+      frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/50000:TIMER_RATE*1000/48828;
       break;
     case 2: // FAST
-      frMax=(Config.zx_int)?TIMER_RATE*1000/100000:TIMER_RATE*1000/97656;
+      frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/100000:TIMER_RATE*1000/97656;
       break;
   }
   return frMax;

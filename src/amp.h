@@ -41,7 +41,7 @@ void ampInit(){
     ampAddress=96;
   }
   writeToAmp(AMP_REG1,AMP_REG1_SETUP);
-  writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
+  writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|sdConfig.volume));
 }
 
 void muteAmp(){
@@ -49,5 +49,5 @@ void muteAmp(){
 }
 
 void unMuteAmp(){
-  writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
+  writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|sdConfig.volume));
 }

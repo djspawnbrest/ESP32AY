@@ -6,12 +6,12 @@ uint16_t prev_file_id=0;
 TaskHandle_t ayPlayTaskHandle=NULL;
 
 void player_shuffle_cur(){
-  int prev_cur=Config.play_cur;
-  if(Config.play_count_files<=0) return;
+  int prev_cur=sdConfig.play_cur;
+  if(sdConfig.play_count_files<=0) return;
   while(1){
     // randomSeed(analogRead(VOLTPIN));
-    Config.play_cur=random(Config.play_cur_start,Config.play_count_files);
-    if(Config.play_cur!=prev_cur) break;
+    sdConfig.play_cur=random(sdConfig.play_cur_start,sdConfig.play_count_files);
+    if(sdConfig.play_cur!=prev_cur) break;
     yield();
   }
 }
@@ -177,15 +177,15 @@ int music_open(const char* filename,int ay_sub_song){
 
 bool player_full_path(int cur, char* path, int path_size){
   char temp[MAX_PATH]={0};
-  if(cur<0||cur>=Config.play_count_files) return false;
-  if(sd_play_dir.open(Config.play_dir,O_RDONLY)){
+  if(cur<0||cur>=sdConfig.play_count_files) return false;
+  if(sd_play_dir.open(sdConfig.play_dir,O_RDONLY)){
     if(sd_play_file.open(&sd_play_dir,sort_list_play[cur].file_id,O_RDONLY)){
       sd_play_file.getName(temp,sizeof(temp));
       sd_play_file.close();
     }
     temp[sizeof(temp)-1]=0;
     sd_play_dir.close();
-    strncpy(path,Config.play_dir,path_size-1);
+    strncpy(path,sdConfig.play_dir,path_size-1);
     strncat(path,temp,path_size-1);
     return true;
   }
@@ -203,20 +203,20 @@ int checkSDonStart(){
   }
   PlayerCTRL.screen_mode=SCR_PLAYER;
   PlayerCTRL.isSDeject=false;
-  if(Config.isPlayAYL){ // check if last played playlist exists
-    if(sd_play_dir.open(Config.play_ayl_file,O_RDONLY)){
+  if(sdConfig.isPlayAYL){ // check if last played playlist exists
+    if(sd_play_dir.open(sdConfig.play_ayl_file,O_RDONLY)){
       sd_play_dir.close();
-      if(!playlist_open(Config.ayl_file,0,true)) return FILE_ERR_NO_CARD;
+      if(!playlist_open(sdConfig.ayl_file,0,true)) return FILE_ERR_NO_CARD;
       sort_list_len=0;
       while(playlist_iterate(lfn,sizeof(lfn),true)){
         sort_list_len++;
       }
       playlist_close();
-      Config.play_count_files=sort_list_len;
-      Config.play_cur_start=0;
+      sdConfig.play_count_files=sort_list_len;
+      sdConfig.play_cur_start=0;
       sort_list_len=0;
       memcpy(sort_list_play,sort_list,sizeof(sort_list));
-      playlist_get_entry_full_path(Config.play_cur,lfn,sizeof(lfn),true);
+      playlist_get_entry_full_path(sdConfig.play_cur,lfn,sizeof(lfn),true);
       if(sd_play_file.open(lfn,O_RDONLY)){
         sd_play_file.close();
         //now prepare playing file
@@ -229,10 +229,10 @@ int checkSDonStart(){
         //now prepare default playing file
         browser_build_list(true);
         memcpy(sort_list_play,sort_list,sizeof(sort_list));
-        Config.play_count_files=sort_list_len;
-        Config.play_cur_start=cursor_offset;
-        Config.play_cur=Config.dir_cur;
-        player_full_path(Config.play_cur,lfn,sizeof(lfn));
+        sdConfig.play_count_files=sort_list_len;
+        sdConfig.play_cur_start=cursor_offset;
+        sdConfig.play_cur=sdConfig.dir_cur;
+        player_full_path(sdConfig.play_cur,lfn,sizeof(lfn));
         if(sd_play_file.open(lfn,O_RDONLY)){
           sd_play_file.close();
           PlayerCTRL.autoPlay=false;
@@ -244,16 +244,16 @@ int checkSDonStart(){
       // reseting
       configResetPlayingPath();
       sort_list_len=0;
-      Config.play_count_files=sort_list_len;
-      Config.play_cur_start=0;
+      sdConfig.play_count_files=sort_list_len;
+      sdConfig.play_cur_start=0;
       sort_list_len=0;
       // now prepare default playing file
       browser_search_files_in_sd_dir(true);
       memcpy(sort_list_play,sort_list,sizeof(sort_list));
-      Config.play_count_files=sort_list_len;
-      Config.play_cur_start=cursor_offset;
-      Config.play_cur=Config.dir_cur=cursor_offset;
-      player_full_path(Config.play_cur,lfn,sizeof(lfn));
+      sdConfig.play_count_files=sort_list_len;
+      sdConfig.play_cur_start=cursor_offset;
+      sdConfig.play_cur=sdConfig.dir_cur=cursor_offset;
+      player_full_path(sdConfig.play_cur,lfn,sizeof(lfn));
       if(sd_play_file.open(lfn,O_RDONLY)){
         sd_play_file.close();
         PlayerCTRL.autoPlay=false;
@@ -263,16 +263,16 @@ int checkSDonStart(){
     }
   }else{  // check if last played dir exists
     char buf[MAX_PATH];
-    strncpy(buf,Config.play_dir,sizeof(Config.play_dir)-1);
-    if(sd_play_dir.open(Config.play_dir,O_RDONLY)){
+    strncpy(buf,sdConfig.play_dir,sizeof(sdConfig.play_dir)-1);
+    if(sd_play_dir.open(sdConfig.play_dir,O_RDONLY)){
       sd_play_dir.close();
       //now prepare playing file
       browser_build_list(true);
       memcpy(sort_list_play,sort_list,sizeof(sort_list));
-      Config.play_count_files=sort_list_len;
-      Config.play_cur_start=cursor_offset;
-      Config.dir_cur=Config.play_cur;
-      player_full_path(Config.play_cur,lfn,sizeof(lfn));
+      sdConfig.play_count_files=sort_list_len;
+      sdConfig.play_cur_start=cursor_offset;
+      sdConfig.dir_cur=sdConfig.play_cur;
+      player_full_path(sdConfig.play_cur,lfn,sizeof(lfn));
       uint8_t file_type = browser_check_ext(lfn);
       if(sd_play_file.open(lfn,O_RDONLY)&&sd_play_file.isFile()&&file_type!=TYPE_UNK){
         sd_play_file.close();
@@ -283,16 +283,16 @@ int checkSDonStart(){
         // reseting
         configResetPlayingPath();
         sort_list_len=0;
-        Config.play_count_files=sort_list_len;
-        Config.play_cur_start=0;
+        sdConfig.play_count_files=sort_list_len;
+        sdConfig.play_cur_start=0;
         sort_list_len=0;
         // now prepare default playing file
         browser_search_files_in_sd_dir(true);
         memcpy(sort_list_play,sort_list,sizeof(sort_list));
-        Config.play_count_files=sort_list_len;
-        Config.play_cur_start=cursor_offset;
-        Config.play_cur=Config.dir_cur=cursor_offset;
-        player_full_path(Config.play_cur,lfn,sizeof(lfn));
+        sdConfig.play_count_files=sort_list_len;
+        sdConfig.play_cur_start=cursor_offset;
+        sdConfig.play_cur=sdConfig.dir_cur=cursor_offset;
+        player_full_path(sdConfig.play_cur,lfn,sizeof(lfn));
         if(sd_play_file.open(lfn,O_RDONLY)){
           sd_play_file.close();
           PlayerCTRL.autoPlay=false;
@@ -305,16 +305,16 @@ int checkSDonStart(){
       // reseting
       configResetPlayingPath();
       sort_list_len=0;
-      Config.play_count_files=sort_list_len;
-      Config.play_cur_start=0;
+      sdConfig.play_count_files=sort_list_len;
+      sdConfig.play_cur_start=0;
       sort_list_len=0;
       // now prepare default playing file
       browser_search_files_in_sd_dir(true);
       memcpy(sort_list_play,sort_list,sizeof(sort_list));
-      Config.play_count_files=sort_list_len;
-      Config.play_cur_start=cursor_offset;
-      Config.play_cur=Config.dir_cur=cursor_offset;
-      player_full_path(Config.play_cur,lfn,sizeof(lfn));
+      sdConfig.play_count_files=sort_list_len;
+      sdConfig.play_cur_start=cursor_offset;
+      sdConfig.play_cur=sdConfig.dir_cur=cursor_offset;
+      player_full_path(sdConfig.play_cur,lfn,sizeof(lfn));
       if(sd_play_file.open(lfn,O_RDONLY)){
         sd_play_file.close();
         PlayerCTRL.autoPlay=false;
@@ -380,7 +380,7 @@ void music_play(){
   //   last_time=current_time;
   // }
   // end debug calls
-  if(Config.play_mode==PLAY_MODE_ONE){
+  if(lfsConfig.play_mode==PLAY_MODE_ONE){
     if(PlayerCTRL.music_type!=TYPE_PSG&&PlayerCTRL.music_type!=TYPE_RSF&&PlayerCTRL.music_type!=TYPE_YRG&&PlayerCTRL.music_type!=TYPE_AY&&PlayerCTRL.music_type!=TYPE_MOD&&PlayerCTRL.music_type!=TYPE_S3M){
       if(PlayerCTRL.trackFrame>=AYInfo.Length){
         if(AYInfo.Loop>0){
@@ -442,9 +442,9 @@ void music_stop(){
 }
 
 void check_cursor_range(){
-  if(Config.play_cur>Config.play_count_files-1) Config.play_cur=Config.play_cur_start;
-  if(Config.play_cur<Config.play_cur_start) Config.play_cur=Config.play_count_files-1;
-  config_save();
+  if(sdConfig.play_cur>sdConfig.play_count_files-1) sdConfig.play_cur=sdConfig.play_cur_start;
+  if(sdConfig.play_cur<sdConfig.play_cur_start) sdConfig.play_cur=sdConfig.play_count_files-1;
+  sd_config_save();
 }
 
 void changeTrackIcon(bool next=true){
@@ -473,7 +473,7 @@ void playFinish(){
   PlayerCTRL.isPlay=false;
   music_stop();
   muteAYBeep();
-  switch(Config.play_mode){
+  switch(lfsConfig.play_mode){
     case PLAY_MODE_ONE:
       if(PlayerCTRL.autoPlay){
         if(PlayerCTRL.music_type==TYPE_AY&&AY_GetNumSongs>0){
@@ -495,11 +495,11 @@ void playFinish(){
           if(ay_cur_song>AY_GetNumSongs()){
             ay_cur_song=0;
             changeTrackIcon(true);
-            Config.play_cur++;
+            sdConfig.play_cur++;
           }
         }else{
           changeTrackIcon(true);
-          Config.play_cur++;
+          sdConfig.play_cur++;
         }
       }
       check_cursor_range();
@@ -521,7 +521,7 @@ void playFinish(){
       check_cursor_range();
       break;
   }
-  config_save();
+  sd_config_save();
   PlayerCTRL.autoPlay=true;
   PlayerCTRL.isBrowserCommand=false;
 }
@@ -538,19 +538,19 @@ void player(){
     }
     xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
-  if(Config.playerSource==PLAYER_MODE_SD){
+  if(lfsConfig.playerSource==PLAYER_MODE_SD){
     if(PlayerCTRL.isFinish){
       xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
       playFinish();
       muteAYBeep();
-      if(Config.isPlayAYL){
-        playlist_get_entry_full_path(Config.play_cur,lfn,sizeof(lfn),true);
-        if(Config.play_prev_cur!=Config.play_cur) ay_cur_song=0;
-        Config.play_prev_cur=Config.play_cur;
+      if(sdConfig.isPlayAYL){
+        playlist_get_entry_full_path(sdConfig.play_cur,lfn,sizeof(lfn),true);
+        if(sdConfig.play_prev_cur!=sdConfig.play_cur) ay_cur_song=0;
+        sdConfig.play_prev_cur=sdConfig.play_cur;
       }else{
-        player_full_path(Config.play_cur,lfn,sizeof(lfn));
-        if(prev_file_id!=sort_list_play[Config.play_cur].file_id) ay_cur_song=0;
-        prev_file_id=sort_list_play[Config.play_cur].file_id;
+        player_full_path(sdConfig.play_cur,lfn,sizeof(lfn));
+        if(prev_file_id!=sort_list_play[sdConfig.play_cur].file_id) ay_cur_song=0;
+        prev_file_id=sort_list_play[sdConfig.play_cur].file_id;
       }
       memcpy(playFileName,lfn,sizeof(lfn));
       music_open(playFileName,ay_cur_song);
@@ -622,7 +622,7 @@ void scrollInfos(char *txt, uint8_t textSize, uint16_t textColor, int width, int
 }
 
 void showFileInfo(){
-  if(Config.playerSource==PLAYER_MODE_SD){
+  if(lfsConfig.playerSource==PLAYER_MODE_SD){
     //current Track / Tracks count
     img.setColorDepth(8);
     img.createSprite(12*7,8*2);
@@ -632,16 +632,16 @@ void showFileInfo(){
     uint8_t shift=0;
     img.setCursor(8,16);
     img.setTextColor(WILD_CYAN,TFT_BLACK,true);
-    sprintf(tme,"%03d",Config.play_cur-Config.play_cur_start+1);
+    sprintf(tme,"%03d",sdConfig.play_cur-sdConfig.play_cur_start+1);
     img.print(tme);
     img.print("/");
-    sprintf(tme,"%03d",Config.play_count_files-Config.play_cur_start);
+    sprintf(tme,"%03d",sdConfig.play_count_files-sdConfig.play_cur_start);
     img.print(tme);
     img.pushSprite(148,62);
     img.deleteSprite();
   }
   // file type
-  if(Config.playerSource==PLAYER_MODE_SD){
+  if(lfsConfig.playerSource==PLAYER_MODE_SD){
     if(PlayerCTRL.music_type==TYPE_AY){
       if(AY_GetNumSongs()==0){
         sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
@@ -654,7 +654,7 @@ void showFileInfo(){
     }else{
       sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
     }
-  }else if(Config.playerSource==PLAYER_MODE_UART){
+  }else if(lfsConfig.playerSource==PLAYER_MODE_UART){
     sprintf(tme,"%S","UART");
   }
   img.setColorDepth(8);
@@ -670,7 +670,7 @@ void showFileInfo(){
   img.pushSprite(9,220);
   img.deleteSprite();
   // is Turbo Sound
-  if(AYInfo.is_ts&&Config.playerSource==PLAYER_MODE_SD){
+  if(AYInfo.is_ts&&lfsConfig.playerSource==PLAYER_MODE_SD){
     img.setColorDepth(8);
     img.createSprite((3*10)-2,16);
     img.fillScreen(0);
@@ -683,7 +683,7 @@ void showFileInfo(){
     img.deleteSprite();
     colCh2=!colCh2;
   }
-  if(Config.playerSource==PLAYER_MODE_SD){
+  if(lfsConfig.playerSource==PLAYER_MODE_SD){
     // Name
     img.setColorDepth(8);
     img.createSprite((5*10)-2,16);
@@ -730,12 +730,12 @@ void playerFrameShow(){
   //show logo
   tft.pushImage(8,8,186,44,wildLogo186x44);
   uint8_t shift=10;
-  if(Config.playerSource==PLAYER_MODE_SD){
+  if(lfsConfig.playerSource==PLAYER_MODE_SD){
     for(uint8_t i=0;i<36;i++){
       tft.fillRect(shift,70,2,2,TFT_BLUE);
       shift+=4;
     }
-  }else if(Config.playerSource==PLAYER_MODE_UART){
+  }else if(lfsConfig.playerSource==PLAYER_MODE_UART){
     for(uint8_t i=0;i<56;i++){
       tft.fillRect(shift,70,2,2,TFT_BLUE);
       shift+=4;
@@ -873,13 +873,13 @@ void uartInfoShow(){
 void ayClockShow(){
   // ay clock show
   if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M){
-    switch(Config.modStereoSeparation){
+    switch(lfsConfig.modStereoSeparation){
       case MOD_FULLSTEREO: sprintf(tme,"Full Stereo");break;
       case MOD_HALFSTEREO: sprintf(tme,"Half Stereo");break;
       case MOD_MONO: sprintf(tme,"Mono");break;
     }
   }else{
-    switch(Config.ay_clock){
+    switch(lfsConfig.ay_clock){
       case CLK_SPECTRUM: sprintf(tme,"ZX 1.77MHz");break;
       case CLK_PENTAGON: sprintf(tme,"PEN 1.75MHz");break;
       case CLK_MSX: sprintf(tme,"MSX 1.78MHz");break;
@@ -973,9 +973,9 @@ void player_screen(){
   }
   if(dynRebuild){
     // show play mode
-    if(Config.playerSource==PLAYER_MODE_SD){
-      tft.drawBitmap(199,22,spModes[Config.play_mode],30,30,TFT_BLACK,WILD_CYAN);
-    }else if(Config.playerSource==PLAYER_MODE_UART){
+    if(lfsConfig.playerSource==PLAYER_MODE_SD){
+      tft.drawBitmap(199,22,spModes[lfsConfig.play_mode],30,30,TFT_BLACK,WILD_CYAN);
+    }else if(lfsConfig.playerSource==PLAYER_MODE_UART){
       uartInfoShow();
     }
     vbUpdate();
@@ -985,18 +985,18 @@ void player_screen(){
   voltage();
   ayClockShow();
   showFileInfo();
-  if(Config.playerSource==PLAYER_MODE_SD){
+  if(lfsConfig.playerSource==PLAYER_MODE_SD){
     timeShow();
     showPlayerIcons();
   }
   fastEQ();
   //keypad survey
-  if(Config.playerSource==PLAYER_MODE_SD){
+  if(lfsConfig.playerSource==PLAYER_MODE_SD){
     if(enc.hasClicks(1)&&lcdBlackout==false){PlayerCTRL.isPlay=!PlayerCTRL.isPlay;PlayerCTRL.isPlay?unMuteAmp():muteAmp();}
     if(!enc.holding()&&enc.right()&&lcdBlackout==false){
       changeTrackIcon(true);
-      if(Config.play_mode==PLAY_MODE_SHUFFLE) player_shuffle_cur();
-      else Config.play_cur++;
+      if(lfsConfig.play_mode==PLAY_MODE_SHUFFLE) player_shuffle_cur();
+      else sdConfig.play_cur++;
       PlayerCTRL.isBrowserCommand=true;
       PlayerCTRL.autoPlay=false;
       PlayerCTRL.isFinish=true;
@@ -1004,7 +1004,7 @@ void player_screen(){
     }
     if(!enc.holding()&&enc.left()&&lcdBlackout==false&&scrNotPlayer==false){
       changeTrackIcon(false);
-      if(millis()-mlsPrevTrack<PREVTRACKDELAY) Config.play_cur--;
+      if(millis()-mlsPrevTrack<PREVTRACKDELAY) sdConfig.play_cur--;
       mlsPrevTrack=millis();
       PlayerCTRL.isBrowserCommand=true;
       PlayerCTRL.autoPlay=false;
@@ -1065,8 +1065,8 @@ void player_screen(){
   }
   if((up.hasClicks(1)||up.holding())&&lcdBlackout==false&&scrNotPlayer==false){
     if(!enc.holding()){
-      if(Config.volume++>=63) Config.volume=63;
-      writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
+      if(sdConfig.volume++>=63) sdConfig.volume=63;
+      writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|sdConfig.volume));
       img.setColorDepth(8);
       img.createSprite(10*13,8*2);
       img.fillScreen(0);
@@ -1076,27 +1076,29 @@ void player_screen(){
       img.setCursor(0,16);
       img.print("Volume:  ");
       img.setTextColor(WILD_YELLOW);
-      if(Config.volume>=63) img.print("max");
-      else if(Config.volume<=0) img.print("min");
-      else img.print(Config.volume);
+      if(sdConfig.volume>=63) img.print("max");
+      else if(sdConfig.volume<=0) img.print("min");
+      else img.print(sdConfig.volume);
       img.pushSprite(12,62);
       img.deleteSprite();
+      sdFlag=true;
     }
   }
-  if(Config.playerSource==PLAYER_MODE_SD){
+  if(lfsConfig.playerSource==PLAYER_MODE_SD){
     if(up.hasClicks(2)&&lcdBlackout==false&&scrNotPlayer==false){
-      switch(Config.play_mode){
-        case PLAY_MODE_ONE: Config.play_mode=PLAY_MODE_ALL;break;
-        case PLAY_MODE_ALL: Config.play_mode=PLAY_MODE_SHUFFLE;break;
-        case PLAY_MODE_SHUFFLE: Config.play_mode=PLAY_MODE_ONE;break;
+      switch(lfsConfig.play_mode){
+        case PLAY_MODE_ONE: lfsConfig.play_mode=PLAY_MODE_ALL;break;
+        case PLAY_MODE_ALL: lfsConfig.play_mode=PLAY_MODE_SHUFFLE;break;
+        case PLAY_MODE_SHUFFLE: lfsConfig.play_mode=PLAY_MODE_ONE;break;
       }
       dynRebuild=true;
+      sdFlag=false;
     }
   }
   if((dn.hasClicks(1)||dn.holding())&&lcdBlackout==false&&scrNotPlayer==false){
     if(!enc.holding()){
-      if(Config.volume--<=0) Config.volume=0;
-      writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|Config.volume));
+      if(sdConfig.volume--<=0) sdConfig.volume=0;
+      writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|sdConfig.volume));
       img.setColorDepth(8);
       img.createSprite(10*13,8*2);
       img.fillScreen(0);
@@ -1106,37 +1108,41 @@ void player_screen(){
       img.setCursor(0,16);
       img.print("Volume:  ");
       img.setTextColor(WILD_YELLOW);
-      if(Config.volume>=63) img.print("max");
-      else if(Config.volume<=0) img.print("min");
-      else img.print(Config.volume);
+      if(sdConfig.volume>=63) img.print("max");
+      else if(sdConfig.volume<=0) img.print("min");
+      else img.print(sdConfig.volume);
       img.pushSprite(12,62);
       img.deleteSprite();
+      sdFlag=true;
     }
   }
   if(dn.hasClicks(2)&&lcdBlackout==false&&scrNotPlayer==false){
     if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M){
-      switch(Config.modStereoSeparation){
-        case MOD_FULLSTEREO: Config.modStereoSeparation=MOD_HALFSTEREO;break;
-        case MOD_HALFSTEREO: Config.modStereoSeparation=MOD_MONO;break;
-        case MOD_MONO: Config.modStereoSeparation=MOD_FULLSTEREO;break;
+      switch(lfsConfig.modStereoSeparation){
+        case MOD_FULLSTEREO: lfsConfig.modStereoSeparation=MOD_HALFSTEREO;break;
+        case MOD_HALFSTEREO: lfsConfig.modStereoSeparation=MOD_MONO;break;
+        case MOD_MONO: lfsConfig.modStereoSeparation=MOD_FULLSTEREO;break;
       }
       if(PlayerCTRL.music_type==TYPE_MOD) setModSeparation();
       if(PlayerCTRL.music_type==TYPE_S3M) setS3mSeparation();
     }else{
-      switch(Config.ay_clock){
-        case CLK_SPECTRUM: Config.ay_clock=CLK_PENTAGON;break;
-        case CLK_PENTAGON: Config.ay_clock=CLK_MSX;break;
-        case CLK_MSX: Config.ay_clock=CLK_CPC;break;
-        case CLK_CPC: Config.ay_clock=CLK_ATARIST;break;
-        case CLK_ATARIST: Config.ay_clock=CLK_SPECTRUM;break;
+      switch(lfsConfig.ay_clock){
+        case CLK_SPECTRUM: lfsConfig.ay_clock=CLK_PENTAGON;break;
+        case CLK_PENTAGON: lfsConfig.ay_clock=CLK_MSX;break;
+        case CLK_MSX: lfsConfig.ay_clock=CLK_CPC;break;
+        case CLK_CPC: lfsConfig.ay_clock=CLK_ATARIST;break;
+        case CLK_ATARIST: lfsConfig.ay_clock=CLK_SPECTRUM;break;
       }
-      ay_set_clock(Config.ay_clock);
+      ay_set_clock(lfsConfig.ay_clock);
     }
     dynRebuild=true;
+    sdFlag=false;
   }
   if((dn.timeout(2000)||up.timeout(2000))&&lcdBlackout==false){
     dynRebuild=true;
-    config_save();
+    sd_config_save();
+    if(!sdFlag) lfs_config_save(); // Saving without volume
+    sdFlag=false;
   }
   keysTimeOut();
 }

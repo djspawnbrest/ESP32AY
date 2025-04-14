@@ -110,14 +110,14 @@ void ay_write_remap(uint8_t chip,uint8_t reg,uint8_t val){
   uint32_t off;
   if (reg>=16) return;
   if(reg==0x07){ //mixer bits remapping
-    off=Config.ay_layout*3;
+    off=lfsConfig.ay_layout*3;
     old=val;
     val=old&0xc0;
     val|=((old>>0)&0x09)<<ay_mixer_remap_table[off+0];
     val|=((old>>1)&0x09)<<ay_mixer_remap_table[off+1];
     val|=((old>>2)&0x09)<<ay_mixer_remap_table[off+2];
   }else{
-    reg=ay_channel_remap_table[Config.ay_layout*16+reg];
+    reg=ay_channel_remap_table[lfsConfig.ay_layout*16+reg];
   }
   ay_write(chip,reg,val);
 }
@@ -154,7 +154,7 @@ void ay_reset(){
 }
 
 void AYInit(){
-  ay_set_clock(Config.ay_clock);
+  ay_set_clock(lfsConfig.ay_clock);
   pinMode(OUT_SHIFT_LATCH_PIN,OUTPUT);
   pinMode(OUT_SHIFT_DATA_PIN,OUTPUT);
   pinMode(OUT_SHIFT_CLOCK_PIN,OUTPUT);
