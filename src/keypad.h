@@ -11,7 +11,7 @@ Button dn(DN_BTN,INPUT_PULLUP,LOW);
 EncButton enc(LT_ENC,RT_ENC,OK_BTN,INPUT,INPUT);
 
 void buttonsSetup(){
-  enc.setEncType(EB_STEP2);
+  enc.setEncType(Config.encType);
   enc.setClickTimeout(200);
   enc.setHoldTimeout(500);
   enc.setFastTimeout(100);

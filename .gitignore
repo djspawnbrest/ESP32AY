@@ -3,8 +3,8 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
-!data/*
 .DS_Store
 lib/.DS_Store
 PCB/.DS_Store
 src/.DS_Store
+data/.DS_Store

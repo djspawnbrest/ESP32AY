@@ -39,6 +39,12 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 - UART mode (available in player settings menu as Player source)
 
 ### Controls
+- Before player turning on - hold left button and turn on player to enter root config (needed for change encoder type). Encoder types:
+    1. STEP 4L - active low (pull-up to VCC). Full cycle (4 phases) per click.
+    2. STEP 4H - active high (pull-up to GND). Full cycle (4 phases) per click
+    3. STEP 2 - half cycle (2 phases) per click (Set by default)
+    4. STEP 1 - quarter cycle (1 phase) per click, and non-latching encoders
+- Before player turning on - hold right button and turn on player to reset config to default.
 - Encoder Hold - change mode player/file browser
 - Encoder Click - in player mode - play/pause; in file browser mode select track/playlist/directory; select - in config mode
 - Encoder Double click - in player mode - open settings

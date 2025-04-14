@@ -41,6 +41,7 @@ void setup(){
   display_brightness(0);
   initSemaphore();
   config_load();
+  checkStartUpConfig();
   initVoltage();
   TFTInit();
   buttonsSetup();

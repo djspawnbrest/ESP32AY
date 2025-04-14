@@ -265,11 +265,7 @@ void scrTimeout(){
 }
 
 void keysTimeOut(){
-  if(enc.action()||dn.action()||up.action()){
-    keysEvent=true;
-  }
-  if(keysEvent&&scrNotPlayer&&!enc.busy()&&!dn.busy()&&!up.busy()){
-    keysEvent=false;
+  if(scrNotPlayer&&!enc.busy()&&!dn.busy()&&!up.busy()){
     scrNotPlayer=false;
   }
 }
@@ -355,7 +351,10 @@ void noFilesFound(){
 }
 
 void TFTInit(){
-  tft.init(TFT_BLACK);
+  if(!tftInitialized){
+    tft.init(TFT_BLACK);
+    tftInitialized=true;
+  }
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_WHITE);
   tft.setFreeFont(&WildFont);

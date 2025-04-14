@@ -15,8 +15,6 @@
 #define CFG_FILENAME  "/config.cfg"
 
 #define TIMER_RATE  44100
-// SPIClass tftSpi; // Need to use SdFat and TFT_eSPI library together
-// SPIClass sdSpi;
 
 // SD configs
 #define SD_CONFIG SdSpiConfig(SS,DEDICATED_SPI,SD_SCK_MHZ(30)) // 39 max
@@ -57,6 +55,7 @@ bool batChange=true;
 bool keysEvent=false;
 bool lcdBlackout=false;
 bool scrNotPlayer=false;
+bool tftInitialized=false;
 unsigned long mlsScr=0;
 unsigned long mlsPrevTrack=0;
 #define PREVTRACKDELAY 2000
@@ -122,6 +121,7 @@ struct{
   uint16_t play_cur_start;
   uint8_t volume;
   uint8_t modStereoSeparation;
+  uint8_t encType;
   char play_dir[MAX_PATH];
   char active_dir[MAX_PATH];
   char prev_dir[MAX_PATH];

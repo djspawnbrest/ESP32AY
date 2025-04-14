@@ -32,6 +32,7 @@ void config_default(){
   Config.play_mode=PLAY_MODE_ALL;
   Config.modStereoSeparation=MOD_HALFSTEREO;
   Config.batCalib=0.0;
+  Config.encType=EB_STEP2;
   browser_reset_directory();
 }
 
@@ -415,6 +416,120 @@ void config_screen(){
         PlayerCTRL.scr_mode_update[SCR_ABOUT]=true;
         break;
     }
+    config_save();
+  }
+}
+
+/*
+0 - EB_STEP4_LOW - active low (pull-up to VCC). Full cycle (4 phases) per click.
+1 - EB_STEP4_HIGH - active high (pull-up to GND). Full cycle (4 phases) per click
+2 - EB_STEP2 - half cycle (2 phases) per click (Set by default)
+3 - EB_STEP1 - quarter cycle (1 phase) per click, and non-latching encoders
+*/
+
+void startUpConfig(){
+  static bool scrUpdate=true;
+  static bool itemSet=false;
+  static int8_t ptr=0;
+  static char buf[32];
+  const char* const enc_types[]={"STEP 4L","STEP 4H","STEP 2","STEP 1"};
+  buttonsSetup();
+  TFTInit();
+  show_frame();
+  while(digitalRead(DN_BTN)==LOW) yield();
+  while(true){
+    generalTick();
+    if(scrUpdate){
+      scrUpdate=false;
+      int8_t ccur=Config.cfg_cur;
+      img.setColorDepth(8);
+      img.createSprite(224,304);
+      img.fillScreen(0);
+      img.setTextColor(TFT_WHITE);
+      img.setTextSize(1);
+      img.setFreeFont(&WildFont);
+      spr_println(img,0,1,PSTR("Root Settings"),2,ALIGN_CENTER,WILD_CYAN,WILD_RED);
+      sprintf(buf,"%s%s%s",(ptr==0&&itemSet)?"<":"",enc_types[Config.encType],(ptr==0&&itemSet)?">":"");
+      spr_printmenu_item(img,2,2,PSTR("Encoder type"),WILD_CYAN_D2,ptr==0?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+      sprintf(buf,"%s%s",(ptr==1&&itemSet)?"<Reset config":"Reset config",(ptr==1&&itemSet)?">":"");
+      spr_printmenu_item(img,3,2,buf,(ptr==1&&itemSet)?TFT_YELLOW:WILD_CYAN_D2,ptr==1?TFT_RED:TFT_BLACK);
+      // Legend
+      if(itemSet){
+        spr_println(img,0,19,PSTR("<"),2,ALIGN_LEFT,WILD_CYAN);
+        spr_println(img,0,19,PSTR("Exit from item"),2,ALIGN_CENTER,WILD_CYAN);
+        spr_println(img,0,19,PSTR(">"),2,ALIGN_RIGHT,WILD_CYAN);
+      }else{
+        spr_println(img,0,18,PSTR("Hold to exit/"),2,ALIGN_CENTER,WILD_CYAN);
+        spr_println(img,0,19,PSTR("Down"),2,ALIGN_LEFT,WILD_CYAN);
+        spr_println(img,0,19,PSTR("Item change"),2,ALIGN_CENTER,WILD_CYAN);
+        spr_println(img,0,19,PSTR("Up"),2,ALIGN_RIGHT,WILD_CYAN);
+      }
+      img.pushSprite(8,8);
+      img.deleteSprite();
+    }
+    if(enc.click()){
+      itemSet=!itemSet;
+      scrUpdate=true;
+    }
+    if(up.click()||up.holding()){
+      if(itemSet){
+        switch(ptr){
+          case 0:
+            switch(Config.encType){
+              case EB_STEP4_LOW: Config.encType=EB_STEP4_HIGH;break;
+              case EB_STEP4_HIGH: Config.encType=EB_STEP2;break;
+              case EB_STEP2: Config.encType=EB_STEP1;break;
+              case EB_STEP1: Config.encType=EB_STEP4_LOW;break;
+            }
+            break;
+          case 1:
+            config_default();
+            config_save();
+            ESP.restart();
+            break;
+        }
+      }else{
+        ptr++;
+        if(ptr>1) ptr=0;
+      }
+      scrUpdate=true;
+    }
+    if(dn.click()||dn.holding()){
+      if(itemSet){
+        switch(ptr){
+          case 0:
+            switch(Config.encType){
+              case EB_STEP1: Config.encType=EB_STEP2;break;
+              case EB_STEP2: Config.encType=EB_STEP4_HIGH;break;
+              case EB_STEP4_HIGH: Config.encType=EB_STEP4_LOW;break;
+              case EB_STEP4_LOW: Config.encType=EB_STEP1;break;
+            }
+            break;
+          case 1:
+            config_default();
+            config_save();
+            ESP.restart();
+            break;
+        }
+      }else{
+        ptr--;
+        if(ptr<0) ptr=1;
+      }
+      scrUpdate=true;
+    }
+    if(enc.holding()&&!itemSet){config_save(); ESP.restart(); break;} // Exit
+    yield();
+  }
+}
+
+void checkStartUpConfig(){
+  pinMode(DN_BTN,INPUT);
+  pinMode(UP_BTN, INPUT);
+  if(digitalRead(DN_BTN)==LOW){
+    startUpConfig();
+  }
+  if(digitalRead(UP_BTN)==LOW){
+    config_default();
     config_save();
   }
 }

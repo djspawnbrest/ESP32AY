@@ -49,7 +49,7 @@ AudioOutputI2S::AudioOutputI2S(int port, int output_mode, int dma_buf_count, int
   bclkPin = 26;
   wclkPin = 25;
   doutPin = 22;
-  mclkPin = 0;
+  mclkPin = 3; // 0(EN) - default, 1(TX) and 3(RX) support
   SetGain(1.0);
 }
 
