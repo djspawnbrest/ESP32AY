@@ -1016,7 +1016,8 @@ float AudioGeneratorMOD::calcRow(){
     uint8_t effectParamY=effectParamXY&0xF;
     switch(effect){
       case JUMPTOORDER: // Position Jump
-        // printf("Jump to order detected-order: %d,row: %d,channel: %d,nextOrder: %d,prevOrder: %d\n",Calc.orderTable[Calc.orderIndex],Calc.row,channel,Calc.orderTable[effectParamXY],Calc.orderTable[Calc.prevOrder]);
+        // printf("Jump to order detected!, orderIdx: %d, order: %d,row: %d,channel: %d,nextOrder: %d,prevOrder: %d\n",Calc.orderIndex,Calc.orderTable[Calc.orderIndex],Calc.row,channel,Calc.orderTable[effectParamXY],Calc.orderTable[Calc.prevOrder]);
+        if(Calc.orderIndex==Calc.songLength-1) break; // break to prevent song loop if jump to order if last order
         Calc.nextOrder=effectParamXY;
         if(Calc.orderIndex>=Calc.songLength)
           Calc.nextOrder=0;
