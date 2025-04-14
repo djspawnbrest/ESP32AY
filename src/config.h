@@ -436,6 +436,16 @@ void startUpConfig(){
   buttonsSetup();
   TFTInit();
   show_frame();
+  img.setColorDepth(8);
+  img.createSprite(224,304);
+  img.fillScreen(0);
+  img.setTextColor(TFT_WHITE);
+  img.setTextSize(1);
+  img.setFreeFont(&WildFont);
+  spr_println(img,0,9,PSTR("Release button"),2,ALIGN_CENTER,WILD_RED);
+  spr_println(img,0,10,PSTR("to continue!"),2,ALIGN_CENTER,WILD_RED);
+  img.pushSprite(8,8);
+  img.deleteSprite();
   while(digitalRead(DN_BTN)==LOW) yield();
   while(true){
     generalTick();
@@ -448,7 +458,7 @@ void startUpConfig(){
       img.setTextColor(TFT_WHITE);
       img.setTextSize(1);
       img.setFreeFont(&WildFont);
-      spr_println(img,0,1,PSTR("Root Settings"),2,ALIGN_CENTER,WILD_CYAN,WILD_RED);
+      spr_println(img,0,1,PSTR("Root Settings"),2,ALIGN_CENTER,WILD_CYAN);
       sprintf(buf,"%s%s%s",(ptr==0&&itemSet)?"<":"",enc_types[Config.encType],(ptr==0&&itemSet)?">":"");
       spr_printmenu_item(img,2,2,PSTR("Encoder type"),WILD_CYAN_D2,ptr==0?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
       sprintf(buf,"%s%s",(ptr==1&&itemSet)?"<Reset config":"Reset config",(ptr==1&&itemSet)?">":"");
