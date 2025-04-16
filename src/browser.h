@@ -130,6 +130,30 @@ bool browser_full_path(int cur,char* path,int path_size){
       sd_dir.close();
       strncpy(path,sdConfig.active_dir,path_size-1);
       strncat(path,temp,path_size-1);
+      xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+      return true;
+    }
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  }
+  path[0]=0;
+  return false;
+}
+
+//semaphored
+bool browser_get_played_file_name(int cur,char* path,int path_size){
+  char temp[MAX_PATH]={0};
+  if(cur<0||cur>=sort_list_len) return false;
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    if(sd_play_dir.open(sdConfig.play_dir,O_RDONLY)){
+      if(sd_file.open(&sd_play_dir,sort_list[cur].file_id,O_RDONLY)){
+        sd_file.getName(temp,sizeof(temp));
+        sd_file.close();
+      }
+      temp[sizeof(temp)-1]=0;
+      sd_play_dir.close();
+      // strncpy(path,sdConfig.play_dir,path_size-1);
+      strncat(path,temp,path_size-1);
+      xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
       return true;
     }
     xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
@@ -595,7 +619,6 @@ int browser_screen(int mode){
     PlayerCTRL.scr_mode_update[SCR_BROWSER]=false;
     img.pushSprite(8,8);
     img.deleteSprite();
-    // checkHeap();
   }
   //scroll
   if(scroll){
@@ -622,7 +645,7 @@ int browser_screen(int mode){
     PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
     browser_move_cur(1,true);
   }
-  if(enc.hasClicks(1)&&lcdBlackout==false){
+  if(enc.hasClicks(1)&&!up.holding()&&lcdBlackout==false){
     if(mode==BROWSE_DIR){
       if(sort_list[sdConfig.dir_cur].hash[0]==1){ //directory
         browser_enter_directory();
@@ -696,6 +719,129 @@ int browser_screen(int mode){
       PlayerCTRL.autoPlay=false;
       PlayerCTRL.isFinish=true;
       delay(30);
+    }
+    sd_config_save();
+    return sdConfig.dir_cur;
+  }
+  if(up.holding()&&enc.hasClicks(1)&&mode==BROWSE_DIR&&sort_list[sdConfig.dir_cur].hash[0]!=1&&lcdBlackout==false){ // Remove file if not folder and not in playlist
+    char pf[MAX_PATH];
+    char rf[MAX_PATH];
+    sdConfig.play_ayl_file[0]=0; // clean string
+    browser_full_path(sdConfig.dir_cur,rf,sizeof(rf)); // Get full removed file path
+    browser_get_played_file_name(sdConfig.play_cur,sdConfig.play_ayl_file,sizeof(sdConfig.play_ayl_file));
+    strncpy(pf,sdConfig.play_dir,sizeof(pf)-1);
+    strncat(pf,sdConfig.play_ayl_file,sizeof(pf)-1);
+    if(!strcmp(rf,pf)){ // if played file
+      if(sdConfig.play_count_files>1){
+        PlayerCTRL.isPlay=false;
+        if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+          sd_fat.remove(rf);
+          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+        }
+        // update folder
+        browser_build_list();
+        memcpy(sdConfig.play_dir,sdConfig.active_dir,sizeof(sdConfig.active_dir));
+        memcpy(sort_list_play,sort_list,sizeof(sort_list));
+        sdConfig.play_count_files=sort_list_len;
+        if(sdConfig.play_count_files==0&&strcmp(sdConfig.play_dir,"/")){ // if not root directory
+          browser_leave_directory();
+          browser_build_list();
+          memcpy(sdConfig.play_dir,sdConfig.active_dir,sizeof(sdConfig.active_dir));
+          memcpy(sort_list_play,sort_list,sizeof(sort_list));
+          sdConfig.play_count_files=sort_list_len;
+          if(sdConfig.play_count_files==0) goto pf0;
+        }
+        sdConfig.play_cur_start=cursor_offset;
+        sdConfig.play_prev_cur=sdConfig.play_cur;
+        sdConfig.play_cur=sdConfig.dir_cur;
+        sdConfig.isPlayAYL=false;
+        // change track command
+        PlayerCTRL.isBrowserCommand=true;
+        PlayerCTRL.autoPlay=false;
+        PlayerCTRL.isFinish=true;
+        // rebuild browser list command
+        browser_rebuild=1;
+        PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
+        delay(30);
+      }else{ // no more file in this dir - leave, search new
+        PlayerCTRL.isPlay=false;
+        if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+          sd_fat.remove(rf);
+          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+        }
+      pf0:
+        // reseting
+        configResetPlayingPath();
+        sort_list_len=0;
+        sdConfig.play_count_files=sort_list_len;
+        sdConfig.play_cur_start=0;
+        sort_list_len=0;
+        // now prepare default playing file
+        browser_search_files_in_sd_dir(true);
+        memcpy(sort_list_play,sort_list,sizeof(sort_list));
+        sdConfig.play_count_files=sort_list_len;
+        sdConfig.play_cur_start=cursor_offset;
+        sdConfig.play_cur=sdConfig.dir_cur=cursor_offset;
+        sdConfig.isPlayAYL=false;
+        // change track command
+        PlayerCTRL.isBrowserCommand=true;
+        PlayerCTRL.autoPlay=false;
+        PlayerCTRL.isFinish=true;
+        // rebuild browser list command
+        browser_rebuild=1;
+        PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
+      }
+    }else if(!strcmp(sdConfig.play_dir,sdConfig.active_dir)&&strcmp(rf,pf)){ // if in playing dir
+      if(sdConfig.play_count_files>1){
+        if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+          sd_fat.remove(rf);
+          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+        }
+        // update folder
+        browser_build_list();
+        memcpy(sdConfig.play_dir,sdConfig.active_dir,sizeof(sdConfig.active_dir));
+        memcpy(sort_list_play,sort_list,sizeof(sort_list));
+        sdConfig.play_count_files=sort_list_len;
+        sdConfig.play_cur_start=cursor_offset;
+        if(sdConfig.play_cur>sdConfig.dir_cur+sdConfig.play_cur_start) sdConfig.play_cur--; // if removed file before playing file fix
+        sdConfig.isPlayAYL=false;
+        // rebuild browser list command
+        browser_rebuild=1;
+        PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
+      }else{ // no more file in this dir - leave, search new
+        PlayerCTRL.isPlay=false;
+        if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+          sd_fat.remove(rf);
+          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+        }
+        // reseting
+        configResetPlayingPath();
+        sort_list_len=0;
+        sdConfig.play_count_files=sort_list_len;
+        sdConfig.play_cur_start=0;
+        sort_list_len=0;
+        // now prepare default playing file
+        browser_search_files_in_sd_dir(true);
+        memcpy(sort_list_play,sort_list,sizeof(sort_list));
+        sdConfig.play_count_files=sort_list_len;
+        sdConfig.play_cur_start=cursor_offset;
+        sdConfig.play_cur=sdConfig.dir_cur=cursor_offset;
+        sdConfig.isPlayAYL=false;
+        // change track command
+        PlayerCTRL.isBrowserCommand=true;
+        PlayerCTRL.autoPlay=false;
+        PlayerCTRL.isFinish=true;
+        // rebuild browser list command
+        browser_rebuild=1;
+        PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
+      }
+    }else{ // not played dir
+      if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+        sd_fat.remove(rf);
+        xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+      }
+      browser_rebuild=1;
+      PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
     }
     sd_config_save();
     return sdConfig.dir_cur;

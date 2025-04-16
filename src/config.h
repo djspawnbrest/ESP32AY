@@ -89,7 +89,6 @@ void sd_config_save(){
 }
 
 void lfs_config_save(){
-  printf("lfsConfig file save!\n");
   if(xSemaphoreTake(outSemaphore,portMAX_DELAY)==pdTRUE){
     fs::File f=LittleFS.open(CFG_FILENAME,"w");
     if(f){
