@@ -16,6 +16,12 @@
 
 #define TIMER_RATE  44100
 
+#ifdef USE_EXTERNAL_DAC
+#define PIN_BCK 25
+#define PIN_DIN 26
+#define PIN_LCK 27
+#endif
+
 // SD configs
 #define SD_CONFIG SdSpiConfig(SS,DEDICATED_SPI,SD_SCK_MHZ(30)) // 39 max
 
@@ -30,8 +36,10 @@ SemaphoreHandle_t outSemaphore=NULL;
 #define READ_CNT 100
 // voltmeter pin
 #define VOLTPIN 32
+#ifndef USE_EXTERNAL_DAC
 //charge sense
 #define CHGSENS 27
+#endif
 // internal Vref (need to set)
 const float VRef=1.1;
 // Input resistive divider ratio (Rh + Rl) / Rl. IN <-[ Rh ]--(analogInPin)--[ Rl ]--|GND

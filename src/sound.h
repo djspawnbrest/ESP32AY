@@ -110,7 +110,15 @@ done:
 }
 
 void initOut(int buf=32){
+  muteAmp();
+#ifndef USE_EXTERNAL_DAC
   out=new AudioOutputI2S(0,AudioOutputI2S::INTERNAL_DAC,buf);  // I2S output
+#else
+  out=new AudioOutputI2S(0,AudioOutputI2S::EXTERNAL_I2S,buf);
+  out->SetPinout(PIN_BCK,PIN_LCK,PIN_DIN);
+  out->SetGain(0.2f);
+#endif
+  unMuteAmp();
 }
 
 void DACInit(){

@@ -1088,8 +1088,13 @@ void AudioGeneratorS3M::GetSample(int16_t sample[2]){
 		const int32_t panL=min(128-Mixer.channelPanning[channel],64);
 		const int32_t panR=min(Mixer.channelPanning[channel],64);
 		// Accumulate with pre-shifted values
+	#ifndef USE_EXTERNAL_DAC
 		sumL+=(sample*vol*panL)>>14;
 		sumR+=(sample*vol*panR)>>14;
+	#else
+		sumL+=(sample*vol*panL)>>15;
+		sumR+=(sample*vol*panR)>>15;
+	#endif
 	}
 	// Apply calculated sample with fast clipping
 	sample[AudioOutput::LEFTCHANNEL]=(int16_t)constrain(sumL,INT16_MIN,INT16_MAX);

@@ -180,7 +180,9 @@ void initVoltage(){
   pinMode(VOLTPIN,INPUT);
   analogReadResolution(12);
   randomSeed(analogRead(VOLTPIN));
+#ifndef USE_EXTERNAL_DAC
   pinMode(CHGSENS,INPUT);
+#endif
 }
 
 void voltage(){
@@ -212,11 +214,14 @@ void voltage(){
     img.print(precent);
     img.print("%");
     int batColor=TFT_GREEN;
+  #ifndef USE_EXTERNAL_DAC
     if(!digitalRead(CHGSENS)){ // if not charger
+  #endif
       if(precent<41) batColor=TFT_YELLOW;
       if(precent<21) batColor=WILD_RED;
       img.fillRect(22,2,map(precent,0,100,1,13),5,batColor);
       vUp=V_UPD;
+  #ifndef USE_EXTERNAL_DAC
     }else{ // charge
       chgP++;
       int pos=map(precent,0,100,1,13);
@@ -229,6 +234,7 @@ void voltage(){
       img.drawBitmap(26,0,chgFlash5x9,5,9,TFT_MAGENTA);
       vUp=250;
     }
+  #endif
     mlsV=millis();
     batChange=false;
     img.pushSprite(194,8);
