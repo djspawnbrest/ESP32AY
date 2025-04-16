@@ -3,6 +3,8 @@ ESP32 based AY Turbo Sound multiformat player
 
 ## Fast flash firmware avaliable on [Alex Spawn OTA web page](https://ota.alexspawn.ru)
 
+## Starting with firmware version 3.41 - added support for external DAC's - read [External DAC](PCB/ExternalDAC)
+
 ## IMPORTANT:
 Firmwares from version 3.4 supports only PCB revision C! But you can soldering upgrade revision A and B to C:
 
