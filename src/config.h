@@ -25,33 +25,28 @@ void sd_config_default(){
 }
 
 void sd_config_load(){
-  printf("sdConfig file load!\n");
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
     if(sd_fat.begin(SD_CONFIG)){
-      printf("SD BEGIN successfully!\n");
       bool result=false;
       uint32_t fileSize=0;
       FsFile f;
       result=f.open(CFG_FILENAME,O_RDONLY);
       if(result){
-        printf("Config file exists on SD: %s\n",result?"yes":"no");
         f.read(&sdConfig,sizeof(sdConfig));
         f.close();
       }else{
-        printf("No config file! RESETING and write new file!\n");
         result=f.open(CFG_FILENAME,O_RDWR|O_CREAT|O_TRUNC);
         if(result){
           f.write(&sdConfig,sizeof(sdConfig));
         }
         f.close();
       }
-    }else printf("sd BEGIN on load error\n");
+    }
     xSemaphoreGive(sdCardSemaphore);
   }
 }
 
 void lfs_config_load(){
-  printf("lfsConfig file load!\n");
   LittleFS.begin(true);
   fs::File f=LittleFS.open(CFG_FILENAME,"r");
   if(f){
@@ -78,22 +73,17 @@ void startup_config_load(){
 }
 
 void sd_config_save(){
-  printf("sdConfig file save!\n");
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
     if(sd_fat.begin(SD_CONFIG)){
-      // printf("sd Config file save begin successfully\n");
-      // uint32_t fileSize=0;
       bool result=false;
       FsFile f;
-      result=f.open(CFG_FILENAME,O_RDWR/*|O_TRUNC*/);
+      result=f.open(CFG_FILENAME,O_RDWR);
       if(result){
         size_t writtenBytes=0;
         writtenBytes=f.write(&sdConfig,sizeof(sdConfig));
-        // fileSize=f.fileSize();
-        printf("Saved SD config: written %d bytes, config size: %d bytes\n",writtenBytes,sizeof(sdConfig));
-      }else printf("sd Config file save error\n");
+      }
       f.close();
-    }else printf("sd BEGIN on save error\n");
+    }
     xSemaphoreGive(sdCardSemaphore);
   }
 }
