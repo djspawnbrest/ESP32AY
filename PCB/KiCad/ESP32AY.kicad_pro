@@ -153,11 +153,7 @@
           ""
         ],
         [
-          "courtyards_overlap|41026200|94905000|2970640f-1750-4db2-bfaf-257912555026|77764c1e-75d1-41cb-8813-3eaba52feb5d",
-          ""
-        ],
-        [
-          "courtyards_overlap|43210600|94905000|77764c1e-75d1-41cb-8813-3eaba52feb5d|7a9f856b-437e-4a8a-aba1-d5cf3b1451da",
+          "courtyards_overlap|43464600|94905000|2970640f-1750-4db2-bfaf-257912555026|77764c1e-75d1-41cb-8813-3eaba52feb5d",
           ""
         ],
         [
@@ -166,6 +162,10 @@
         ],
         [
           "courtyards_overlap|45285000|55515000|0500ad88-2f44-436c-8f16-9fd5b4251f98|ed7ffccb-7dbf-4fb5-b1a3-caab8fcc9c95",
+          ""
+        ],
+        [
+          "courtyards_overlap|45522000|94905000|77764c1e-75d1-41cb-8813-3eaba52feb5d|7a9f856b-437e-4a8a-aba1-d5cf3b1451da",
           ""
         ],
         [
@@ -354,10 +354,6 @@
         ],
         [
           "starved_thermal|23370000|67350000|fe230123-c7da-4df0-a943-7a2610a4ec9b|24ec4141-aade-4534-9357-4ca61eac4a15|F.Cu",
-          ""
-        ],
-        [
-          "starved_thermal|29972000|108356400|fe230123-c7da-4df0-a943-7a2610a4ec9b|24019c40-0035-4e0e-82a6-f35aca5b7b2d|B.Cu",
           ""
         ],
         [
