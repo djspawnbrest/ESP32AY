@@ -16,6 +16,7 @@ void lfs_config_default(){
   lfsConfig.modStereoSeparation=MOD_HALFSTEREO;
   lfsConfig.batCalib=0.0;
   lfsConfig.encType=EB_STEP2;
+  lfsConfig.encReverse=false;
 }
 
 void sd_config_default(){
@@ -208,6 +209,7 @@ void config_screen(){
   const char* const player_sources[]={"SD","UART"};
   const char* const play_modes[]={"Once","All","Shuffle"};
   const char* const zx_int[]={"PENT 48.8","ZX 50.0"};
+  const char* const enc_reverse[]={"NORMAL","REVERSE"};
   char buf[32];
   if(PlayerCTRL.scr_mode_update[SCR_CONFIG]){
     PlayerCTRL.scr_mode_update[SCR_CONFIG]=false;
@@ -248,9 +250,10 @@ void config_screen(){
     }
     spr_printmenu_item(img,9,2,PSTR("DAC Pan."),(cfgSet&&ccur==7)?WILD_RED:WILD_CYAN_D2,ccur==7?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==7)?WILD_RED:TFT_YELLOW);
     sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==8)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==8)?">":"");
-    spr_printmenu_item(img,10,2,PSTR("Batt calib"),(cfgSet&&ccur==8)?WILD_RED:WILD_CYAN_D2,ccur==8?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==8)?WILD_RED:TFT_YELLOW);
-    spr_printmenu_item(img,11,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==9?TFT_RED:TFT_BLACK);
-    spr_printmenu_item(img,12,2,PSTR("About"),WILD_CYAN_D2,ccur==10?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,10,2,PSTR("Enc direction"),WILD_CYAN_D2,ccur==8?TFT_RED:TFT_BLACK,enc_reverse[lfsConfig.encReverse],TFT_YELLOW);
+    spr_printmenu_item(img,11,2,PSTR("Batt calib"),(cfgSet&&ccur==9)?WILD_RED:WILD_CYAN_D2,ccur==9?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==9)?WILD_RED:TFT_YELLOW);
+    spr_printmenu_item(img,12,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==10?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,13,2,PSTR("About"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK);
     // Push sprite
     img.pushSprite(8,8);
     img.deleteSprite();
@@ -285,7 +288,7 @@ void config_screen(){
     if(!cfgSet){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
       lfsConfig.cfg_cur--;
-      if(lfsConfig.cfg_cur<0)lfsConfig.cfg_cur=10;
+      if(lfsConfig.cfg_cur<0)lfsConfig.cfg_cur=11;
     }else{
       switch(lfsConfig.cfg_cur){
         case 2:
@@ -339,7 +342,7 @@ void config_screen(){
           if(PlayerCTRL.music_type==TYPE_MOD) setModSeparation();
           if(PlayerCTRL.music_type==TYPE_S3M) setS3mSeparation();
           break;
-        case 8:
+        case 9:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
           lfsConfig.batCalib-=0.1;
           if(lfsConfig.batCalib<-1.0) lfsConfig.batCalib=1.0;
@@ -351,7 +354,7 @@ void config_screen(){
     if(!cfgSet){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
       lfsConfig.cfg_cur++;
-      if(lfsConfig.cfg_cur>10) lfsConfig.cfg_cur=0;
+      if(lfsConfig.cfg_cur>11) lfsConfig.cfg_cur=0;
     }else{
       switch(lfsConfig.cfg_cur){
         case 2:
@@ -439,15 +442,21 @@ void config_screen(){
       case 5:
       case 6:
       case 7:
-      case 8:
         cfgSet=!cfgSet;
         break;
+      case 8:
+        lfsConfig.encReverse=!lfsConfig.encReverse;
+        enc.setEncReverse(lfsConfig.encReverse);
+        break;
       case 9:
+        cfgSet=!cfgSet;
+        break;
+      case 10:
         PlayerCTRL.msg_cur=NO;
         PlayerCTRL.screen_mode=SCR_RESET_CONFIG;
         PlayerCTRL.scr_mode_update[SCR_RESET_CONFIG]=true;
         break;
-      case 10:
+      case 11:
         PlayerCTRL.screen_mode=SCR_ABOUT;
         PlayerCTRL.scr_mode_update[SCR_ABOUT]=true;
         break;

@@ -131,6 +131,7 @@ struct{
 
 struct{
   bool zx_int;                  // ZX/PENTAGON
+  bool encReverse;
   int8_t ay_layout;             // ABC/BCA/ACB e.t.c.
   int8_t play_mode;             // ALL/Shuffle/One
   int8_t scr_bright;            // Screen brightness
