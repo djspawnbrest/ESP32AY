@@ -12,6 +12,7 @@ EncButton enc(LT_ENC,RT_ENC,OK_BTN,INPUT,INPUT);
 
 void buttonsSetup(){
   enc.setEncType(lfsConfig.encType);
+  enc.setEncReverse(lfsConfig.encReverse);
   enc.setClickTimeout(200);
   enc.setHoldTimeout(500);
   enc.setFastTimeout(100);
