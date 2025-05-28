@@ -24,7 +24,7 @@ void ampInit(){
   Wire.begin();
   byte error,address;
   int nDevices=0;
-  for(address=1;address<127;address++){
+  for(address=90;address<100;address++){
     // The i2c_scanner uses the return value of
     // the Write.endTransmission to see if
     // a device did acknowledge to the address.

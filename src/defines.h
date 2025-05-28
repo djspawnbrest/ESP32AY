@@ -35,7 +35,7 @@ SemaphoreHandle_t outSemaphore=NULL;
 // count of voltage read
 #define READ_CNT 100
 // voltmeter pin
-#define VOLTPIN 32
+#define VOLTPIN 36
 #ifndef USE_EXTERNAL_DAC
 //charge sense
 #define CHGSENS 27

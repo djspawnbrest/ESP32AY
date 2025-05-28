@@ -1,16 +1,29 @@
 #include <EncButton.h>
+#include <PCF8574.h>
 
-#define UP_BTN 39
-#define DN_BTN 36
-#define OK_BTN 33
-#define LT_ENC 34
-#define RT_ENC 35
+#define LT_ENC P0
+#define RT_ENC P1
 
-Button up(UP_BTN,INPUT_PULLUP,LOW);
-Button dn(DN_BTN,INPUT_PULLUP,LOW);
-EncButton enc(LT_ENC,RT_ENC,OK_BTN,INPUT,INPUT);
+#define OK_BTN P2
+#define DN_BTN P3
+#define UP_BTN P4
+
+VirtButton up;
+VirtButton dn;
+VirtEncButton enc;
+
+PCF8574::DigitalInput di;
+PCF8574 ext(0x20);
 
 void buttonsSetup(){
+  ext.pinMode(LT_ENC, INPUT_PULLUP);
+  ext.pinMode(RT_ENC, INPUT_PULLUP);
+  ext.pinMode(OK_BTN, INPUT_PULLUP);
+  ext.pinMode(DN_BTN, INPUT_PULLUP);
+  ext.pinMode(UP_BTN, INPUT_PULLUP);
+  ext.begin();
+  pinMode(LT_ENC, INPUT_PULLUP);
+  pinMode(RT_ENC, INPUT_PULLUP);
   enc.setEncType(lfsConfig.encType);
   enc.setEncReverse(lfsConfig.encReverse);
   enc.setClickTimeout(200);
@@ -25,9 +38,10 @@ void buttonsSetup(){
 bool isRight=false,isLeft=false;
 
 void generalTick(){
-  enc.tick();
-  up.tick();
-  dn.tick();
+  di=ext.digitalReadAll();
+  enc.tick(!di.p0,!di.p1,!di.p2);
+  dn.tick(!di.p3);
+  up.tick(!di.p4);
   if(enc.hold()){
     if(PlayerCTRL.screen_mode!=SCR_CONFIG&&PlayerCTRL.screen_mode!=SCR_RESET_CONFIG&&PlayerCTRL.screen_mode!=SCR_ABOUT){
       PlayerCTRL.screen_mode++;

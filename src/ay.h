@@ -1,6 +1,6 @@
 #include "driver/ledc.h" //for ay clock
 
-#define AY_CLK       15
+#define AY_CLK       12
 // HC595 define
 #define OUT_SHIFT_DATA_PIN  0 // -> pin 14 of 74HC595 - data input,slave in SI (DS)
 #define OUT_SHIFT_LATCH_PIN 2 // -> pin 12 of 74HC595 - data output latch (ST_CP)

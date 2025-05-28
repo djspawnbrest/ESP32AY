@@ -24,11 +24,11 @@
 // #define TFT_BL           -1    // LED back-light control pin//
 #define TFT_BACKLIGHT_ON LOW  // Level to turn ON back-light (HIGH or LOW)
 
-//#define TFT_MISO 19
-#define TFT_MOSI 16	 //23 16
-#define TFT_SCLK 17  //18 17
-#define TFT_CS   13  // Chip select control pin
-#define TFT_DC   12  // Data Command control pin
+// #define TFT_MISO -1
+#define TFT_MOSI 13	 //23 16
+#define TFT_SCLK 14  //18 17
+#define TFT_CS   15  // Chip select control pin
+#define TFT_DC   32  // Data Command control pin
 #define TFT_RST  -1  // Reset pin (could connect to RST pin)
 
 // For ST7789, ST7735, ILI9163 and GC9A01 ONLY, define the pixel width and height in portrait orientation

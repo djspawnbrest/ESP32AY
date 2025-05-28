@@ -18,4 +18,5 @@
   (lib (name "ST7735")(type "KiCad")(uri "${KIPRJMOD}/lib/ST7735.kicad_sym")(options "")(descr ""))
   (lib (name "CSTCE16M")(type "KiCad")(uri "${KIPRJMOD}/lib/CSTCE16M0V53-R0.kicad_sym")(options "")(descr ""))
   (lib (name "ST7789")(type "KiCad")(uri "${KIPRJMOD}/lib/ST7789.kicad_sym")(options "")(descr ""))
+  (lib (name "ESP32-WROVER")(type "KiCad")(uri "${KIPRJMOD}/lib/ESP32-WROVER.kicad_sym")(options "")(descr ""))
 )
