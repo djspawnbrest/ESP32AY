@@ -10,7 +10,7 @@ void lfs_config_default(){
   lfsConfig.ay_layout=LAY_ABC;
   lfsConfig.ay_clock=CLK_PENTAGON;
   lfsConfig.volume=32;
-  lfsConfig.scr_bright=100;
+  lfsConfig.scr_bright=50;
   lfsConfig.scr_timeout=0;
   lfsConfig.play_mode=PLAY_MODE_ALL;
   lfsConfig.modStereoSeparation=MOD_HALFSTEREO;
@@ -490,7 +490,7 @@ void startUpConfig(){
   spr_println(img,0,10,PSTR("to continue!"),2,ALIGN_CENTER,WILD_RED);
   img.pushSprite(8,8);
   img.deleteSprite();
-  while(digitalRead(DN_BTN)==LOW) yield();
+  // while(digitalRead(DN_BTN)==LOW) yield();
   while(true){
     generalTick();
     if(scrUpdate){
@@ -580,15 +580,15 @@ void startUpConfig(){
 }
 
 void checkStartUpConfig(){
-  pinMode(DN_BTN,INPUT);
-  pinMode(UP_BTN, INPUT);
-  if(digitalRead(DN_BTN)==LOW){
-    startUpConfig();
-  }
-  if(digitalRead(UP_BTN)==LOW){
-    lfs_config_default();
-    lfs_config_save();
-    sd_config_default();
-    sd_config_save();
-  }
+  // pinMode(DN_BTN,INPUT);
+  // pinMode(UP_BTN, INPUT);
+  // if(digitalRead(DN_BTN)==LOW){
+  //   startUpConfig();
+  // }
+  // if(digitalRead(UP_BTN)==LOW){
+  //   lfs_config_default();
+  //   lfs_config_save();
+  //   sd_config_default();
+  //   sd_config_save();
+  // }
 }

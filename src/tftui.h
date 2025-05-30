@@ -1,5 +1,6 @@
 #include <TFT_eSPI.h>
 #include "driver/adc.h"
+#include "esp_adc_cal.h"
 
 #include "res/WildFont.h"
 #include "res/sprites.h"
@@ -14,7 +15,7 @@
 #define VIEW_WDT	224
 #define VIEW_HGT	320
 
-#define LCD_BL 14 // lcd backlight pin
+#define LCD_BL 33 // lcd backlight pin
 const int pwmChannel=2; // timer channel
 const int freq=26000; // frequncy 26 kHz pwm for backlight
 const int resolution=8; // resolution 8 bit
@@ -177,9 +178,12 @@ void spr_draw_buttons(TFT_eSprite &spr,uint16_t row,uint8_t size=1,uint8_t curso
 }
 
 void initVoltage(){
-  pinMode(VOLTPIN,INPUT);
-  analogReadResolution(12);
-  randomSeed(analogRead(VOLTPIN));
+  // pinMode(VOLTPIN,INPUT);
+  // analogReadResolution(12);
+  // randomSeed(analogRead(VOLTPIN));
+  adc1_config_width(ADC_WIDTH_BIT_12);
+  adc1_config_channel_atten(ADC1_CHANNEL_0, ADC_ATTEN_DB_11);
+  randomSeed(adc1_get_raw(ADC1_CHANNEL_0));
 #ifndef USE_EXTERNAL_DAC
   pinMode(CHGSENS,INPUT);
 #endif
@@ -191,7 +195,11 @@ void voltage(){
     uint64_t InVolt=0;
     //Reading from a port with averaging
     for(int i=0;i<READ_CNT;i++){
-      InVolt+=analogReadMilliVolts(VOLTPIN);
+      // InVolt+=analogReadMilliVolts(VOLTPIN);
+      uint32_t rd = adc1_get_raw(ADC1_CHANNEL_0);
+      esp_adc_cal_characteristics_t adc_chars;
+      esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_11, ADC_WIDTH_BIT_12, 1100, &adc_chars);
+      InVolt+=esp_adc_cal_raw_to_voltage(rd, &adc_chars);
     }
     InVolt=InVolt/READ_CNT;
     volt=((InVolt/1000.0)*VoltMult)+lfsConfig.batCalib;
