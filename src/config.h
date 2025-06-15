@@ -249,8 +249,8 @@ void config_screen(){
       case MOD_MONO: sprintf(buf,"%sMono%s",(cfgSet&&ccur==7)?"<":"",(cfgSet&&ccur==7)?">":"");break;
     }
     spr_printmenu_item(img,9,2,PSTR("DAC Pan."),(cfgSet&&ccur==7)?WILD_RED:WILD_CYAN_D2,ccur==7?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==7)?WILD_RED:TFT_YELLOW);
-    sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==8)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==8)?">":"");
     spr_printmenu_item(img,10,2,PSTR("Enc direction"),WILD_CYAN_D2,ccur==8?TFT_RED:TFT_BLACK,enc_reverse[lfsConfig.encReverse],TFT_YELLOW);
+    sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==9)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==9)?">":"");
     spr_printmenu_item(img,11,2,PSTR("Batt calib"),(cfgSet&&ccur==9)?WILD_RED:WILD_CYAN_D2,ccur==9?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==9)?WILD_RED:TFT_YELLOW);
     spr_printmenu_item(img,12,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==10?TFT_RED:TFT_BLACK);
     spr_printmenu_item(img,13,2,PSTR("About"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK);
@@ -408,7 +408,7 @@ void config_screen(){
           if(PlayerCTRL.music_type==TYPE_MOD) setModSeparation();
           if(PlayerCTRL.music_type==TYPE_S3M) setS3mSeparation();
           break;
-        case 8:
+        case 9:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
           lfsConfig.batCalib+=0.1;
           if(lfsConfig.batCalib>1.0) lfsConfig.batCalib=-1.0;
@@ -442,14 +442,12 @@ void config_screen(){
       case 5:
       case 6:
       case 7:
+      case 9:
         cfgSet=!cfgSet;
         break;
       case 8:
         lfsConfig.encReverse=!lfsConfig.encReverse;
         enc.setEncReverse(lfsConfig.encReverse);
-        break;
-      case 9:
-        cfgSet=!cfgSet;
         break;
       case 10:
         PlayerCTRL.msg_cur=NO;
