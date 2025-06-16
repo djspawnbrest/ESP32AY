@@ -28,16 +28,16 @@ struct{
 }Sound;
 
 uint16_t frameMax(uint8_t speed=1){ // NORMAL default
-  uint16_t frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/50000:TIMER_RATE*1000/48828;
+  uint16_t frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/50075:TIMER_RATE*1000/48880;
   switch(speed){
     case 0: // SLOW
-    frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/25000:TIMER_RATE*1000/24414;
+    frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/25037:TIMER_RATE*1000/24440;
       break;
     case 1: // NORMAL
-      frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/50000:TIMER_RATE*1000/48828;
+      frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/50075:TIMER_RATE*1000/48880;
       break;
     case 2: // FAST
-      frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/100000:TIMER_RATE*1000/97656;
+      frMax=(lfsConfig.zx_int)?TIMER_RATE*1000/100150:TIMER_RATE*1000/97760;
       break;
   }
   return frMax;
@@ -111,12 +111,12 @@ done:
 
 void initOut(int buf=32){
   muteAmp();
-#ifndef USE_EXTERNAL_DAC
-  out=new AudioOutputI2S(0,AudioOutputI2S::INTERNAL_DAC,buf);  // I2S output
-#else
+#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(USE_EXTERNAL_DAC)
   out=new AudioOutputI2S(0,AudioOutputI2S::EXTERNAL_I2S,buf);
   out->SetPinout(PIN_BCK,PIN_LCK,PIN_DIN);
   out->SetGain(0.2f);
+#else
+  out=new AudioOutputI2S(0,AudioOutputI2S::INTERNAL_DAC,buf);  // I2S output
 #endif
   unMuteAmp();
 }
@@ -124,7 +124,11 @@ void initOut(int buf=32){
 void DACInit(){
   initOut();
   DACTimer=timerBegin(0,79,true); // timer_id = 0; divider=79;(old 80) countUp = true;
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)
+  timerAttachInterrupt(DACTimer,&DACTimer_ISR,false); // edge = true
+  #else
   timerAttachInterrupt(DACTimer,&DACTimer_ISR,true); // edge = true
+  #endif
   timerAlarmWrite(DACTimer,(uint64_t)ceil((float)F_CPU/TIMER_RATE/(F_CPU/1000000L)),true); // round up from 22.675737 to 23
   timerAlarmEnable(DACTimer);
   sound_init();

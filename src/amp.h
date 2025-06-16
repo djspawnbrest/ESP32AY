@@ -11,35 +11,17 @@
 
 bool muteL=false;
 bool muteR=false;
-byte ampAddress=96;
 
 void writeToAmp(byte address,byte val){
-  Wire.beginTransmission(ampAddress); // start transmission to device   
-  Wire.write(address);                 // send register address
-  Wire.write(val);                     // send value to write
-  Wire.endTransmission();              // end transmission
+  if(foundAmp){
+    Wire.beginTransmission(ampAddress); // start transmission to device   
+    Wire.write(address);                 // send register address
+    Wire.write(val);                     // send value to write
+    Wire.endTransmission();              // end transmission
+  }
 }
 
 void ampInit(){
-  Wire.begin();
-  byte error,address;
-  int nDevices=0;
-  for(address=1;address<127;address++){
-    // The i2c_scanner uses the return value of
-    // the Write.endTransmission to see if
-    // a device did acknowledge to the address.
-    Wire.beginTransmission(address);
-    error=Wire.endTransmission();
-    if(error==0){
-      ampAddress=address;
-      nDevices++;
-      break;
-    }
-  }
-  if(nDevices==0){
-    printf("Amp not found on I2C\n");
-    ampAddress=96;
-  }
   writeToAmp(AMP_REG1,AMP_REG1_SETUP);
   writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|sdConfig.volume));
 }

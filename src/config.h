@@ -1,7 +1,9 @@
 #include <LittleFS.h>
+#include "csmos.h"
 
 bool cfgSet=false;
 bool sdFlag=false;
+bool cfgDateTimeSet=false;
 
 void lfs_config_default(){
   memset(&lfsConfig,0,sizeof(lfsConfig));
@@ -10,13 +12,14 @@ void lfs_config_default(){
   lfsConfig.ay_layout=LAY_ABC;
   lfsConfig.ay_clock=CLK_PENTAGON;
   lfsConfig.volume=32;
-  lfsConfig.scr_bright=100;
+  lfsConfig.scr_bright=50;
   lfsConfig.scr_timeout=0;
   lfsConfig.play_mode=PLAY_MODE_ALL;
   lfsConfig.modStereoSeparation=MOD_HALFSTEREO;
   lfsConfig.batCalib=0.0;
   lfsConfig.encType=EB_STEP2;
   lfsConfig.encReverse=false;
+  lfsConfig.showClock=false;
 }
 
 void sd_config_default(){
@@ -26,44 +29,76 @@ void sd_config_default(){
 }
 
 void sd_config_load(){
-  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
-    if(sd_fat.begin(SD_CONFIG)){
-      bool result=false;
-      uint32_t fileSize=0;
-      FsFile f;
-      result=f.open(CFG_FILENAME,O_RDONLY);
-      if(result){
-        f.read(&sdConfig,sizeof(sdConfig));
-        f.close();
-      }else{
-        result=f.open(CFG_FILENAME,O_RDWR|O_CREAT|O_TRUNC);
-        if(result){
-          f.write(&sdConfig,sizeof(sdConfig));
-        }
-        f.close();
-      }
+  if(foundRom){
+    eeInit(eepAddress);
+    uint8_t sdConfigEepromFlag=255;
+    eep.read(SD_FLAG_ADDRESS,&sdConfigEepromFlag,1);
+    printf("SD Config flag: %d\n", sdConfigEepromFlag);
+    if(sdConfigEepromFlag==255){ // Empty config, write default
+      printf("Write default sdConfig...\n");
+      eep.write(SD_START_ADDRESS,reinterpret_cast<uint8_t*>(&sdConfig),sizeof(sdConfig));
+      eep.write(SD_FLAG_ADDRESS,64);
+    }else if(sdConfigEepromFlag==64){ // Read config
+      printf("Load sdConfig from eeprom...\n");
+      eep.read(SD_START_ADDRESS,reinterpret_cast<uint8_t*>(&sdConfig),sizeof(sdConfig));
     }
-    xSemaphoreGive(sdCardSemaphore);
+  }else{
+    if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+      if(sd_fat.begin(SD_CONFIG)){
+        bool result=false;
+        uint32_t fileSize=0;
+        FsFile f;
+        result=f.open(CFG_FILENAME,O_RDONLY);
+        if(result){
+          f.read(&sdConfig,sizeof(sdConfig));
+          f.close();
+        }else{
+          result=f.open(CFG_FILENAME,O_RDWR|O_CREAT|O_TRUNC);
+          if(result){
+            f.write(&sdConfig,sizeof(sdConfig));
+          }
+          f.close();
+        }
+      }
+      xSemaphoreGive(sdCardSemaphore);
+    }
   }
+  printf("SD Config size: %d bytes.\n",sizeof(sdConfig));
 }
 
 void lfs_config_load(){
-  LittleFS.begin(true);
-  fs::File f=LittleFS.open(CFG_FILENAME,"r");
-  if(f){
-    if(f.size()==sizeof(lfsConfig)){
-      f.readBytes((char*)&lfsConfig,sizeof(lfsConfig));
+  if(foundRom){
+    eeInit(eepAddress);
+    uint8_t lfsConfigEepromFlag=255;
+    eep.read(LFS_FLAG_ADDRESS,&lfsConfigEepromFlag,1);
+    printf("LFS Config flag: %d\n", lfsConfigEepromFlag);
+    if(lfsConfigEepromFlag==255){ // Empty config, write default
+      printf("Write default lfsConfig...\n");
+      eep.write(LFS_START_ADDRESS,reinterpret_cast<uint8_t*>(&lfsConfig),sizeof(lfsConfig));
+      eep.write(LFS_FLAG_ADDRESS,64);
+    }else if(lfsConfigEepromFlag==64){ // Read config
+      printf("Load lfsConfig from eeprom...\n");
+      eep.read(LFS_START_ADDRESS,reinterpret_cast<uint8_t*>(&lfsConfig),sizeof(lfsConfig));
     }
-    f.close();
   }else{
-    if(!LittleFS.exists(CFG_FILENAME)){
-      fs::File f=LittleFS.open(CFG_FILENAME,"w");
-      if(f){
-        f.write((const uint8_t*)&lfsConfig,sizeof(lfsConfig));
-        f.close();
+    LittleFS.begin(true);
+    fs::File f=LittleFS.open(CFG_FILENAME,"r");
+    if(f){
+      if(f.size()==sizeof(lfsConfig)){
+        f.readBytes((char*)&lfsConfig,sizeof(lfsConfig));
+      }
+      f.close();
+    }else{
+      if(!LittleFS.exists(CFG_FILENAME)){
+        fs::File f=LittleFS.open(CFG_FILENAME,"w");
+        if(f){
+          f.write((const uint8_t*)&lfsConfig,sizeof(lfsConfig));
+          f.close();
+        }
       }
     }
   }
+  printf("LFS Config size: %d bytes.\n",sizeof(lfsConfig));
 }
 
 void startup_config_load(){
@@ -74,29 +109,43 @@ void startup_config_load(){
 }
 
 void sd_config_save(){
-  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
-    if(sd_fat.begin(SD_CONFIG)){
-      bool result=false;
-      FsFile f;
-      result=f.open(CFG_FILENAME,O_RDWR);
-      if(result){
-        size_t writtenBytes=0;
-        writtenBytes=f.write(&sdConfig,sizeof(sdConfig));
+  if(foundRom){
+    printf("Save sdConfig to eeprom...\n");
+    eeInit(eepAddress);
+    eep.write(SD_START_ADDRESS,reinterpret_cast<uint8_t*>(&sdConfig),sizeof(sdConfig));
+    eep.write(SD_FLAG_ADDRESS,64);
+  }else{
+    if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+      if(sd_fat.begin(SD_CONFIG)){
+        bool result=false;
+        FsFile f;
+        result=f.open(CFG_FILENAME,O_RDWR);
+        if(result){
+          size_t writtenBytes=0;
+          writtenBytes=f.write(&sdConfig,sizeof(sdConfig));
+        }
+        f.close();
       }
-      f.close();
+      xSemaphoreGive(sdCardSemaphore);
     }
-    xSemaphoreGive(sdCardSemaphore);
   }
 }
 
 void lfs_config_save(){
-  if(xSemaphoreTake(outSemaphore,portMAX_DELAY)==pdTRUE){
-    fs::File f=LittleFS.open(CFG_FILENAME,"w");
-    if(f){
-      f.write((const uint8_t*)&lfsConfig,sizeof(lfsConfig));
-      f.close();
+  if(foundRom){
+    printf("Save lfsConfig to eeprom...\n");
+    eeInit(eepAddress);
+    eep.write(LFS_START_ADDRESS,reinterpret_cast<uint8_t*>(&lfsConfig),sizeof(lfsConfig));
+    eep.write(LFS_FLAG_ADDRESS,64);
+  }else{
+    if(xSemaphoreTake(outSemaphore,portMAX_DELAY)==pdTRUE){
+      fs::File f=LittleFS.open(CFG_FILENAME,"w");
+      if(f){
+        f.write((const uint8_t*)&lfsConfig,sizeof(lfsConfig));
+        f.close();
+      }
+      xSemaphoreGive(outSemaphore);
     }
-    xSemaphoreGive(outSemaphore);
   }
 }
 
@@ -147,6 +196,148 @@ void config_about_screen(){
   if(dn.click()&&lcdBlackout==false){
     PlayerCTRL.screen_mode=SCR_CONFIG;
     PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
+  }
+}
+
+void time_date_screen(){
+  char buf[32];
+  uint16_t year=now.year();
+  int8_t month=now.month();
+  int8_t day=now.day();
+  int8_t hour=now.hour();
+  int8_t minute=now.minute();
+  int8_t second=now.second();
+  if(PlayerCTRL.scr_mode_update[SCR_DATETIME]){
+    PlayerCTRL.scr_mode_update[SCR_DATETIME]=false;
+    int8_t ccur=lfsConfig.cfg_datetime_cur;
+    img.setColorDepth(8);
+    img.createSprite(224,304);
+    img.fillScreen(0);
+    img.setTextColor(TFT_WHITE);
+    img.setTextSize(2);
+    img.setFreeFont(&WildFont);
+    spr_println(img,0,1,PSTR("Date&Time"),2,ALIGN_CENTER,WILD_CYAN);
+    //print message
+    spr_printmenu_item(img,2,2,PSTR("Show clock:"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,lfsConfig.showClock?PSTR("Yes"):PSTR("No"),TFT_YELLOW);
+    sprintf(buf,"%s%04d%s",(cfgDateTimeSet&&ccur==1)?"<":"",year,(cfgDateTimeSet&&ccur==1)?">":"");
+    spr_printmenu_item(img,3,2,PSTR("Year:"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    sprintf(buf,"%s%s%s",(cfgDateTimeSet&&ccur==2)?"<":"",monthsOfTheYear[month],(cfgDateTimeSet&&ccur==2)?">":"");
+    spr_printmenu_item(img,4,2,PSTR("Month:"),WILD_CYAN_D2,ccur==2?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==3)?"<":"",day,(cfgDateTimeSet&&ccur==3)?">":"");
+    spr_printmenu_item(img,5,2,PSTR("Date:"),WILD_CYAN_D2,ccur==3?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==4)?"<":"",hour,(cfgDateTimeSet&&ccur==4)?">":"");
+    spr_printmenu_item(img,6,2,PSTR("Hour:"),WILD_CYAN_D2,ccur==4?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==5)?"<":"",minute,(cfgDateTimeSet&&ccur==5)?">":"");
+    spr_printmenu_item(img,7,2,PSTR("Minute:"),WILD_CYAN_D2,ccur==5?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==6)?"<":"",second,(cfgDateTimeSet&&ccur==6)?">":"");
+    spr_printmenu_item(img,8,2,PSTR("Second:"),WILD_CYAN_D2,ccur==6?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    //formatted date and time
+    sprintf(buf, "%02d %s %04d",now.day(),monthsOfTheYear[now.month()],now.year());
+    spr_println(img,0,11,buf,2,ALIGN_CENTER,TFT_YELLOW);
+    sprintf(buf,"%s",daysOfTheWeek[now.dayOfTheWeek()]);
+    spr_println(img,0,12,buf,2,ALIGN_CENTER,TFT_YELLOW);
+    sprintf(buf,"%02d:%02d:%02d",now.hour(),now.minute(),now.second());
+    spr_println(img,0,13,buf,2,ALIGN_CENTER,TFT_YELLOW);
+    img.pushSprite(8,8);
+    img.deleteSprite();
+  }
+  //survey keypad
+  if(enc.left()&&lcdBlackout==false){
+    PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
+    if(!cfgDateTimeSet){
+      lfsConfig.cfg_datetime_cur--;
+      if(lfsConfig.cfg_datetime_cur<0) lfsConfig.cfg_datetime_cur=6;
+    }else{
+      switch(lfsConfig.cfg_datetime_cur){
+        case 1:
+          year--;
+          if(year<1970) year=1970;
+          break;
+        case 2:
+          month--;
+          if(month<1) month=12;
+          break;
+        case 3:
+          day--;
+          if(day<1) day=31;
+          break;
+        case 4:
+          hour--;
+          if(hour<0) hour=23;
+          break;
+        case 5:
+          minute--;
+          if(minute<0) minute=59;
+          break;
+        case 6:
+          second--;
+          if(second<0) second=59;
+          break;
+      }
+      rtc.adjust(DateTime(year,month,day,hour,minute,second));
+    }
+  }
+  if(enc.right()&&lcdBlackout==false){
+    if(!cfgDateTimeSet){
+      lfsConfig.cfg_datetime_cur++;
+      if(lfsConfig.cfg_datetime_cur>6) lfsConfig.cfg_datetime_cur=0;
+    }else{
+      switch(lfsConfig.cfg_datetime_cur){
+        case 1:
+          year++;
+          if(year>2099) year=2099;
+          break;
+        case 2:
+          month++;
+          if(month>12) month=1;
+          break;
+        case 3:
+          day++;
+          if(day>31) day=1;
+          break;
+        case 4:
+          hour++;
+          if(hour>23) hour=0;
+          break;
+        case 5:
+          minute++;
+          if(minute>59) minute=0;
+          break;
+        case 6:
+          second++;
+          if(second>59) second=0;
+          break;
+      }
+      rtc.adjust(DateTime(year,month,day,hour,minute,second));
+    }
+    PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
+  }
+  if(enc.click()&&lcdBlackout==false){
+    PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
+    switch(lfsConfig.cfg_datetime_cur){
+      case 0:
+        lfsConfig.showClock=!lfsConfig.showClock;
+        lfs_config_save();
+        break;
+      case 1:
+      case 2:
+      case 3:
+      case 4:
+      case 5:
+      case 6:
+        cfgDateTimeSet=!cfgDateTimeSet;
+        break;
+    }
+  }
+  if(dn.click()&&lcdBlackout==false){
+    PlayerCTRL.screen_mode=SCR_CONFIG;
+    PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
+  }
+  //update screen if second change
+  static uint8_t lastSecond=0;
+  if(now.second()!=lastSecond){
+    lastSecond=now.second();
+    PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
   }
 }
 
@@ -252,8 +443,9 @@ void config_screen(){
     spr_printmenu_item(img,10,2,PSTR("Enc direction"),WILD_CYAN_D2,ccur==8?TFT_RED:TFT_BLACK,enc_reverse[lfsConfig.encReverse],TFT_YELLOW);
     sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==9)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==9)?">":"");
     spr_printmenu_item(img,11,2,PSTR("Batt calib"),(cfgSet&&ccur==9)?WILD_RED:WILD_CYAN_D2,ccur==9?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==9)?WILD_RED:TFT_YELLOW);
-    spr_printmenu_item(img,12,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==10?TFT_RED:TFT_BLACK);
-    spr_printmenu_item(img,13,2,PSTR("About"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK);
+    if(foundRtc) spr_printmenu_item(img,12,2,PSTR("Date&Time"),WILD_CYAN_D2,ccur==10?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,(foundRtc)?13:12,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,(foundRtc)?14:13,2,PSTR("About"),WILD_CYAN_D2,ccur==12?TFT_RED:TFT_BLACK);
     // Push sprite
     img.pushSprite(8,8);
     img.deleteSprite();
@@ -288,7 +480,10 @@ void config_screen(){
     if(!cfgSet){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
       lfsConfig.cfg_cur--;
-      if(lfsConfig.cfg_cur<0)lfsConfig.cfg_cur=11;
+      if(!foundRtc){
+        if(lfsConfig.cfg_cur==10) lfsConfig.cfg_cur=9;
+      }
+      if(lfsConfig.cfg_cur<0)lfsConfig.cfg_cur=12;
     }else{
       switch(lfsConfig.cfg_cur){
         case 2:
@@ -354,7 +549,10 @@ void config_screen(){
     if(!cfgSet){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
       lfsConfig.cfg_cur++;
-      if(lfsConfig.cfg_cur>11) lfsConfig.cfg_cur=0;
+      if(!foundRtc){
+        if(lfsConfig.cfg_cur==10) lfsConfig.cfg_cur=11;
+      }
+      if(lfsConfig.cfg_cur>12) lfsConfig.cfg_cur=0;
     }else{
       switch(lfsConfig.cfg_cur){
         case 2:
@@ -450,11 +648,15 @@ void config_screen(){
         enc.setEncReverse(lfsConfig.encReverse);
         break;
       case 10:
+        PlayerCTRL.screen_mode=SCR_DATETIME;
+        PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
+        break;
+      case 11:
         PlayerCTRL.msg_cur=NO;
         PlayerCTRL.screen_mode=SCR_RESET_CONFIG;
         PlayerCTRL.scr_mode_update[SCR_RESET_CONFIG]=true;
         break;
-      case 11:
+      case 12:
         PlayerCTRL.screen_mode=SCR_ABOUT;
         PlayerCTRL.scr_mode_update[SCR_ABOUT]=true;
         break;
@@ -584,6 +786,11 @@ void checkStartUpConfig(){
     startUpConfig();
   }
   if(digitalRead(UP_BTN)==LOW){
+    printf("RESET ALL CMOS....\n");
+    if(foundRom){
+      eeInit(eepAddress);
+      eeErase(CHUNK_SIZE,0,(totalKBytes*1024)-1);
+    }
     lfs_config_default();
     lfs_config_save();
     sd_config_default();

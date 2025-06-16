@@ -1,4 +1,5 @@
 static bool dynRebuild=true;
+static bool clockShowFlag=true;
 static bool colCh2=false;
 int ay_cur_song=0;
 uint16_t prev_file_id=0;
@@ -965,6 +966,29 @@ void vbUpdate(){
   }
 }
 
+void showClock(){
+  static bool flashState=true;
+  static uint32_t lastFlashTime=0;
+  // Check if it's time to toggle the flash state (every 500ms)
+  if(millis()-lastFlashTime>500){
+    flashState=!flashState;
+    lastFlashTime=millis();
+  }
+  sprintf(tme,"%02d%s%02d",now.hour(),(flashState)?":":" ",now.minute());
+  img.setColorDepth(8);
+  img.createSprite(10*5,8*2);
+  img.fillScreen(0);
+  img.setFreeFont(&WildFont);
+  img.setTextColor(TFT_MAGENTA);
+  img.setTextSize(2);
+  img.setCursor(2,16);
+  img.print(tme);
+  img.pushSprite(11,10);
+  img.deleteSprite();
+  sprintf(tme,"%s %02d %s %04d",daysOfTheWeek[now.dayOfTheWeek()],now.day(),monthsOfTheYear[now.month()],now.year());
+  if(clockShowFlag) scrollInfos(tme,2,TFT_MAGENTA,10*13,8*2,10,62,4);
+}
+
 void player_screen(){
   if(PlayerCTRL.scr_mode_update[SCR_PLAYER]){
     clear_display_field();
@@ -978,7 +1002,7 @@ void player_screen(){
     }else if(lfsConfig.playerSource==PLAYER_MODE_UART){
       uartInfoShow();
     }
-    vbUpdate();
+    if(!lfsConfig.showClock) vbUpdate();
   }
   dynRebuild=false;
   PlayerCTRL.scr_mode_update[SCR_PLAYER]=false;
@@ -990,6 +1014,7 @@ void player_screen(){
     showPlayerIcons();
   }
   fastEQ();
+  if(lfsConfig.showClock&&foundRtc) showClock();
   //keypad survey
   if(lfsConfig.playerSource==PLAYER_MODE_SD){
     if(enc.hasClicks(1)&&lcdBlackout==false){PlayerCTRL.isPlay=!PlayerCTRL.isPlay;PlayerCTRL.isPlay?unMuteAmp():muteAmp();}
@@ -1065,6 +1090,7 @@ void player_screen(){
   }
   if((up.hasClicks(1)||up.holding())&&lcdBlackout==false&&scrNotPlayer==false){
     if(!enc.holding()){
+      clockShowFlag=false;
       if(sdConfig.volume++>=63) sdConfig.volume=63;
       writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|sdConfig.volume));
       img.setColorDepth(8);
@@ -1097,6 +1123,7 @@ void player_screen(){
   }
   if((dn.hasClicks(1)||dn.holding())&&lcdBlackout==false&&scrNotPlayer==false){
     if(!enc.holding()){
+      clockShowFlag=false;
       if(sdConfig.volume--<=0) sdConfig.volume=0;
       writeToAmp(AMP_REG2,(muteL<<7|muteR<<6|sdConfig.volume));
       img.setColorDepth(8);
@@ -1143,6 +1170,7 @@ void player_screen(){
     sd_config_save();
     if(!sdFlag) lfs_config_save(); // Saving without volume
     sdFlag=false;
+    clockShowFlag=true;
   }
   keysTimeOut();
 }

@@ -1,14 +1,22 @@
 #include <EncButton.h>
 
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#define DN_BTN 40
+#define UP_BTN 41
+#define OK_BTN 42
+#define LT_ENC 1
+#define RT_ENC 2
+#elif defined(CONFIG_IDF_TARGET_ESP32)
 #define UP_BTN 39
 #define DN_BTN 36
 #define OK_BTN 33
 #define LT_ENC 34
 #define RT_ENC 35
+#endif
 
 Button up(UP_BTN,INPUT_PULLUP,LOW);
 Button dn(DN_BTN,INPUT_PULLUP,LOW);
-EncButton enc(LT_ENC,RT_ENC,OK_BTN,INPUT,INPUT);
+EncButton enc(LT_ENC,RT_ENC,OK_BTN,INPUT_PULLUP,INPUT_PULLUP);
 
 void buttonsSetup(){
   enc.setEncType(lfsConfig.encType);

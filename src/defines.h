@@ -1,6 +1,8 @@
 #include <AudioFileSourceSDFAT.h>
+#include <SPI.h>
+#include <Wire.h>
 
-#define VERSION         "3.41"
+#define VERSION         "3.42"
 
 #define CLK_SPECTRUM  	1773400
 #define CLK_PENTAGON  	1750000
@@ -22,8 +24,22 @@
 #define PIN_LCK 27
 #endif
 
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#define PIN_BCK 4
+#define PIN_DIN 5
+#define PIN_LCK 6
+#endif
+
 // SD configs
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#define SD_CS    10
+#define SD_MOSI  11
+#define SD_SCK   12
+#define SD_MISO  13
+#define SD_CONFIG SdSpiConfig(SD_CS,DEDICATED_SPI,SD_SCK_MHZ(50)) // 39 max
+#else
 #define SD_CONFIG SdSpiConfig(SS,DEDICATED_SPI,SD_SCK_MHZ(30)) // 39 max
+#endif
 
 #define MAX_PATH  260
 
@@ -34,11 +50,24 @@ SemaphoreHandle_t outSemaphore=NULL;
 //--------------------------------------
 // count of voltage read
 #define READ_CNT 100
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+// voltmeter pin
+#define VOLTPIN 7
+#else
 // voltmeter pin
 #define VOLTPIN 32
+#endif
+
+#if defined(CONFIG_IDF_TARGET_ESP32)
 #ifndef USE_EXTERNAL_DAC
 //charge sense
 #define CHGSENS 27
+#endif
+#endif
+
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+//charge sense
+#define CHGSENS 38
 #endif
 // internal Vref (need to set)
 const float VRef=1.1;
@@ -110,7 +139,7 @@ char tme[200];
 
 volatile uint32_t frame_cnt=0;
 volatile uint32_t frame_div=0;
-volatile uint32_t frame_max=TIMER_RATE*1000/48828; // Pentagon int
+volatile uint32_t frame_max=TIMER_RATE*1000/48880; // Pentagon int
 
 struct{
   bool isBrowserPlaylist;       // browser mode
@@ -132,10 +161,12 @@ struct{
 struct{
   bool zx_int;                  // ZX/PENTAGON
   bool encReverse;
+  bool showClock;
   int8_t ay_layout;             // ABC/BCA/ACB e.t.c.
   int8_t play_mode;             // ALL/Shuffle/One
   int8_t scr_bright;            // Screen brightness
   int8_t cfg_cur;               // Config menu pointer
+  int8_t cfg_datetime_cur;      // Cursor in datetime menu
   uint8_t volume;               // Amp default volume 32 (0...63)
   uint8_t encType;              // Encoder type
   uint8_t playerSource;         // SD/UART
@@ -181,6 +212,7 @@ enum{
   SCR_BROWSER,
   SCR_CONFIG,
   SCR_RESET_CONFIG,
+  SCR_DATETIME,
   SCR_ABOUT,
   SCR_NOFILES,
   SCR_SDEJECT,
@@ -196,7 +228,7 @@ struct{
   uint8_t music_type;
   int screen_mode=SCR_SDEJECT;
   int prev_screen_mode=SCR_PLAYER;
-  bool scr_mode_update[5]={true,true,true,true,true};
+  bool scr_mode_update[6]={true,true,true,true,true,true};
   bool isPlay=false;
   bool isFinish=true;
   bool autoPlay=true;
@@ -317,7 +349,58 @@ void S3M_Play();
 void setS3mSeparation();
 
 void checkHeap() {
-  printf("Free heap: %d bytes\n",ESP.getFreeHeap());
+  printf("\nTotal heap: %d bytes\n", ESP.getHeapSize());
   printf("Minimum free heap: %d bytes\n",ESP.getMinFreeHeap());
   printf("Maximum allocatable block: %d bytes\n",ESP.getMaxAllocHeap());
+  printf("Free heap: %d bytes\n", ESP.getFreeHeap());
+  printf("\nTotal PSRAM: %d bytes\n", ESP.getPsramSize());
+  printf("Free PSRAM: %d bytes\n\n", ESP.getFreePsram());
+}
+
+//I2C autedect
+byte eepAddress=80;   // 0x50  - default
+byte ampAddress=96;   // 0x60  - default
+byte rtcAddress=104;  // 0x68  - default
+bool foundAmp=false,foundRom=false,foundRtc=false;
+
+void i2cInit(){
+  Wire.begin();
+  byte error,address;
+  int nDevices=0;
+  for(address=1;address<127;address++){
+    Wire.beginTransmission(address);
+    error=Wire.endTransmission();
+    if(error==0){
+      if(address>=eepAddress&&address<=eepAddress+7&&error==0){
+        eepAddress=address;
+        printf("EEPROM found on address: [%d(0x%02X)] \n",eepAddress,eepAddress);
+        foundRom=true;
+      }
+      if(address>=ampAddress&&address<=ampAddress+7&&error==0){
+        ampAddress=address;
+        printf("Amp found on address: [%d(0x%02X)] \n",ampAddress,ampAddress);
+        foundAmp=true;
+      }
+      if(address>=rtcAddress&&address<=rtcAddress+7&&error==0){
+        rtcAddress=address;
+        printf("RTC found on address: [%d(0x%02X)] \n",rtcAddress,rtcAddress);
+        foundRtc=true;
+      }
+      nDevices++;
+      // break;
+    }
+  }
+  if(!foundRom){
+    printf("EEPROM not found on I2C\n");
+    eepAddress=80;
+  }
+  if(!foundAmp){
+    printf("Amp not found on I2C\n");
+    ampAddress=96;
+  }
+  if(!foundRtc){
+    printf("RTC not found on I2C\n");
+    rtcAddress=104;
+  }
+  // Wire.end();
 }

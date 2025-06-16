@@ -6,7 +6,7 @@
 #include "freertos/semphr.h"
 
 #include "defines.h"
-
+#include "rtc.h"
 #include "amp.h"
 #include "keypad.h"
 #include "tftui.h"
@@ -37,11 +37,15 @@
 #include "uart.h"
 
 void setup(){
+  checkHeap();
   initSemaphore();
+  i2cInit();
   blPinSetup();
   display_brightness(0);
   startup_config_load();
   checkStartUpConfig();
+  initRTC();
+  setRTC();
   initVoltage();
   TFTInit();
   buttonsSetup();
@@ -57,6 +61,7 @@ void setup(){
 }
 
 void loop(){
+  getDateTime();
   generalTick();
   player();
   switch(PlayerCTRL.screen_mode){
@@ -71,6 +76,9 @@ void loop(){
       break;
     case SCR_RESET_CONFIG:
       config_reset_default_screen();
+      break;
+    case SCR_DATETIME:
+      time_date_screen();
       break;
     case SCR_ABOUT:
       config_about_screen();

@@ -1,10 +1,19 @@
 #include "driver/ledc.h" //for ay clock
 
-#define AY_CLK       15
+#if defined(CONFIG_IDF_TARGET_ESP32)
 // HC595 define
 #define OUT_SHIFT_DATA_PIN  0 // -> pin 14 of 74HC595 - data input,slave in SI (DS)
 #define OUT_SHIFT_LATCH_PIN 2 // -> pin 12 of 74HC595 - data output latch (ST_CP)
 #define OUT_SHIFT_CLOCK_PIN 4 // -> pin 11 of 74HC595 - clock pin SCK (SH_CP)
+#define AY_CLK              15
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+// AYs HC595 define
+#define OUT_SHIFT_DATA_PIN  15 // -> pin 14 of 74HC595 - data input,slave in SI (DS)
+#define OUT_SHIFT_LATCH_PIN 16 // -> pin 12 of 74HC595 - data output latch (ST_CP)
+#define OUT_SHIFT_CLOCK_PIN 17 // -> pin 11 of 74HC595 - clock pin SCK (SH_CP)
+#define AY_CLK              18 // AY clock pin
+#endif
+
 //2nd hc595 control bits
 #define BIT_AY_RESET 0
 #define BIT_AY_BC1   1
@@ -36,6 +45,7 @@ const uint32_t ay_mixer_remap_table[6*3]={
 };
 
 static void initAYClock(uint32_t clock){
+#if defined(CONFIG_IDF_TARGET_ESP32)
   ledc_timer_config_t ledc_timer={};
   ledc_timer.speed_mode=LEDC_HIGH_SPEED_MODE;
   ledc_timer.timer_num=LEDC_TIMER_0;
@@ -52,6 +62,24 @@ static void initAYClock(uint32_t clock){
   ledc_channel.duty=1; 
   ledc_channel.hpoint=0;
   ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)
+  ledc_timer_config_t ledc_timer={};
+  ledc_timer.speed_mode=LEDC_LOW_SPEED_MODE;//LEDC_HIGH_SPEED_MODE;
+  ledc_timer.timer_num=LEDC_TIMER_2;
+  ledc_timer.duty_resolution=LEDC_TIMER_1_BIT;
+  ledc_timer.freq_hz=clock;
+  ledc_timer.clk_cfg=LEDC_AUTO_CLK; 
+  ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+  ledc_channel_config_t ledc_channel={};
+  ledc_channel.speed_mode=LEDC_LOW_SPEED_MODE;//LEDC_HIGH_SPEED_MODE;
+  ledc_channel.channel=LEDC_CHANNEL_0;
+  ledc_channel.timer_sel=LEDC_TIMER_2;
+  ledc_channel.intr_type=LEDC_INTR_DISABLE;
+  ledc_channel.gpio_num=AY_CLK;
+  ledc_channel.duty=1; 
+  ledc_channel.hpoint=0;
+  ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+#endif
 }
 
 void out_595_byte(byte x){
