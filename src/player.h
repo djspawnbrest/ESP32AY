@@ -985,7 +985,7 @@ void showClock(){
   img.print(tme);
   img.pushSprite(11,10);
   img.deleteSprite();
-  sprintf(tme,"%s %02d %s %04d",daysOfTheWeek[now.dayOfTheWeek()],now.day(),monthsOfTheYear[now.month()],now.year());
+  sprintf(tme,"%s %02d %s %04d",daysOfTheWeekShort[now.dayOfTheWeek()],now.day(),monthsOfTheYear[now.month()],now.year());
   if(clockShowFlag) scrollInfos(tme,2,TFT_MAGENTA,10*13,8*2,10,62,4);
 }
 
