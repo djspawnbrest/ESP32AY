@@ -96,3 +96,6 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 ### UPD 04.03.2025
 - Add new formats: .mod and .s3m tracker module formats
 - Change PCB to revision C
+
+### UPD 18.06.2025
+- Change PCB to revision D (ESP32 chip change to ESP32-S3 (N16R8) chip)
