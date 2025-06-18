@@ -1,0 +1,163 @@
+
+(kicad_symbol_lib (version 20211014) (generator kicad_symbol_editor)
+  (symbol "CSTCE16M0V53-R0" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)
+    (property "Reference" "Y" (id 0) (at -7.62 6.35 0)
+      (effects (font (size 1.27 1.27)) (justify bottom left))
+    )
+    (property "Value" "CSTCE16M0V53-R0" (id 1) (at -7.62 -13.97 0.0)
+      (effects (font (size 1.27 1.27)) (justify top left))
+    )
+    (property "Footprint" "CSTCE16M0V53-R0:OSC_CSTCE16M0V53-R0" (id 2) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "MF" "Murata" (id 4) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "Description" "\n16 MHz Ceramic Resonator Built in Capacitor 15 pF ±0.3% -20°C ~ 80°C Surface Mount\n" (id 5) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "Package" "SMD-3 Murata" (id 6) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "Price" "None" (id 7) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "Check_prices" "https://www.snapeda.com/parts/CSTCE16M0V53-R0/Murata+Electronics+North+America/view-part/?ref=eda" (id 8) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "STANDARD" "Manufacturer Recommendations" (id 9) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "PARTREV" "10/24/2022" (id 10) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "MP" "CSTCE16M0V53-R0" (id 11) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "SnapEDA_Link" "https://www.snapeda.com/parts/CSTCE16M0V53-R0/Murata+Electronics+North+America/view-part/?ref=snap" (id 12) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "MAXIMUM_PACKGE_HEIGHT" "1 mm" (id 13) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "MANUFACTURER" "Murata" (id 14) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "Availability" "In Stock" (id 15) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (property "SNAPEDA_PN" "CSTCE16M0V53-R0" (id 16) (at 0 0 0)
+      (effects (font (size 1.27 1.27)) (justify bottom) hide)
+    )
+    (symbol "CSTCE16M0V53-R0_0_0"
+      (polyline
+        (pts (xy -1.27 3.81) (xy -1.27 2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -1.27 2.54) (xy -1.27 1.27)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -0.635 1.27) (xy -0.635 3.81)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -0.635 3.81) (xy 0.635 3.81)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 0.635 3.81) (xy 0.635 1.27)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 0.635 1.27) (xy -0.635 1.27)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 1.27 3.81) (xy 1.27 2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 1.27 2.54) (xy 1.27 1.27)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -2.8575 -1.5875) (xy -2.8575 -2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -2.8575 -2.54) (xy -2.8575 -3.4925)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -2.2225 -1.5875) (xy -2.2225 -2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -2.2225 -2.54) (xy -2.2225 -3.4925)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 2.54 -1.5875) (xy 2.54 -2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 2.54 -2.54) (xy 2.54 -3.4925)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 3.175 -1.5875) (xy 3.175 -2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 3.175 -2.54) (xy 3.175 -3.4925)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -7.62 2.54) (xy -5.08 2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -5.08 2.54) (xy -1.27 2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 1.27 2.54) (xy 5.08 2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 5.08 2.54) (xy 7.62 2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -2.8575 -2.54) (xy -5.08 -2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy -5.08 -2.54) (xy -5.08 2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 3.175 -2.54) (xy 5.08 -2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 5.08 -2.54) (xy 5.08 2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 0.0 -5.08) (xy 0.0 -2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 0.0 -2.54) (xy -2.2225 -2.54)) (stroke (width 0.254))
+      )
+      (polyline
+        (pts (xy 0.0 -2.54) (xy 2.54 -2.54)) (stroke (width 0.254))
+      )
+      (rectangle (start -7.62 -5.08) (end 7.62 5.08)
+        (stroke (width 0.254)) (fill (type background))
+      )
+      (pin input line (at -12.7 2.54 0) (length 5.08)
+        (name "~"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "1"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin output line (at 12.7 2.54 180.0) (length 5.08)
+        (name "~"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "3"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+      (pin power_in line (at 0.0 -10.16 90.0) (length 5.08)
+        (name "~"
+          (effects (font (size 1.016 1.016)))
+        )
+        (number "2"
+          (effects (font (size 1.016 1.016)))
+        )
+      )
+    )
+  )
+)
