@@ -28,10 +28,10 @@ void setRTC(){
     setTime = DateTime(F(__DATE__), F(__TIME__));
   #ifdef TEST_RTC
     if(!rtc.isrunning()){
-      Serial.println("RTC is NOT running, let's set the time!");
+      printf("RTC is NOT running, let's set the time!\n");
   #else
     if(rtc.lostPower()){
-      Serial.println("RTC is NOT running, let's set the time!");
+      printf("RTC is NOT running, let's set the time!\n");
   #endif
       rtc.adjust(setTime);
       printf("RTC set!\n");
