@@ -478,6 +478,10 @@ TFT_eSPI::TFT_eSPI(int16_t w, int16_t h)
   if (psramFound()) _psram_enable = true; // Enable the use of PSRAM (if available)
   else
 #endif
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  if (psramFound()) _psram_enable = true; // Enable the use of PSRAM (if available)
+  else
+#endif
   _psram_enable = false;
 
   addr_row = 0xFFFF;  // drawPixel command length optimiser
@@ -4851,6 +4855,7 @@ void TFT_eSPI::invertDisplay(bool i)
 ** Description:             Sets a control parameter of an attribute
 **************************************************************************/
 void TFT_eSPI::setAttribute(uint8_t attr_id, uint8_t param) {
+    printf("Attribute set!\n");
     switch (attr_id) {
             break;
         case CP437_SWITCH:
@@ -4862,6 +4867,9 @@ void TFT_eSPI::setAttribute(uint8_t attr_id, uint8_t param) {
             break;
         case PSRAM_ENABLE:
 #if defined (ESP32) && defined (CONFIG_SPIRAM_SUPPORT)
+            if (psramFound()) _psram_enable = param; // Enable the use of PSRAM (if available)
+            else
+#elif defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
             if (psramFound()) _psram_enable = param; // Enable the use of PSRAM (if available)
             else
 #endif

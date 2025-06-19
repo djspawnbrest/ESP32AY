@@ -171,6 +171,14 @@ void* TFT_eSprite::callocSprite(int16_t w, int16_t h, uint8_t frames)
     }
     else
 #endif
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+    if ( psramFound() && _psram_enable && !_tft->DMA_Enabled)
+    {
+      ptr8 = ( uint8_t*) ps_calloc(frames * w * h + frames, sizeof(uint16_t));
+      printf("PSRAM 1\n");
+    }
+    else
+#endif
     {
       ptr8 = ( uint8_t*) calloc(frames * w * h + frames, sizeof(uint16_t));
       //Serial.println("Normal RAM");
@@ -183,6 +191,10 @@ void* TFT_eSprite::callocSprite(int16_t w, int16_t h, uint8_t frames)
     if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(frames * w * h + frames, sizeof(uint8_t));
     else
 #endif
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+    if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(frames * w * h + frames, sizeof(uint8_t));
+    else
+#endif
     ptr8 = ( uint8_t*) calloc(frames * w * h + frames, sizeof(uint8_t));
   }
 
@@ -191,6 +203,10 @@ void* TFT_eSprite::callocSprite(int16_t w, int16_t h, uint8_t frames)
     w = (w+1) & 0xFFFE; // width needs to be multiple of 2, with an extra "off screen" pixel
     _iwidth = w;
 #if defined (ESP32) && defined (CONFIG_SPIRAM_SUPPORT)
+    if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(((frames * w * h) >> 1) + frames, sizeof(uint8_t));
+    else
+#endif
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
     if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(((frames * w * h) >> 1) + frames, sizeof(uint8_t));
     else
 #endif
@@ -208,6 +224,10 @@ void* TFT_eSprite::callocSprite(int16_t w, int16_t h, uint8_t frames)
     _bitwidth = w;       // _bitwidth will not be rotated whereas _iwidth may be
 
 #if defined (ESP32) && defined (CONFIG_SPIRAM_SUPPORT)
+    if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(frames * (w>>3) * h + frames, sizeof(uint8_t));
+    else
+#endif
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
     if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(frames * (w>>3) * h + frames, sizeof(uint8_t));
     else
 #endif

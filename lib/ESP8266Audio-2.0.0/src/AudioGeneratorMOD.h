@@ -34,7 +34,9 @@ class AudioGeneratorMOD:public AudioGenerator{
     virtual bool stop() override;
     virtual bool isRunning() override {return running;}
     bool SetSampleRate(int hz){if(running||(hz<20000)||(hz>96000)) return false; sampleRate=hz; return true;}
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
     bool SetBufferSize(int sz){if(running||(sz<1)) return false; fatBufferSize=sz; return true;}
+    #endif
     bool SetStereoSeparation(int sep){if(running||(sep<0)||(sep>64)) return false; stereoSeparation=sep; return true;}
     bool SetPAL(bool use){if(running) return false; usePAL=use; return true;}
     // Aditional methods
@@ -75,7 +77,9 @@ class AudioGeneratorMOD:public AudioGenerator{
     int sampleRate;
     int samplerateOriginal;
     int bpmOriginal;
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
     int fatBufferSize; //(6*1024) // File system buffers per-CHANNEL (i.e. total mem required is 4 * FATBUFFERSIZE)
+    #endif
     enum {FIXED_DIVIDER=10};             // Fixed-point mantissa used for integer arithmetic
     int stereoSeparation; //STEREOSEPARATION=32;    // 0 (max) to 64 (mono)
     bool usePAL;
@@ -97,9 +101,12 @@ class AudioGeneratorMOD:public AudioGenerator{
 #ifdef ESP8266 // Not sure if C3/C2 have RAM constraints, maybe add them here?
     // support max 4 channels
     enum{ROWS=64,SAMPLES=31,CHANNELS=4,NONOTE=0xFFFF,NONOTE8=0xff};
+#elif defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+    // support max 8 channels
+    enum{ROWS=64,SAMPLES=31,CHANNELS=32,NONOTE=0xFFFF,NONOTE8=0xff};
 #else
     // support max 8 channels
-    enum{ROWS=64,SAMPLES=31,CHANNELS=8,NONOTE=0xFFFF,NONOTE8=0xff};
+    enum{ROWS=64,SAMPLES=31,CHANNELS=16,NONOTE=0xFFFF,NONOTE8=0xff};
 #endif
 
     typedef struct Sample{
@@ -108,6 +115,11 @@ class AudioGeneratorMOD:public AudioGenerator{
       uint8_t volume;
       uint16_t loopBegin;
       uint16_t loopLength;
+      #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+        // keys For PSRAM
+        uint8_t* data=nullptr;
+        bool     isAllocated=false;
+      #endif
     }Sample;
     
     typedef struct mod{
@@ -128,6 +140,10 @@ class AudioGeneratorMOD:public AudioGenerator{
     
     typedef struct player{
       Pattern currentPattern;
+      #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+      Pattern* psramPattern;
+      bool usingPsramPattern;
+      #endif
       uint32_t amiga;
       uint16_t samplesPerTick;
       uint8_t speed;
@@ -168,11 +184,13 @@ class AudioGeneratorMOD:public AudioGenerator{
       uint8_t channelPanning[CHANNELS];
     }mixer;
     
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
     typedef struct fatBuffer{
       uint8_t *channels[CHANNELS]; // Make dynamically allocated [FATBUFFERSIZE];
       uint32_t samplePointer[CHANNELS];
       uint8_t channelSampleNumber[CHANNELS];
     }fatBuffer;
+    #endif
 
     // for calculate mod playback time
     typedef struct calcMod{
@@ -214,7 +232,9 @@ class AudioGeneratorMOD:public AudioGenerator{
     player Player;
     mod Mod;
     mixer Mixer;
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
     fatBuffer FatBuffer;
+    #endif
     calcMod Calc;
 };
 

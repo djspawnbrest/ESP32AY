@@ -26,14 +26,20 @@ void MOD_Cleanup(){
 void MOD_GetInfo(const char *filename){
   modFile=new AudioFileSourceSDFAT(sdCardSemaphore);
   mod=new AudioGeneratorMOD();
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BOARD_HAS_PSRAM)
   mod->SetBufferSize(1024*6);
+  #endif
   mod->SetStereoSeparation(lfsConfig.modStereoSeparation);
   modFile->open(filename);
   mod->initializeFile(modFile);
   mod->initEQBuffers(bufEQ,modEQchn);
   modChannels=mod->getNumberOfChannels();
-  modChannelsEQ=modChannels;
-  if(modChannels<2||modChannels>8){AYInfo.Length=1;skipMod=true;return;}
+  modChannelsEQ=(modChannels>8)?8:modChannels;
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BOARD_HAS_PSRAM)
+  if(modChannels<2||modChannels>16){AYInfo.Length=1;skipMod=true;return;}
+  #else
+  if(modChannels<2||modChannels>32){AYInfo.Length=1;skipMod=true;return;}
+  #endif
   AYInfo.Length=mod->getPlaybackTime();
   mod->getTitle(AYInfo.Name,sizeof(AYInfo.Name));
   mod->getDescription(AYInfo.Author,sizeof(AYInfo.Author));

@@ -12,6 +12,7 @@
 #include "AudioFileSourceID3.h"
 #include "AudioFileSourceLittleFS.h"
 #include "AudioFileSourcePROGMEM.h"
+#include "AudioFileSourcePSRAM.h"
 #include "AudioFileSourceSD.h"
 #include "AudioFileSourceSDFAT.h"
 #include "AudioFileSourceSPIFFS.h"
@@ -51,4 +52,3 @@
 #include "AudioOutputSPIFFSWAV.h"
 #include "AudioOutputSTDIO.h"
 #include "AudioOutputULP.h"
-#include "AudioOutputDeltaSigma.h"

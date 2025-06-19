@@ -41,12 +41,12 @@ void setRTC(){
 
 void getDateTime(){
   if(foundRtc){
-    // static unsigned long previousMillis = 0;
-    // unsigned long currentMillis = millis();
-    // if (currentMillis - previousMillis >= 500) { // 500ms = half second
-    //   previousMillis = currentMillis;
+    static unsigned long previousMillis = 0;
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillis >= 500) { // 500ms = half second
+      previousMillis = currentMillis;
       now = rtc.now();
       // printf("\r%02d/%02d/%02d %02d:%02d:%02d",now.day(),now.month(),now.year(),now.hour(),now.minute(),now.second());
-    // }
+    }
   }
 }

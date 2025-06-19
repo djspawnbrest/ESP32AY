@@ -24,7 +24,12 @@
 #pragma GCC optimize ("O3")
 #pragma GCC optimize ("unroll-loops")
 
+// #define NOTE(r,c)(Player.currentPattern.note8[r][c]==NONOTE8?NONOTE:8*Player.currentPattern.note8[r][c])
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+#define NOTE(r,c)((Player.usingPsramPattern ? Player.psramPattern->note8[r][c] : Player.currentPattern.note8[r][c])==NONOTE8?NONOTE:8*(Player.usingPsramPattern ? Player.psramPattern->note8[r][c] : Player.currentPattern.note8[r][c]))
+#else
 #define NOTE(r,c)(Player.currentPattern.note8[r][c]==NONOTE8?NONOTE:8*Player.currentPattern.note8[r][c])
+#endif
 
 #ifndef min
 #define min(X,Y)((X)<(Y)?(X):(Y))
@@ -144,7 +149,9 @@ static inline uint16_t MakeWord(uint8_t h,uint8_t l){return h<<8|l;}
 AudioGeneratorMOD::AudioGeneratorMOD(){
   sampleRate=44100;
   samplerateOriginal=sampleRate;
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BOARD_HAS_PSRAM)
   fatBufferSize=6*1024;
+  #endif
   stereoSeparation=32;
   mixerTick=0;
   usePAL=false;
@@ -159,7 +166,18 @@ AudioGeneratorMOD::AudioGeneratorMOD(){
   // Initialize Mixer structure
 	memset(&Mixer,0,sizeof(Mixer));
 	// Initialize FatBuffer
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BOARD_HAS_PSRAM)
 	memset(&FatBuffer,0,sizeof(FatBuffer));
+  #endif
+  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  // Allocate pattern in PSRAM
+  Pattern* psramPattern = (Pattern*)ps_malloc(sizeof(Pattern));
+  if(psramPattern){
+    memset(psramPattern,0,sizeof(Pattern));
+    Player.psramPattern=psramPattern;
+    Player.usingPsramPattern=true;
+  }
+  #endif
 }
 
 AudioGeneratorMOD::~AudioGeneratorMOD(){
@@ -180,6 +198,13 @@ bool AudioGeneratorMOD::stop(){
 		freeFatBuffer();
 		bufferFreed=true;
 	}
+  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  if(Player.usingPsramPattern&&Player.psramPattern){
+    free(Player.psramPattern);
+    Player.psramPattern=nullptr;
+    Player.usingPsramPattern=false;
+  }
+  #endif
   return true;
 }
 
@@ -243,6 +268,7 @@ bool AudioGeneratorMOD::begin(AudioFileSource *source,AudioOutput *out){
     return false;
   }
 
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
   // Initialize buffer for s3m channels
 	for(uint8_t channel=0;channel<Mod.numberOfChannels;channel++){
 		FatBuffer.samplePointer[channel]=0;
@@ -255,6 +281,7 @@ bool AudioGeneratorMOD::begin(AudioFileSource *source,AudioOutput *out){
 			return false;
 		}
 	}
+  #endif
 
   running=true;
   return true;
@@ -350,6 +377,9 @@ void AudioGeneratorMOD::LoadSamples(){
   uint32_t formatOffset=(oldFormat)?600:1084;
   uint8_t smpls=(oldFormat)?15:SAMPLES;
   uint32_t fileOffset=formatOffset+Mod.numberOfPatterns*ROWS*Mod.numberOfChannels*4-1;
+  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  uint32_t initialPos=file->getPos();
+  #endif
   for(i=0;i<smpls;i++){
     if(Mod.samples[i].length){
       Mixer.sampleBegin[i]=fileOffset;
@@ -365,8 +395,32 @@ void AudioGeneratorMOD::LoadSamples(){
       }
       fileOffset+=Mod.samples[i].length;
     }
-
   }
+  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  //read samples in PSRAM
+  for(i=0;i<smpls;i++){
+    if(Mod.samples[i].length){
+      Mod.samples[i].data=(uint8_t*)ps_malloc(Mod.samples[i].length);
+      if(!Mod.samples[i].data){
+        printf("Failed to allocate PSRAM for sample [%d] data\n",i);
+        free(Mod.samples[i].data);
+        file->seek(initialPos,SEEK_SET);
+        return;
+			}
+      file->seek(Mixer.sampleBegin[i],SEEK_SET); //set position to sample begin
+      if(file->read(Mod.samples[i].data,Mod.samples[i].length)!=Mod.samples[i].length){
+        printf("Failed to read raw sample data\n");
+        free(Mod.samples[i].data);
+        file->seek(initialPos,SEEK_SET);
+        return;
+      }
+      Mod.samples[i].isAllocated=true;
+    }
+    // printf("Free PSRAM: %d bytes after sample [%d]\n",ESP.getFreePsram(),i);
+  }
+  // printf("Free PSRAM: %d bytes after samples load.\n",ESP.getFreePsram());
+  file->seek(initialPos,SEEK_SET);
+  #endif
 }
 
 bool AudioGeneratorMOD::LoadPattern(uint8_t pattern){
@@ -377,6 +431,16 @@ bool AudioGeneratorMOD::LoadPattern(uint8_t pattern){
   uint16_t amigaPeriod;
   uint32_t  formatOffset=(oldFormat)?600:1084;
   if(!file->seek(formatOffset+pattern*ROWS*Mod.numberOfChannels*4,SEEK_SET)) return false;
+  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  if(Player.usingPsramPattern&&Player.psramPattern){
+    free(Player.psramPattern);
+    Player.psramPattern=nullptr;
+    Player.usingPsramPattern=false;
+  }
+  Pattern* currentPattern=Player.usingPsramPattern?Player.psramPattern:&Player.currentPattern;
+  #else
+  Pattern* currentPattern = &Player.currentPattern;
+  #endif
   for(row=0;row<ROWS;row++){
     for(channel=0;channel<Mod.numberOfChannels;channel++){
       if(4!=file->read(temp,4)) return false;
@@ -491,6 +555,12 @@ bool AudioGeneratorMOD::ProcessRow(){
   int noteCount[96]={0}; // Array for counting the number of notes encountered
 
   if(!running) return false;
+
+  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  Pattern* currentPattern=Player.usingPsramPattern?Player.psramPattern:&Player.currentPattern;
+  #else
+  Pattern* currentPattern = &Player.currentPattern;
+  #endif
 
   Player.lastRow=Player.row++;
   jumpFlag=false;
@@ -644,17 +714,36 @@ bool AudioGeneratorMOD::ProcessRow(){
       default:
         Mixer.channelPanning[channel]=128-stereoSeparation;
     }
+    // Calculate which element of the channelEQBuffer this channel should contribute to
+    // and properly average values when multiple channels map to the same element
     if(buffersInitialized){
       int8_t vol=Mixer.channelVolume[channel];
       int noteIndex=getNoteIndex(Player.amigaPeriod[channel]);
       if(vol>64) vol=64;
-      channelEQBuffer[channel]=vol; //>>2; // -> convert from 0-64 to 0-16 channel EQ //eqBuffer if need
+      // Map channel to one of the 8 elements in channelEQBuffer
+      uint8_t targetIndex=channel%8;
+      // Keep track of how many channels have contributed to each buffer element
+      static uint8_t channelCount[8]={0};
+      // Reset counts at the start of each row processing
+      if(channel==0){
+        memset(channelCount,0,sizeof(channelCount));
+      }
+      // Update the buffer with a running average
+      channelCount[targetIndex]++;
+      // Calculate running average: newAvg = ((oldAvg * (n-1)) + newValue) / n
+      if(channelCount[targetIndex]==1){
+        // First value for this element
+        channelEQBuffer[targetIndex]=vol;
+      }else{
+        // Average with existing values
+        channelEQBuffer[targetIndex]=((channelEQBuffer[targetIndex]*(channelCount[targetIndex]-1))+vol)/channelCount[targetIndex];
+      }
+      // Process note volume for the equalizer
       if(noteIndex>=0&&noteIndex<=95){
         volSum[noteIndex]+=vol;
         noteCount[noteIndex]++;
       }
     }
-  
   }
   if(buffersInitialized){
     // Calculate the average volume value for each note
@@ -771,8 +860,7 @@ bool AudioGeneratorMOD::ProcessTick(){
   return true;
 }
 
-bool AudioGeneratorMOD::RunPlayer()
-{
+bool AudioGeneratorMOD::RunPlayer(){
   if(!running) return false;
 
   if(trackFrameInitialized){
@@ -842,11 +930,16 @@ void AudioGeneratorMOD::GetSample(int16_t sample[2]){
 	}
   sumL=0;
   sumR=0;
+
   for(channel=0;channel<Mod.numberOfChannels;channel++){
-    if(!Mixer.channelFrequency[channel]||
-      !Mod.samples[Mixer.channelSampleNumber[channel]].length) continue;
+
+    if(!Mixer.channelFrequency[channel]||!Mod.samples[Mixer.channelSampleNumber[channel]].length) continue;
+
     Mixer.channelSampleOffset[channel]+=Mixer.channelFrequency[channel];
+
     if(!Mixer.channelVolume[channel]) continue;
+    
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BOARD_HAS_PSRAM)
     samplePointer=Mixer.sampleBegin[Mixer.channelSampleNumber[channel]]+(Mixer.channelSampleOffset[channel]>>FIXED_DIVIDER);
     if(Mixer.sampleLoopLength[Mixer.channelSampleNumber[channel]]){
       if(samplePointer>=Mixer.sampleLoopEnd[Mixer.channelSampleNumber[channel]]){
@@ -860,9 +953,7 @@ void AudioGeneratorMOD::GetSample(int16_t sample[2]){
       }
 
     }
-    if(samplePointer<FatBuffer.samplePointer[channel]||
-        samplePointer>=FatBuffer.samplePointer[channel]+fatBufferSize-1||
-        Mixer.channelSampleNumber[channel]!=FatBuffer.channelSampleNumber[channel]){
+    if(samplePointer<FatBuffer.samplePointer[channel]||samplePointer>=FatBuffer.samplePointer[channel]+fatBufferSize-1||Mixer.channelSampleNumber[channel]!=FatBuffer.channelSampleNumber[channel]){
       uint32_t toRead=Mixer.sampleEnd[Mixer.channelSampleNumber[channel]]-samplePointer+1;
       if(toRead>(uint32_t)fatBufferSize) toRead=fatBufferSize;
       if(!file->seek(samplePointer,SEEK_SET)) continue;
@@ -872,6 +963,24 @@ void AudioGeneratorMOD::GetSample(int16_t sample[2]){
     }
     current=FatBuffer.channels[channel][(samplePointer-FatBuffer.samplePointer[channel])];
     next=FatBuffer.channels[channel][(samplePointer+1-FatBuffer.samplePointer[channel])];
+    #else
+    uint8_t sampleNum=Mixer.channelSampleNumber[channel];
+    samplePointer=Mixer.channelSampleOffset[channel]>>FIXED_DIVIDER;
+    if(Mod.samples[sampleNum].loopLength>2){
+      uint32_t loopEnd=Mod.samples[sampleNum].loopBegin+Mod.samples[sampleNum].loopLength;
+      if(samplePointer>=loopEnd){
+        Mixer.channelSampleOffset[channel]-=Mod.samples[sampleNum].loopLength<<FIXED_DIVIDER;
+        samplePointer=Mixer.channelSampleOffset[channel]>>FIXED_DIVIDER;
+      }
+    }else{
+      if(samplePointer>=Mod.samples[sampleNum].length){
+        Mixer.channelFrequency[channel]=0;
+        samplePointer=Mod.samples[sampleNum].length-1;
+      }
+    }
+    current=static_cast<int8_t>(Mod.samples[sampleNum].data[samplePointer]);
+    next=(samplePointer+1< Mod.samples[sampleNum].length)?static_cast<int8_t>(Mod.samples[sampleNum].data[samplePointer+1]):current;
+    #endif
 	
     // preserve a few more bits from sample interpolation,by upscaling input values.
     // This does (slightly) reduce quantization noise in higher frequencies,typically above 8kHz.
@@ -939,8 +1048,10 @@ bool AudioGeneratorMOD::LoadMOD(){
     Player.tremoloSpeed[channel]=0;
     Player.tremoloDepth[channel]=0;
     Player.tremoloPos[channel]=0;
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
     FatBuffer.samplePointer[channel]=0;
     FatBuffer.channelSampleNumber[channel]=0xFF;
+    #endif
     Mixer.channelSampleOffset[channel]=0;
     Mixer.channelFrequency[channel]=0;
     Mixer.channelVolume[channel]=0;
@@ -1077,6 +1188,7 @@ void AudioGeneratorMOD::freeFatBuffer(){
 	static bool inCleanup=false;
 	if(inCleanup) return;
 	inCleanup=true;
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
 	if(FatBuffer.channels){
 		for(int i=0;i<CHANNELS;i++){
 			if(FatBuffer.channels[i]){	// Check if pointer is not NULL
@@ -1086,7 +1198,19 @@ void AudioGeneratorMOD::freeFatBuffer(){
 		}
 	}
 	memset(&FatBuffer,0,sizeof(FatBuffer));
-	bufferFreed=true;
+  #endif
+  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  uint8_t smpls=(oldFormat)?15:SAMPLES;
+  for(uint8_t i=0;i<smpls;i++){
+    if(Mod.samples[i].isAllocated&&Mod.samples[i].data!=nullptr){
+      free(Mod.samples[i].data);
+      Mod.samples[i].data=nullptr;
+      Mod.samples[i].isAllocated=false;
+    }
+  }
+  // printf("Free PSRAM: %d bytes after free buffer\n",ESP.getFreePsram());
+  #endif
+  bufferFreed=true;
 	inCleanup=false;
 }
 

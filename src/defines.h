@@ -101,15 +101,16 @@ unsigned long mlsPrevTrack=0;
 #define S_UPD1 10 // player name
 #define S_UPD2 15 // player author
 #define S_UPD3 6  // player file
+#define S_UPD4 20 // date
 // scroll end or start
 #define S_UPD_DIR 1000
-unsigned int sUpC[4]={S_UPD0,S_UPD1,S_UPD2,S_UPD3};
-unsigned int sUp[4]={S_UPD0,S_UPD1,S_UPD2,S_UPD3};
+unsigned int sUpC[5]={S_UPD0,S_UPD1,S_UPD2,S_UPD3,S_UPD4};
+unsigned int sUp[5]={S_UPD0,S_UPD1,S_UPD2,S_UPD3,S_UPD4};
 
 unsigned long mls=0;
-unsigned long mlsS[4]={0,0,0,0};
-int sPos[4]={0,0,0,0};
-bool scrollDir[4]={true,true,true,true};
+unsigned long mlsS[5]={0,0,0,0,0};
+int sPos[5]={0,0,0,0,0};
+bool scrollDir[5]={true,true,true,true,true};
 
 // bool update_list=true;
 bool scroll=false;
