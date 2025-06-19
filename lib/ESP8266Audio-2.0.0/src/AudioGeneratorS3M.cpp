@@ -802,15 +802,42 @@ bool AudioGeneratorS3M::ProcessRow(){
         Mixer.channelPanning[channel]=128-stereoSeparation;
     }
 
-		if(buffersInitialized&&note<108){
+		// if(buffersInitialized&&note<108){
+    //   int8_t vol=Mixer.channelVolume[channel];
+    //   int noteIndex=(note>95)?note-96:note;
+    //   vol=(vol>64)?64:vol;
+    //   if(channel<8) channelEQBuffer[channel]=vol; // >> 2; // -> convert from 0-64 to 0-16 channel EQ //eqBuffer if need
+	  // 	else{
+		// 		channelEQBuffer[channel-8]+=vol;
+		// 		channelEQBuffer[channel-8]=channelEQBuffer[channel-8]>>2;
+		// 	}
+    //   if(noteIndex>=0&&noteIndex<=95){
+    //     volSum[noteIndex]+=vol;
+    //     noteCount[noteIndex]++;
+    //   }
+    // }
+    if(buffersInitialized&&note<108){
       int8_t vol=Mixer.channelVolume[channel];
       int noteIndex=(note>95)?note-96:note;
       vol=(vol>64)?64:vol;
-      if(channel<8) channelEQBuffer[channel]=vol; // >> 2; // -> convert from 0-64 to 0-16 channel EQ //eqBuffer if need
-	  	else{
-				channelEQBuffer[channel-8]+=vol;
-				channelEQBuffer[channel-8]=channelEQBuffer[channel-8]>>2;
-			}
+      // Map channel to one of the 8 elements in channelEQBuffer
+      uint8_t targetIndex=channel%8;
+      // Keep track of how many channels have contributed to each buffer element
+      static uint8_t channelCount[8]={0};
+      // Reset counts at the start of each row processing
+      if (channel==0){
+        memset(channelCount,0,sizeof(channelCount));
+      }
+      // Update the buffer with a running average
+      channelCount[targetIndex]++;
+      // Calculate running average: newAvg = ((oldAvg * (n-1)) + newValue) / n
+      if(channelCount[targetIndex]==1){
+        // First value for this element
+        channelEQBuffer[targetIndex]=vol;
+      }else{
+        // Average with existing values
+        channelEQBuffer[targetIndex]=((channelEQBuffer[targetIndex]*(channelCount[targetIndex]-1))+vol)/channelCount[targetIndex];
+      }
       if(noteIndex>=0&&noteIndex<=95){
         volSum[noteIndex]+=vol;
         noteCount[noteIndex]++;
