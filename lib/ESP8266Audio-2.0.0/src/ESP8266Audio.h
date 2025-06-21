@@ -37,6 +37,7 @@
 #include "AudioGeneratorS3M.h"
 #include "AudioGeneratorTalkie.h"
 #include "AudioGeneratorWAV.h"
+#include "AudioGeneratorXM.h"
 
 // Render(output) sounds
 #include "AudioOutputBuffer.h"
