@@ -34,7 +34,7 @@ class AudioGeneratorMOD:public AudioGenerator{
     virtual bool stop() override;
     virtual bool isRunning() override {return running;}
     bool SetSampleRate(int hz){if(running||(hz<20000)||(hz>96000)) return false; sampleRate=hz; return true;}
-    #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
     bool SetBufferSize(int sz){if(running||(sz<1)) return false; fatBufferSize=sz; return true;}
     #endif
     bool SetStereoSeparation(int sep){if(running||(sep<0)||(sep>64)) return false; stereoSeparation=sep; return true;}
@@ -77,7 +77,7 @@ class AudioGeneratorMOD:public AudioGenerator{
     int sampleRate;
     int samplerateOriginal;
     int bpmOriginal;
-    #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
     int fatBufferSize; //(6*1024) // File system buffers per-CHANNEL (i.e. total mem required is 4 * FATBUFFERSIZE)
     #endif
     enum {FIXED_DIVIDER=10};             // Fixed-point mantissa used for integer arithmetic
@@ -184,7 +184,7 @@ class AudioGeneratorMOD:public AudioGenerator{
       uint8_t channelPanning[CHANNELS];
     }mixer;
     
-    #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
     typedef struct fatBuffer{
       uint8_t *channels[CHANNELS]; // Make dynamically allocated [FATBUFFERSIZE];
       uint32_t samplePointer[CHANNELS];
@@ -232,7 +232,7 @@ class AudioGeneratorMOD:public AudioGenerator{
     player Player;
     mod Mod;
     mixer Mixer;
-    #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
     fatBuffer FatBuffer;
     #endif
     calcMod Calc;

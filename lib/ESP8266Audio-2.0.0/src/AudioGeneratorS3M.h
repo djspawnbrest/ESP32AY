@@ -3,24 +3,12 @@
 
 #include "AudioGenerator.h"
 
+#if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
 #define FATBUFFERSIZE 3*1024
+#endif
 #define FIXED_DIVIDER 10				// Fixed-point mantissa used for integer arithmetic
 #define SAMPLERATE 44100
 #define AMIGA (14317056L/sampleRate<<FIXED_DIVIDER) 	//s3m player
-
-/* Sample flags */
-#define SAMPLE_FLAG_DIFF	0x0001	/* Differential */
-#define SAMPLE_FLAG_UNS		0x0002	/* Unsigned */
-#define SAMPLE_FLAG_8BDIFF	0x0004
-#define SAMPLE_FLAG_7BIT	0x0008
-#define SAMPLE_FLAG_NOLOAD	0x0010	/* Get from buffer, don't load */
-#define SAMPLE_FLAG_BIGEND	0x0040	/* Big-endian */
-#define SAMPLE_FLAG_VIDC	0x0080	/* Archimedes VIDC logarithmic */
-#define SAMPLE_FLAG_INTERLEAVED	0x0100	/* Interleaved stereo sample */
-#define SAMPLE_FLAG_FULLREP	0x0200	/* Play full sample before looping */
-#define SAMPLE_FLAG_ADLIB	0x1000	/* Adlib synth instrument */
-#define SAMPLE_FLAG_HSC		0x2000	/* HSC Adlib synth instrument */
-#define SAMPLE_FLAG_ADPCM	0x4000	/* ADPCM4 encoded samples */
 
 // Effects
 #define SETSPEED                 0x1  // Axx
@@ -65,7 +53,9 @@ class AudioGeneratorS3M:public AudioGenerator{
 		virtual bool stop() override;
 		virtual bool isRunning() override { return running; };
 		bool SetSampleRate(int hz){if(running||(hz<20000)||(hz>96000)) return false; sampleRate=samplerateOriginal=hz; return true;}
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
 		bool SetBufferSize(int sz){if(running||(sz<1)) return false; fatBufferSize=sz; return true;}
+    #endif
 		bool SetStereoSeparation(int sep){if(running||(sep<0)||(sep>64)) return false; stereoSeparation=sep; return true;}
 		// Aditional methods
 		void setPause(bool pause);
@@ -78,6 +68,7 @@ class AudioGeneratorS3M:public AudioGenerator{
 		void initTrackFrame(unsigned long* tF);
 		void SetSeparation(int sep);
 		void setSpeed(uint8_t speed);
+    bool hasOPL(){return haveOPL;}
 
 	public:
 		bool isPaused;
@@ -105,12 +96,15 @@ class AudioGeneratorS3M:public AudioGenerator{
 		int mixerTick;
 		int sampleRate;
 		int samplerateOriginal; // Original sample rate (need for speed change)
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
 		int fatBufferSize; // File system buffers per-CHANNEL (i.e. total mem required is 6 * FATBUFFERSIZE)
+    #endif
 		int stereoSeparation; // 0 (max), 64 (half stereo), 128 (mono)
 		uint8_t* eqBuffer=nullptr; // Pointer to the equalizer buffer
 		uint8_t* channelEQBuffer=nullptr; // Pointer to the equalizer channel buffer
 		bool buffersInitialized=false; // Equalizer buffers initialization flag
 		bool trackFrameInitialized=false; // Track frame initialization flag
+    bool haveOPL=false; // OPL samples flag if have
 		unsigned long* trackFrame; // Track frame pointer
 		float totalSeconds;  // For storing total playback duration
 		volatile bool stopping=false;
@@ -144,10 +138,10 @@ class AudioGeneratorS3M:public AudioGenerator{
 		bool is16bit=false;
 		bool isStereo=false;
 		#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
-        // keys For PSRAM
-        uint8_t* data=nullptr;
-        bool     isAllocated=false;
-      	#endif
+      // keys For PSRAM
+      uint8_t* data=nullptr;
+      bool     isAllocated=false;
+    #endif
 	}S3M_Instrument;
 
 	typedef struct S3M_Pattern{
@@ -224,17 +218,21 @@ class AudioGeneratorS3M:public AudioGenerator{
 		int32_t channelLastVolume[CHANNELS];  // For volume ramping
 	}mixer;
 
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
 	typedef struct fatBuffer{
 		uint8_t *channels[CHANNELS]; // Make dynamically allocated [FATBUFFERSIZE];
 		uint32_t samplePointer[CHANNELS];
 		uint8_t channelSampleNumber[CHANNELS];
 	}fatBuffer;
+  #endif
 
 	// Our state lives here...
 	s3m_player Player;
 	s3m S3m;
 	mixer Mixer;
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
 	fatBuffer FatBuffer;
+  #endif
 };
 
 #endif

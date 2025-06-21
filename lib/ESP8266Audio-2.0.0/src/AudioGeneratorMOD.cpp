@@ -25,8 +25,8 @@
 #pragma GCC optimize ("unroll-loops")
 
 // #define NOTE(r,c)(Player.currentPattern.note8[r][c]==NONOTE8?NONOTE:8*Player.currentPattern.note8[r][c])
-#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
-#define NOTE(r,c)((Player.usingPsramPattern ? Player.psramPattern->note8[r][c] : Player.currentPattern.note8[r][c])==NONOTE8?NONOTE:8*(Player.usingPsramPattern ? Player.psramPattern->note8[r][c] : Player.currentPattern.note8[r][c]))
+#if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
+#define NOTE(r,c)((Player.usingPsramPattern?Player.psramPattern->note8[r][c]:Player.currentPattern.note8[r][c])==NONOTE8?NONOTE:8*(Player.usingPsramPattern?Player.psramPattern->note8[r][c]:Player.currentPattern.note8[r][c]))
 #else
 #define NOTE(r,c)(Player.currentPattern.note8[r][c]==NONOTE8?NONOTE:8*Player.currentPattern.note8[r][c])
 #endif
@@ -149,7 +149,7 @@ static inline uint16_t MakeWord(uint8_t h,uint8_t l){return h<<8|l;}
 AudioGeneratorMOD::AudioGeneratorMOD(){
   sampleRate=44100;
   samplerateOriginal=sampleRate;
-  #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BOARD_HAS_PSRAM)
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
   fatBufferSize=6*1024;
   #endif
   stereoSeparation=32;
@@ -166,10 +166,10 @@ AudioGeneratorMOD::AudioGeneratorMOD(){
   // Initialize Mixer structure
 	memset(&Mixer,0,sizeof(Mixer));
 	// Initialize FatBuffer
-  #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BOARD_HAS_PSRAM)
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
 	memset(&FatBuffer,0,sizeof(FatBuffer));
   #endif
-  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
   // Allocate pattern in PSRAM
   Pattern* psramPattern = (Pattern*)ps_malloc(sizeof(Pattern));
   if(psramPattern){
@@ -198,7 +198,7 @@ bool AudioGeneratorMOD::stop(){
 		freeFatBuffer();
 		bufferFreed=true;
 	}
-  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
   if(Player.usingPsramPattern&&Player.psramPattern){
     free(Player.psramPattern);
     Player.psramPattern=nullptr;
@@ -268,7 +268,7 @@ bool AudioGeneratorMOD::begin(AudioFileSource *source,AudioOutput *out){
     return false;
   }
 
-  #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
   // Initialize buffer for s3m channels
 	for(uint8_t channel=0;channel<Mod.numberOfChannels;channel++){
 		FatBuffer.samplePointer[channel]=0;
@@ -377,7 +377,7 @@ void AudioGeneratorMOD::LoadSamples(){
   uint32_t formatOffset=(oldFormat)?600:1084;
   uint8_t smpls=(oldFormat)?15:SAMPLES;
   uint32_t fileOffset=formatOffset+Mod.numberOfPatterns*ROWS*Mod.numberOfChannels*4-1;
-  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
   uint32_t initialPos=file->getPos();
   #endif
   for(i=0;i<smpls;i++){
@@ -396,7 +396,7 @@ void AudioGeneratorMOD::LoadSamples(){
       fileOffset+=Mod.samples[i].length;
     }
   }
-  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
   //read samples in PSRAM
   for(i=0;i<smpls;i++){
     if(Mod.samples[i].length){
@@ -431,7 +431,7 @@ bool AudioGeneratorMOD::LoadPattern(uint8_t pattern){
   uint16_t amigaPeriod;
   uint32_t  formatOffset=(oldFormat)?600:1084;
   if(!file->seek(formatOffset+pattern*ROWS*Mod.numberOfChannels*4,SEEK_SET)) return false;
-  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
   if(Player.usingPsramPattern&&Player.psramPattern){
     free(Player.psramPattern);
     Player.psramPattern=nullptr;
@@ -556,7 +556,7 @@ bool AudioGeneratorMOD::ProcessRow(){
 
   if(!running) return false;
 
-  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
   Pattern* currentPattern=Player.usingPsramPattern?Player.psramPattern:&Player.currentPattern;
   #else
   Pattern* currentPattern = &Player.currentPattern;
@@ -939,7 +939,7 @@ void AudioGeneratorMOD::GetSample(int16_t sample[2]){
 
     if(!Mixer.channelVolume[channel]) continue;
     
-    #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BOARD_HAS_PSRAM)
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
     samplePointer=Mixer.sampleBegin[Mixer.channelSampleNumber[channel]]+(Mixer.channelSampleOffset[channel]>>FIXED_DIVIDER);
     if(Mixer.sampleLoopLength[Mixer.channelSampleNumber[channel]]){
       if(samplePointer>=Mixer.sampleLoopEnd[Mixer.channelSampleNumber[channel]]){
@@ -1048,7 +1048,7 @@ bool AudioGeneratorMOD::LoadMOD(){
     Player.tremoloSpeed[channel]=0;
     Player.tremoloDepth[channel]=0;
     Player.tremoloPos[channel]=0;
-    #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
+    #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
     FatBuffer.samplePointer[channel]=0;
     FatBuffer.channelSampleNumber[channel]=0xFF;
     #endif
@@ -1188,7 +1188,7 @@ void AudioGeneratorMOD::freeFatBuffer(){
 	static bool inCleanup=false;
 	if(inCleanup) return;
 	inCleanup=true;
-  #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
 	if(FatBuffer.channels){
 		for(int i=0;i<CHANNELS;i++){
 			if(FatBuffer.channels[i]){	// Check if pointer is not NULL
@@ -1199,7 +1199,7 @@ void AudioGeneratorMOD::freeFatBuffer(){
 	}
 	memset(&FatBuffer,0,sizeof(FatBuffer));
   #endif
-  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
   uint8_t smpls=(oldFormat)?15:SAMPLES;
   for(uint8_t i=0;i<smpls;i++){
     if(Mod.samples[i].isAllocated&&Mod.samples[i].data!=nullptr){

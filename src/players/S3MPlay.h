@@ -41,7 +41,9 @@ void S3M_GetInfo(const char *filename){
   s3m->getTitle(AYInfo.Name,sizeof(AYInfo.Name));
   s3m->getDescription(AYInfo.Author,sizeof(AYInfo.Author));
   s3m->initTrackFrame(&PlayerCTRL.trackFrame);
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
 	s3m->SetSampleRate((modChannels>14)?32000:44100);
+  #endif
 }
 
 void S3M_Loop(){
