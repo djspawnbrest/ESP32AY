@@ -318,7 +318,7 @@ bool AudioGeneratorS3M::LoadHeader(){
 void AudioGeneratorS3M::LoadSamples(){
 	uint8_t i;
 	uint32_t fileOffset;
-  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
   uint32_t initialPos=file->getPos();
   #endif
 	for(i=0;i<S3m.numberOfInstruments;i++){
@@ -337,7 +337,7 @@ void AudioGeneratorS3M::LoadSamples(){
 			}
 		}
 	}
-  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
   //read samples in PSRAM
   for(i=0;i<S3m.numberOfInstruments;i++){
     if(S3m.instruments[i].length&&S3m.instruments[i].type<2){
@@ -1337,7 +1337,7 @@ void AudioGeneratorS3M::freeFatBuffer(){
 	}
 	memset(&FatBuffer,0,sizeof(FatBuffer));
   #endif
-  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
   for(uint8_t i=0;i<S3m.numberOfInstruments;i++){
     if(S3m.instruments[i].isAllocated&&S3m.instruments[i].data!=nullptr){
       free(S3m.instruments[i].data);

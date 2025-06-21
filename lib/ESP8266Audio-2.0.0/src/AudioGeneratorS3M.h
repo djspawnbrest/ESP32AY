@@ -116,7 +116,7 @@ class AudioGeneratorS3M:public AudioGenerator{
 #ifdef ESP8266 // Not sure if C3/C2 have RAM constraints, maybe add them here?
 		// support max 4 channels
 		enum{ROWS=64,INSTRUMENTS=99,CHANNELS=4,NONOTE=108,KEYOFF=109,NOVOLUME=255};
-#elif defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
 		// support max 32 channels
 		enum{ROWS=64,INSTRUMENTS=99,CHANNELS=32,NONOTE=132,KEYOFF=133,NOVOLUME=255};
 #else
@@ -137,7 +137,7 @@ class AudioGeneratorS3M:public AudioGenerator{
 		bool loop;
 		bool is16bit=false;
 		bool isStereo=false;
-		#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+		#if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
       // keys For PSRAM
       uint8_t* data=nullptr;
       bool     isAllocated=false;

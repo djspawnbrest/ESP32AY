@@ -32,7 +32,7 @@ void S3M_GetInfo(const char *filename){
   s3m->initEQBuffers(bufEQ,modEQchn);
   modChannels=s3m->getNumberOfChannels();
   modChannelsEQ=(modChannels>8)?8:modChannels;
-  #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BOARD_HAS_PSRAM)
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
   if(modChannels<2||modChannels>16){AYInfo.Length=1;skipMod=true;return;}
   #else
   if(modChannels<2||modChannels>32){AYInfo.Length=1;skipMod=true;return;}

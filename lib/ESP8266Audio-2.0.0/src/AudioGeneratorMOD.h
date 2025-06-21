@@ -101,7 +101,7 @@ class AudioGeneratorMOD:public AudioGenerator{
 #ifdef ESP8266 // Not sure if C3/C2 have RAM constraints, maybe add them here?
     // support max 4 channels
     enum{ROWS=64,SAMPLES=31,CHANNELS=4,NONOTE=0xFFFF,NONOTE8=0xff};
-#elif defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+#elif defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
     // support max 8 channels
     enum{ROWS=64,SAMPLES=31,CHANNELS=32,NONOTE=0xFFFF,NONOTE8=0xff};
 #else
@@ -115,7 +115,7 @@ class AudioGeneratorMOD:public AudioGenerator{
       uint8_t volume;
       uint16_t loopBegin;
       uint16_t loopLength;
-      #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+      #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
         // keys For PSRAM
         uint8_t* data=nullptr;
         bool     isAllocated=false;
@@ -140,7 +140,7 @@ class AudioGeneratorMOD:public AudioGenerator{
     
     typedef struct player{
       Pattern currentPattern;
-      #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+      #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
       Pattern* psramPattern;
       bool usingPsramPattern;
       #endif
