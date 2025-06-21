@@ -8,6 +8,20 @@
 #define SAMPLERATE 44100
 #define AMIGA (14317056L/sampleRate<<FIXED_DIVIDER) 	//s3m player
 
+/* Sample flags */
+#define SAMPLE_FLAG_DIFF	0x0001	/* Differential */
+#define SAMPLE_FLAG_UNS		0x0002	/* Unsigned */
+#define SAMPLE_FLAG_8BDIFF	0x0004
+#define SAMPLE_FLAG_7BIT	0x0008
+#define SAMPLE_FLAG_NOLOAD	0x0010	/* Get from buffer, don't load */
+#define SAMPLE_FLAG_BIGEND	0x0040	/* Big-endian */
+#define SAMPLE_FLAG_VIDC	0x0080	/* Archimedes VIDC logarithmic */
+#define SAMPLE_FLAG_INTERLEAVED	0x0100	/* Interleaved stereo sample */
+#define SAMPLE_FLAG_FULLREP	0x0200	/* Play full sample before looping */
+#define SAMPLE_FLAG_ADLIB	0x1000	/* Adlib synth instrument */
+#define SAMPLE_FLAG_HSC		0x2000	/* HSC Adlib synth instrument */
+#define SAMPLE_FLAG_ADPCM	0x4000	/* ADPCM4 encoded samples */
+
 // Effects
 #define SETSPEED                 0x1  // Axx
 #define JUMPTOORDER              0x2  // Bxx
@@ -108,20 +122,32 @@ class AudioGeneratorS3M:public AudioGenerator{
 #ifdef ESP8266 // Not sure if C3/C2 have RAM constraints, maybe add them here?
 		// support max 4 channels
 		enum{ROWS=64,INSTRUMENTS=99,CHANNELS=4,NONOTE=108,KEYOFF=109,NOVOLUME=255};
+#elif defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+		// support max 32 channels
+		enum{ROWS=64,INSTRUMENTS=99,CHANNELS=32,NONOTE=132,KEYOFF=133,NOVOLUME=255};
 #else
 		// support max 8 channels
 		enum{ROWS=64,INSTRUMENTS=99,CHANNELS=16,NONOTE=132,KEYOFF=133,NOVOLUME=255};
 #endif
 
 	typedef struct S3M_Instrument{
+		uint8_t type;
 		uint8_t name[28];
-		uint16_t sampleParapointer;
-		uint16_t length;
-		uint16_t loopBegin;
-		uint16_t loopEnd;
+		uint32_t sampleParapointer;
+		uint32_t length;
+		uint32_t loopBegin;
+		uint32_t loopEnd;
 		uint8_t volume;
+		uint8_t pack;
 		uint16_t middleC;
 		bool loop;
+		bool is16bit=false;
+		bool isStereo=false;
+		#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+        // keys For PSRAM
+        uint8_t* data=nullptr;
+        bool     isAllocated=false;
+      	#endif
 	}S3M_Instrument;
 
 	typedef struct S3M_Pattern{
@@ -139,6 +165,7 @@ class AudioGeneratorS3M:public AudioGenerator{
 		uint16_t numberOfInstruments;
 		uint16_t numberOfPatterns;
 		bool fastVolumeSlides;
+		bool signedSample; //file format information
 		uint8_t globalVolume;
 		uint8_t order[256];
 		uint8_t numberOfChannels;

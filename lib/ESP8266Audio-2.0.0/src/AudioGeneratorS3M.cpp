@@ -56,6 +56,18 @@ static const uint8_t sine[64] PROGMEM={
 
 static inline uint16_t MakeWord(uint8_t h,uint8_t l){return h<<8|l;}
 
+/* Convert signed to unsigned sample data */
+static inline void convert_signal(uint8_t *p, int l, int r){
+	uint16_t *w = (uint16_t *)p;
+	if (r) {
+		for (; l--; w++)
+			*w += 0x8000;
+	} else {
+		for (; l--; p++)
+			*p += (unsigned char)0x80;
+	}
+}
+
 AudioGeneratorS3M::AudioGeneratorS3M(){
 	sampleRate=44100;
 	samplerateOriginal=sampleRate;
@@ -171,22 +183,19 @@ bool AudioGeneratorS3M::LoadHeader(){
 	uint8_t temp8;
 
 	file->seek(0,SEEK_SET); // reset to zero file position
-
-	if(28!=file->read(S3m.name,28)) return false;
+	if(28!=file->read(S3m.name,28)) return false;					// Song name
 	file->seek(0x20,SEEK_SET);
-
-	if(2!=file->read(&songLength,2)) return false;
-	if(2!=file->read(&S3m.numberOfInstruments,2)) return false;
-	if(2!=file->read(&numberOfPatterns,2)) return false;
-
+	if(2!=file->read(&songLength,2)) return false;				// Song length (in orders)
+	if(2!=file->read(&S3m.numberOfInstruments,2)) return false;	// Instruments count
+	if(2!=file->read(&numberOfPatterns,2)) return false;	// Count of orders
 	S3m.fastVolumeSlides=false;
 	if(2!=file->read(&temp16,2)) return false;         		// Flags
 	if(temp16&64) S3m.fastVolumeSlides=true;           		// Fast volume slides flag
 	if(2!=file->read(&temp16,2)) return false;	       		// Created with tracker / version
 	if((temp16&0xFFF)==300) S3m.fastVolumeSlides=true; 		// Fast volume slides for Scream Tracker 3.00
-
+	if(1!=file->read(&temp8,1)) return false; 						// File format information (signed or unsigned sample)
+	S3m.signedSample=(temp8==1)?true:false;								// Flag signed/unsigned samples data type
 	file->seek(0x30,SEEK_SET);
-
 	if(1!=file->read(&S3m.globalVolume,1)) return false;	// Global volume
 	if(1!=file->read(&Player.speed,1)) return false;			// Initial speed
 	if(1!=file->read(&temp8,1)) return false;							// initial tempo (BPM)
@@ -196,7 +205,6 @@ bool AudioGeneratorS3M::LoadHeader(){
 	if(1!=file->read(&masterVolume,1)) return false;			// Check bit 8 later (Master volume)
 	if(1!=file->read(&temp8,1)) return false;		          // Skip ultraclick removal
 	if(1!=file->read(&defaultPanning,1)) return false;		// Initial panning
-
 	file->seek(0x40,SEEK_SET);
 	// Find the number of channels and remap the used channels linearly
 	S3m.numberOfChannels = 0;
@@ -248,29 +256,29 @@ bool AudioGeneratorS3M::LoadHeader(){
 	// Load instruments
 	for(i=0;i<S3m.numberOfInstruments;i++){
 		// Jump to instrument parapointer and skip filename
-		file->seek((S3m.instrumentParapointers[i]<<4)+13,SEEK_SET);
+		file->seek((S3m.instrumentParapointers[i]<<4),SEEK_SET);				 // Set file position to instrument
+		if(1!=file->read(&S3m.instruments[i].type,1)) return false; 		 // Instrument type (0=empty instrument (message only), 1=PCM instrument, 2 and higher - OPL (not supported yet:) ))
+		file->seek(12,SEEK_CUR);																				 // skip char[12]	filename	Original instrument filename in DOS 8.3 format, no terminating null
 		// Find parapointer to actual sample data (3 bytes)
 		if(1!=file->read(&temp8,1)) return false;		               			 // High byte
 		if(2!=file->read(&temp16,2)) return false;	      			    	   // Low word
-		// S3m.instruments[i].sampleParapointer=temp16;										 // (temp8 << 16) + temp16?
-		S3m.instruments[i].sampleParapointer=(temp8<<16)|temp16;
-
-		if(2!=file->read(&S3m.instruments[i].length,2)) return false;
-		if(2!=file->read(&temp16,2)) return false;	                  	 // Skip two bytes
-		if(2!=file->read(&S3m.instruments[i].loopBegin,2)) return false;
-		if(2!=file->read(&temp16,2)) return false;	                  	 // Skip two bytes
-		if(2!=file->read(&S3m.instruments[i].loopEnd,2)) return false;
-		if(2!=file->read(&temp16,2)) return false;			              	 // Skip two bytes
-		if(1!=file->read(&S3m.instruments[i].volume,1)) return false;
-		if(2!=file->read(&temp16,2)) return false;		              		 // Skip two bytes
+		S3m.instruments[i].sampleParapointer=(temp8<<16)|temp16;				 // Sample paraptr
+		if(4!=file->read(&S3m.instruments[i].length,4)) return false;		 // Sample length
+		if(4!=file->read(&S3m.instruments[i].loopBegin,4)) return false; // Sample loop begin
+		if(4!=file->read(&S3m.instruments[i].loopEnd,4)) return false;	 // Sample loop end
+		if(1!=file->read(&S3m.instruments[i].volume,1)) return false;		 // Sample volume
+		if(1!=file->read(&temp8,1)) return false;												 // Skip one byte
+		if(1!=file->read(&S3m.instruments[i].pack,1)) return false;			 // Packing type
 		if(1!=file->read(&temp8,1)) return false;			                	 // Instrument flags
-		S3m.instruments[i].loop=temp8&1;	                            	 // Loop enable flag
-		if(2!=file->read(&S3m.instruments[i].middleC,2)) return false;
+		S3m.instruments[i].loop=temp8&0x01;	                             // Loop enable flag
+		S3m.instruments[i].isStereo=temp8&0x02;													 // Stereo sample flag
+    S3m.instruments[i].is16bit=temp8&0x04;	                         // 16-bit sample flag
+		if(S3m.instruments[i].is16bit) S3m.instruments[i].length*=2;		 // If the sample is 16 bits, multiply its length by 2
+		if(S3m.instruments[i].isStereo) S3m.instruments[i].length*=2;		 // If the sample is stereo, multiply its length by 2
+		if(2!=file->read(&S3m.instruments[i].middleC,2)) return false;	 // Middle C
 		if(!S3m.instruments[i].middleC) S3m.instruments[i].middleC=8363; // Avoid division by zero
-		file->seek(14,SEEK_CUR);
-
-		if(28!=file->read(S3m.instruments[i].name,28)) return false;		 // Followed by "SCRS"
-
+		file->seek(14,SEEK_CUR);																				 // Skip 14 bytes (Always zero, used in-memory during playback)
+		if(28!=file->read(S3m.instruments[i].name,28)) return false;		 // Sample name (Sample title, for display to user. Must be null-terminated.) Followed by "SCRS" (4 bytes) we skip this
 		if(S3m.instruments[i].loopEnd>S3m.instruments[i].length) S3m.instruments[i].loopEnd=S3m.instruments[i].length;
 	}
 #ifdef DEBUG_LHEADER
@@ -299,7 +307,8 @@ bool AudioGeneratorS3M::LoadHeader(){
 		printf("Instrument %2d: %.28s\n",i,S3m.instruments[i].name);
 		printf("  Length: %d\n",S3m.instruments[i].length);
 		printf("  Loop: %s (Begin: %d, End: %d)\n",S3m.instruments[i].loop?"Yes":"No",S3m.instruments[i].loopBegin,S3m.instruments[i].loopEnd);
-		printf("  Volume: %d\n", S3m.instruments[i].volume);
+		printf("  is 16 bit: %s\n", S3m.instruments[i].is16bit?"Yes":"No");
+    printf("  Volume: %d\n", S3m.instruments[i].volume);
 		printf("  Middle C: %d\n",S3m.instruments[i].middleC);
 	}
 	
@@ -316,15 +325,17 @@ bool AudioGeneratorS3M::LoadHeader(){
 void AudioGeneratorS3M::LoadSamples(){
 	uint8_t i;
 	uint32_t fileOffset;
-
+  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  uint32_t initialPos=file->getPos();
+  #endif
 	for(i=0;i<S3m.numberOfInstruments;i++){
 		fileOffset=(S3m.instruments[i].sampleParapointer<<4)-1;
 		if(S3m.instruments[i].length){
 			Mixer.sampleBegin[i]=fileOffset;
 			Mixer.sampleEnd[i]=fileOffset+S3m.instruments[i].length;
 			if(S3m.instruments[i].loop&&S3m.instruments[i].loopEnd-S3m.instruments[i].loopBegin>2){
-				Mixer.sampleLoopBegin[i]=fileOffset+S3m.instruments[i].loopBegin;
-				Mixer.sampleLoopLength[i]=S3m.instruments[i].loopEnd-S3m.instruments[i].loopBegin;
+				Mixer.sampleLoopBegin[i]=fileOffset+(S3m.instruments[i].loopBegin);
+				Mixer.sampleLoopLength[i]=(S3m.instruments[i].loopEnd-S3m.instruments[i].loopBegin);
 				Mixer.sampleLoopEnd[i]=fileOffset+S3m.instruments[i].loopEnd;
 			}else{
 				Mixer.sampleLoopBegin[i]=0;
@@ -333,6 +344,31 @@ void AudioGeneratorS3M::LoadSamples(){
 			}
 		}
 	}
+  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  //read samples in PSRAM
+  for(i=0;i<S3m.numberOfInstruments;i++){
+    if(S3m.instruments[i].length&&S3m.instruments[i].type<2){
+      S3m.instruments[i].data=(uint8_t*)ps_malloc(S3m.instruments[i].length);
+      if(!S3m.instruments[i].data){
+        printf("Failed to allocate PSRAM for sample [%d] data\n",i);
+        free(S3m.instruments[i].data);
+        file->seek(initialPos,SEEK_SET);
+        return;
+			}
+      file->seek(Mixer.sampleBegin[i],SEEK_SET); //set position to sample begin
+      if(file->read(S3m.instruments[i].data,S3m.instruments[i].length)!=S3m.instruments[i].length){
+        printf("Failed to read raw sample data\n");
+        free(S3m.instruments[i].data);
+        file->seek(initialPos,SEEK_SET);
+        return;
+      }
+      S3m.instruments[i].isAllocated=true;
+    }
+    // printf("Free PSRAM: %d bytes after sample [%d]\n",ESP.getFreePsram(),i);
+  }
+  // printf("Free PSRAM: %d bytes after samples load.\n",ESP.getFreePsram());
+  file->seek(initialPos,SEEK_SET);
+  #endif
 }
 
 bool AudioGeneratorS3M::LoadPattern(uint8_t pattern){
@@ -802,20 +838,6 @@ bool AudioGeneratorS3M::ProcessRow(){
         Mixer.channelPanning[channel]=128-stereoSeparation;
     }
 
-		// if(buffersInitialized&&note<108){
-    //   int8_t vol=Mixer.channelVolume[channel];
-    //   int noteIndex=(note>95)?note-96:note;
-    //   vol=(vol>64)?64:vol;
-    //   if(channel<8) channelEQBuffer[channel]=vol; // >> 2; // -> convert from 0-64 to 0-16 channel EQ //eqBuffer if need
-	  // 	else{
-		// 		channelEQBuffer[channel-8]+=vol;
-		// 		channelEQBuffer[channel-8]=channelEQBuffer[channel-8]>>2;
-		// 	}
-    //   if(noteIndex>=0&&noteIndex<=95){
-    //     volSum[noteIndex]+=vol;
-    //     noteCount[noteIndex]++;
-    //   }
-    // }
     if(buffersInitialized&&note<108){
       int8_t vol=Mixer.channelVolume[channel];
       int noteIndex=(note>95)?note-96:note;
@@ -1056,74 +1078,110 @@ bool AudioGeneratorS3M::RunPlayer(){
   return true;
 }
 
-void AudioGeneratorS3M::GetSample(int16_t sample[2]){
-	// Early exit check with combined conditions
+void AudioGeneratorS3M::GetSample(int16_t sample[2]) {
 	if(!running||!file||!output||stopping||bufferFreed||isPaused){
 		sample[AudioOutput::LEFTCHANNEL]=sample[AudioOutput::RIGHTCHANNEL]=0;
 		return;
 	}
-	// Use direct int32_t accumulation
+
 	int32_t sumL=0;
 	int32_t sumR=0;
 
-	// Process all active channels
 	for(uint8_t channel=0;channel<S3m.numberOfChannels;channel++){
-		// Combined early skip conditions
 		if(!Mixer.channelFrequency[channel]
-		||!FatBuffer.channels[channel]
-		||!S3m.instruments[Mixer.channelSampleNumber[channel]].length
-		||!Player.lastAmigaPeriod[channel]
-		||!Mixer.channelVolume[channel]){
+			||!FatBuffer.channels[channel]
+			||!S3m.instruments[Mixer.channelSampleNumber[channel]].length
+			||S3m.instruments[Mixer.channelSampleNumber[channel]].type>=2	// Skip if OPL sample type
+			||!Player.lastAmigaPeriod[channel]
+			||!Mixer.channelVolume[channel]) {
 			continue;
 		}
-		// Update sample offset once
-		const uint32_t freq=Mixer.channelFrequency[channel];
+
+		bool is16bit=S3m.instruments[Mixer.channelSampleNumber[channel]].is16bit;
+		uint32_t freq=Mixer.channelFrequency[channel];
 		Mixer.channelSampleOffset[channel]+=freq;
-		// Calculate sample pointer
-		uint32_t samplePointer=Mixer.sampleBegin[Mixer.channelSampleNumber[channel]]+(Mixer.channelSampleOffset[channel]>>FIXED_DIVIDER);
-		// Handle looping with minimal branching
+
+		uint32_t samplePointer=Mixer.sampleBegin[Mixer.channelSampleNumber[channel]];
+		uint32_t sampleOffset=Mixer.channelSampleOffset[channel]>>FIXED_DIVIDER;
+		samplePointer+=is16bit?sampleOffset*2:sampleOffset;
+
 		const uint32_t loopLength=Mixer.sampleLoopLength[Mixer.channelSampleNumber[channel]];
 		if(loopLength){
-			if(samplePointer>=Mixer.sampleLoopEnd[Mixer.channelSampleNumber[channel]]){
+			uint32_t sampleLoopEnd = Mixer.sampleLoopEnd[Mixer.channelSampleNumber[channel]];
+			// if(is16bit){
+			//   sampleLoopEnd=Mixer.sampleBegin[Mixer.channelSampleNumber[channel]]+loopLength;
+			// }
+			if(samplePointer>=sampleLoopEnd){
 				Mixer.channelSampleOffset[channel]-=(loopLength<<FIXED_DIVIDER);
-				samplePointer-=loopLength;
+				samplePointer=Mixer.sampleBegin[Mixer.channelSampleNumber[channel]]+((Mixer.channelSampleOffset[channel]>>FIXED_DIVIDER)*(is16bit?2:1));
 			}
-		}else if(samplePointer>=Mixer.sampleEnd[Mixer.channelSampleNumber[channel]]){
-			Mixer.channelFrequency[channel]=0;
-			continue;
+		}else{
+			uint32_t sampleEnd=Mixer.sampleEnd[Mixer.channelSampleNumber[channel]];
+			// if(is16bit){
+			//   sampleEnd=Mixer.sampleBegin[Mixer.channelSampleNumber[channel]]+S3m.instruments[Mixer.channelSampleNumber[channel]].length*2;
+			// }
+			if(samplePointer>=sampleEnd){
+				Mixer.channelFrequency[channel]=0;
+				continue;
+			}
 		}
-		// Buffer management with minimal checks
+
 		const uint32_t bufOffset=samplePointer-FatBuffer.samplePointer[channel];
-		if(bufOffset>=fatBufferSize-1||Mixer.channelSampleNumber[channel]!=FatBuffer.channelSampleNumber[channel]){
+		if(bufOffset>=fatBufferSize-(is16bit?4:2)||Mixer.channelSampleNumber[channel]!=FatBuffer.channelSampleNumber[channel]){
 			const uint32_t toRead=min(Mixer.sampleEnd[Mixer.channelSampleNumber[channel]]-samplePointer+1,(uint32_t)fatBufferSize);
-			// Read sample from file
-			if(!file->seek(samplePointer,SEEK_SET)||toRead!=file->read(FatBuffer.channels[channel],toRead)) continue;
-			// Update buffer
+			if(!file->seek(samplePointer,SEEK_SET)||toRead!=file->read(FatBuffer.channels[channel],toRead)){
+				continue;
+			}
 			FatBuffer.samplePointer[channel]=samplePointer;
 			FatBuffer.channelSampleNumber[channel]=Mixer.channelSampleNumber[channel];
 		}
-		// Fast sample interpolation
-		const uint8_t* buf=FatBuffer.channels[channel];
+
+		uint8_t* buf=FatBuffer.channels[channel];
 		const uint32_t pos=samplePointer-FatBuffer.samplePointer[channel];
-		const int16_t current=((int16_t)buf[pos]-128)<<8;
-		const int16_t next=((int16_t)buf[pos+1]-128)<<8;
-		const uint16_t frac=(Mixer.channelSampleOffset[channel]&((1<<FIXED_DIVIDER)-1))>>FIXED_DIVIDER;
-		// Linear interpolation
-		const int32_t sample=current+((next-current)*frac);
-		// Volume and panning calculation
-		const int32_t vol=Mixer.channelVolume[channel];
-		const int32_t panL=min(128-Mixer.channelPanning[channel],64);
+		int32_t sampleValue;
+
+		if(is16bit){
+			uint16_t raw_current=(buf[pos]<<8)|buf[pos+1];
+			uint16_t raw_next=(buf[pos+2]<<8)|buf[pos+3];
+			int16_t current,next;
+			if(S3m.signedSample){
+				current=(int16_t)raw_current;
+				next=(int16_t)raw_next;
+			}else{
+				current=(int16_t)(raw_current-0x8000);
+				next=(int16_t)(raw_next-0x8000);
+			}
+			const uint16_t frac=(Mixer.channelSampleOffset[channel]&((1<<FIXED_DIVIDER)-1))>>(FIXED_DIVIDER-8);
+			sampleValue=current+((next-current)*frac>>8);
+		}else{
+			uint8_t raw_current=buf[pos];
+			uint8_t raw_next=buf[pos+1];
+			int16_t current,next;
+			if(S3m.signedSample){
+				current=((int16_t)raw_current)<<8;
+				next=((int16_t)raw_next)<<8;
+			}else{
+				current=((int16_t)(raw_current-0x80))<<8;
+				next=((int16_t)(raw_next-0x80))<<8;
+			}
+			const uint16_t frac=(Mixer.channelSampleOffset[channel]&((1<<FIXED_DIVIDER)-1))>>(FIXED_DIVIDER-8);
+			sampleValue=current+((next-current)*frac>>8);
+		}
+
+		int32_t vol=constrain(Mixer.channelVolume[channel],0,64);
+		const int32_t panL=min(0x80-Mixer.channelPanning[channel],64);
 		const int32_t panR=min(Mixer.channelPanning[channel],64);
-		// Accumulate with pre-shifted values
-	#if defined(USE_EXTERNAL_DAC) || defined(CONFIG_IDF_TARGET_ESP32S3)
-		sumL+=(sample*vol*panL)>>15;
-		sumR+=(sample*vol*panR)>>15;
+
+		int64_t scaledL=(int64_t)sampleValue*vol*panL;
+		int64_t scaledR=(int64_t)sampleValue*vol*panR;
+	#if defined(USE_EXTERNAL_DAC)||defined(CONFIG_IDF_TARGET_ESP32S3)
+		sumL+=scaledL>>15;
+		sumR+=scaledR>>15;
 	#else
-		sumL+=(sample*vol*panL)>>14;
-		sumR+=(sample*vol*panR)>>14;
+		sumL+=scaledL>>14;
+		sumR+= scaledR>>14;
 	#endif
 	}
-	// Apply calculated sample with fast clipping
 	sample[AudioOutput::LEFTCHANNEL]=(int16_t)constrain(sumL,INT16_MIN,INT16_MAX);
 	sample[AudioOutput::RIGHTCHANNEL]=(int16_t)constrain(sumR,INT16_MIN,INT16_MAX);
 }
@@ -1239,6 +1297,7 @@ void AudioGeneratorS3M::freeFatBuffer(){
 	static bool inCleanup = false;
 	if(inCleanup) return;
 	inCleanup=true;
+  // #if !defined(CONFIG_IDF_TARGET_ESP32S3) || !defined(BOARD_HAS_PSRAM)
 	if(FatBuffer.channels){
 		for(int i=0;i<CHANNELS;i++){
 			if(FatBuffer.channels[i]){	// Check if pointer is not NULL
@@ -1248,6 +1307,17 @@ void AudioGeneratorS3M::freeFatBuffer(){
 		}
 	}
 	memset(&FatBuffer,0,sizeof(FatBuffer));
+  // #endif
+  #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  for(uint8_t i=0;i<S3m.numberOfInstruments;i++){
+    if(S3m.instruments[i].isAllocated&&S3m.instruments[i].data!=nullptr){
+      free(S3m.instruments[i].data);
+      S3m.instruments[i].data=nullptr;
+      S3m.instruments[i].isAllocated=false;
+    }
+  }
+  // printf("Free PSRAM: %d bytes after free buffer\n",ESP.getFreePsram());
+  #endif
 	bufferFreed=true;
 	inCleanup=false;
 }

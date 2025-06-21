@@ -31,8 +31,12 @@ void S3M_GetInfo(const char *filename){
   s3m->initializeFile(modFile);
   s3m->initEQBuffers(bufEQ,modEQchn);
   modChannels=s3m->getNumberOfChannels();
-  if(modChannels<2||modChannels>16){AYInfo.Length=1;skipMod=true;return;}
   modChannelsEQ=(modChannels>8)?8:modChannels;
+  #if !defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(BOARD_HAS_PSRAM)
+  if(modChannels<2||modChannels>16){AYInfo.Length=1;skipMod=true;return;}
+  #else
+  if(modChannels<2||modChannels>32){AYInfo.Length=1;skipMod=true;return;}
+  #endif
   AYInfo.Length=s3m->getPlaybackTime();
   s3m->getTitle(AYInfo.Name,sizeof(AYInfo.Name));
   s3m->getDescription(AYInfo.Author,sizeof(AYInfo.Author));
