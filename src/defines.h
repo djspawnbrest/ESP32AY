@@ -377,7 +377,7 @@ void i2cInit(){
         printf("EEPROM found on address: [%d(0x%02X)] \n",eepAddress,eepAddress);
         foundRom=true;
       }
-      if(address>=ampAddress&&address<=ampAddress+7&&error==0){
+      if(address>=ampAddress&&address<rtcAddress&&error==0){
         ampAddress=address;
         printf("Amp found on address: [%d(0x%02X)] \n",ampAddress,ampAddress);
         foundAmp=true;
