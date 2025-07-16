@@ -531,12 +531,20 @@ void player(){
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
     if(!sd_fat.card()->sectorCount()){
       xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)
+      umountSD();
+    #endif
       PlayerCTRL.isFinish=true;
       PlayerCTRL.scr_mode_update[SCR_PLAYER]=true;
       PlayerCTRL.isSDeject=true;
       PlayerCTRL.screen_mode=SCR_SDEJECT;
       return;
     }
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)
+    else{
+      mountSD();
+    }
+  #endif
     xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
   if(lfsConfig.playerSource==PLAYER_MODE_SD){
@@ -567,7 +575,10 @@ void player(){
       case TYPE_PSG:
       case TYPE_RSF:
       case TYPE_YRG:
-        fillBuffer();
+        if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+          fillBuffer();
+          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+        }
         break;
       default:
         break;

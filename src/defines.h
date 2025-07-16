@@ -2,7 +2,7 @@
 #include <SPI.h>
 #include <Wire.h>
 
-#define VERSION         "3.42"
+#define VERSION         "3.43"
 
 #define CLK_SPECTRUM  	1773400
 #define CLK_PENTAGON  	1750000

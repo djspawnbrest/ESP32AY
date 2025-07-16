@@ -5,21 +5,17 @@ GyverFIFO<byte,bufSize>playBuf;
 byte yrgFrame=0;
 
 void fillBuffer(){
-  // if (xSemaphoreTake(sdCardSemaphore, portMAX_DELAY) == pdTRUE) {
-    if(sd_fat.card()->sectorCount()){
-      while(playBuf.availableForWrite()&&sd_play_file.available()){
-        playBuf.write(sd_play_file.read());
-      }
-      if(PlayerCTRL.music_type==TYPE_PSG||PlayerCTRL.music_type==TYPE_RSF){
-        if(playBuf.availableForWrite()&&!sd_play_file.available()) playBuf.write(0xFD);
-      }
-    }else{
-      muteAYBeep();
-      playBuf.clear();
-      // playerCTRL.isSDeject=true;
+  if(sd_fat.card()->sectorCount()){
+    while(playBuf.availableForWrite()&&sd_play_file.available()){
+      playBuf.write(sd_play_file.read());
     }
-  //   xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
-  // }
+    if(PlayerCTRL.music_type==TYPE_PSG||PlayerCTRL.music_type==TYPE_RSF){
+      if(playBuf.availableForWrite()&&!sd_play_file.available()) playBuf.write(0xFD);
+    }
+  }else{
+    muteAYBeep();
+    playBuf.clear();
+  }
 }
 
 void PSG_Cleanup(){

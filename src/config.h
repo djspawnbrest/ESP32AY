@@ -1,5 +1,10 @@
 #include <LittleFS.h>
 #include "csmos.h"
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#include "Adafruit_TinyUSB.h"
+Adafruit_USBD_MSC usb_msc;
+bool sdMounted=false;
+#endif
 
 bool cfgSet=false;
 bool sdFlag=false;
@@ -779,9 +784,85 @@ void startUpConfig(){
   }
 }
 
+//ESP32S3 usb <--> SD mass storage device
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+// Callback invoked when received READ10 command.
+// Copy disk's data to buffer (up to bufsize) and
+// return number of copied bytes (must be multiple of block size)
+// Callback invoked when received READ10 command.
+// Copy disk's data to buffer (up to bufsize) and
+// return number of copied bytes (must be multiple of block size)
+int32_t msc_read_cb(uint32_t lba,void* buffer,uint32_t bufsize){
+  bool rc;
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    rc=sd_fat.card()->readSectors(lba,(uint8_t*)buffer,bufsize/512);
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  }
+  return rc?bufsize:-1;
+}
+// Callback invoked when received WRITE10 command.
+// Process data in buffer to disk's storage and 
+// return number of written bytes (must be multiple of block size)
+int32_t msc_write_cb(uint32_t lba,uint8_t* buffer,uint32_t bufsize){
+  bool rc;
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    rc=sd_fat.card()->writeSectors(lba,buffer,bufsize/512);
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  }
+  return rc?bufsize:-1;
+}
+// Callback invoked when WRITE10 command is completed (status received and accepted by host).
+// used to flush any pending cache.
+void msc_flush_cb(void){
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    sd_fat.card()->syncDevice();
+    //sd_fat.cacheClear();
+    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+  }
+}
+
+void mountSD(){
+  if(sd_fat.begin(SD_CONFIG)&&!sdMounted){
+    uint32_t block_count=sd_fat.card()->sectorCount();
+    usb_msc.setCapacity(0,block_count,512);
+    usb_msc.setUnitReady(0,true);
+    sdMounted=true;
+  }
+}
+
+void umountSD(){
+  usb_msc.setUnitReady(0,false);
+  sdMounted=false;
+}
+
+void massStorage(){
+  // Manual begin() is required on core without built-in support e.g. mbed rp2040
+  if(!TinyUSBDevice.isInitialized()){ 
+    TinyUSBDevice.begin(1);
+  }
+  // Set disk vendor id, product id and revision with string up to 8, 16, 4 characters respectively
+  usb_msc.setID("ZxPOD","SD <-->","1.0");
+  usb_msc.setReadWriteCallback(0,msc_read_cb,msc_write_cb,msc_flush_cb);
+  mountSD();
+  usb_msc.begin();
+  // printf("USB msc is begin!!!\n");
+
+  // // If already enumerated, additional class driverr begin() e.g msc, hid, midi won't take effect until re-enumeration
+  // if(TinyUSBDevice.mounted()){
+  //   TinyUSBDevice.detach();
+  //   delay(10);
+  //   TinyUSBDevice.attach();
+  // }
+}
+#endif
+
 void checkStartUpConfig(){
+  // TinyUSBDevice.begin(2);
   pinMode(DN_BTN,INPUT);
-  pinMode(UP_BTN, INPUT);
+  pinMode(UP_BTN,INPUT);
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  // pinMode(OK_BTN,INPUT);
+#endif
   if(digitalRead(DN_BTN)==LOW){
     startUpConfig();
   }
@@ -796,4 +877,9 @@ void checkStartUpConfig(){
     sd_config_default();
     sd_config_save();
   }
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  // if(digitalRead(OK_BTN)==LOW){
+    massStorage();
+  // }
+#endif
 }
