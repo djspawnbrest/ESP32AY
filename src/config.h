@@ -212,6 +212,8 @@ void time_date_screen(){
   int8_t hour=now.hour();
   int8_t minute=now.minute();
   int8_t second=now.second();
+  static uint16_t year_set;
+  static int8_t month_set,day_set,hour_set,minute_set,second_set;
   if(PlayerCTRL.scr_mode_update[SCR_DATETIME]){
     PlayerCTRL.scr_mode_update[SCR_DATETIME]=false;
     int8_t ccur=lfsConfig.cfg_datetime_cur;
@@ -224,17 +226,17 @@ void time_date_screen(){
     spr_println(img,0,1,PSTR("Date&Time"),2,ALIGN_CENTER,WILD_CYAN);
     //print message
     spr_printmenu_item(img,2,2,PSTR("Show clock:"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,lfsConfig.showClock?PSTR("Yes"):PSTR("No"),TFT_YELLOW);
-    sprintf(buf,"%s%04d%s",(cfgDateTimeSet&&ccur==1)?"<":"",year,(cfgDateTimeSet&&ccur==1)?">":"");
+    sprintf(buf,"%s%04d%s",(cfgDateTimeSet&&ccur==1)?"<":"",(cfgDateTimeSet&&ccur==1)?year_set:year,(cfgDateTimeSet&&ccur==1)?">":"");
     spr_printmenu_item(img,3,2,PSTR("Year:"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
-    sprintf(buf,"%s%s%s",(cfgDateTimeSet&&ccur==2)?"<":"",monthsOfTheYear[month],(cfgDateTimeSet&&ccur==2)?">":"");
+    sprintf(buf,"%s%s%s",(cfgDateTimeSet&&ccur==2)?"<":"",monthsOfTheYear[(cfgDateTimeSet&&ccur==2)?month_set:month],(cfgDateTimeSet&&ccur==2)?">":"");
     spr_printmenu_item(img,4,2,PSTR("Month:"),WILD_CYAN_D2,ccur==2?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
-    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==3)?"<":"",day,(cfgDateTimeSet&&ccur==3)?">":"");
+    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==3)?"<":"",(cfgDateTimeSet&&ccur==3)?day_set:day,(cfgDateTimeSet&&ccur==3)?">":"");
     spr_printmenu_item(img,5,2,PSTR("Date:"),WILD_CYAN_D2,ccur==3?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
-    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==4)?"<":"",hour,(cfgDateTimeSet&&ccur==4)?">":"");
+    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==4)?"<":"",(cfgDateTimeSet&&ccur==4)?hour_set:hour,(cfgDateTimeSet&&ccur==4)?">":"");
     spr_printmenu_item(img,6,2,PSTR("Hour:"),WILD_CYAN_D2,ccur==4?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
-    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==5)?"<":"",minute,(cfgDateTimeSet&&ccur==5)?">":"");
+    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==5)?"<":"",(cfgDateTimeSet&&ccur==5)?minute_set:minute,(cfgDateTimeSet&&ccur==5)?">":"");
     spr_printmenu_item(img,7,2,PSTR("Minute:"),WILD_CYAN_D2,ccur==5?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
-    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==6)?"<":"",second,(cfgDateTimeSet&&ccur==6)?">":"");
+    sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==6)?"<":"",(cfgDateTimeSet&&ccur==6)?second_set:second,(cfgDateTimeSet&&ccur==6)?">":"");
     spr_printmenu_item(img,8,2,PSTR("Second:"),WILD_CYAN_D2,ccur==6?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
     //formatted date and time
     sprintf(buf, "%02d %s %04d",now.day(),monthsOfTheYear[now.month()],now.year());
@@ -248,39 +250,39 @@ void time_date_screen(){
   }
   //survey keypad
   if(enc.left()&&lcdBlackout==false){
-    PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
     if(!cfgDateTimeSet){
       lfsConfig.cfg_datetime_cur--;
       if(lfsConfig.cfg_datetime_cur<0) lfsConfig.cfg_datetime_cur=6;
     }else{
       switch(lfsConfig.cfg_datetime_cur){
         case 1:
-          year--;
-          if(year<1970) year=1970;
+          year_set--;
+          if(year_set<1970) year_set=1970;
           break;
         case 2:
-          month--;
-          if(month<1) month=12;
+          month_set--;
+          if(month_set<1) month_set=12;
           break;
         case 3:
-          day--;
-          if(day<1) day=31;
+          day_set--;
+          if(day_set<1) day_set=31;
           break;
         case 4:
-          hour--;
-          if(hour<0) hour=23;
+          hour_set--;
+          if(hour_set<0) hour_set=23;
           break;
         case 5:
-          minute--;
-          if(minute<0) minute=59;
+          minute_set--;
+          if(minute_set<0) minute_set=59;
           break;
         case 6:
-          second--;
-          if(second<0) second=59;
+          second_set--;
+          if(second_set<0) second_set=59;
           break;
       }
-      rtc.adjust(DateTime(year,month,day,hour,minute,second));
+      // rtc.adjust(DateTime(year,month,day,hour,minute,second));
     }
+    PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
   }
   if(enc.right()&&lcdBlackout==false){
     if(!cfgDateTimeSet){
@@ -289,50 +291,72 @@ void time_date_screen(){
     }else{
       switch(lfsConfig.cfg_datetime_cur){
         case 1:
-          year++;
-          if(year>2099) year=2099;
+          year_set++;
+          if(year_set>2099) year_set=2099;
           break;
         case 2:
-          month++;
-          if(month>12) month=1;
+          month_set++;
+          if(month_set>12) month_set=1;
           break;
         case 3:
-          day++;
-          if(day>31) day=1;
+          day_set++;
+          if(day_set>31) day_set=1;
           break;
         case 4:
-          hour++;
-          if(hour>23) hour=0;
+          hour_set++;
+          if(hour_set>23) hour_set=0;
           break;
         case 5:
-          minute++;
-          if(minute>59) minute=0;
+          minute_set++;
+          if(minute_set>59) minute_set=0;
           break;
         case 6:
-          second++;
-          if(second>59) second=0;
+          second_set++;
+          if(second_set>59) second_set=0;
           break;
       }
-      rtc.adjust(DateTime(year,month,day,hour,minute,second));
+      // rtc.adjust(DateTime(year,month,day,hour,minute,second));
     }
     PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
   }
   if(enc.click()&&lcdBlackout==false){
-    PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
     switch(lfsConfig.cfg_datetime_cur){
       case 0:
         lfsConfig.showClock=!lfsConfig.showClock;
         lfs_config_save();
         break;
-      case 1:
-      case 2:
-      case 3:
-      case 4:
-      case 5:
-      case 6:
+      case 1: // year
         cfgDateTimeSet=!cfgDateTimeSet;
+        if(cfgDateTimeSet) year_set=year;
+        if(!cfgDateTimeSet) rtc.adjust(DateTime(year_set,month,day,hour,minute,second));
+        break;
+      case 2: // month
+        cfgDateTimeSet=!cfgDateTimeSet;
+        if(cfgDateTimeSet) month_set=month;
+        if(!cfgDateTimeSet) rtc.adjust(DateTime(year,month_set,day,hour,minute,second));
+        break;
+      case 3: // day
+        cfgDateTimeSet=!cfgDateTimeSet;
+        if(cfgDateTimeSet) day_set=day;
+        if(!cfgDateTimeSet) rtc.adjust(DateTime(year,month,day_set,hour,minute,second));
+        break;
+      case 4: // hour
+        cfgDateTimeSet=!cfgDateTimeSet;
+        if(cfgDateTimeSet) hour_set=hour;
+        if(!cfgDateTimeSet) rtc.adjust(DateTime(year,month,day,hour_set,minute,second));
+        break;
+      case 5: // minute
+        cfgDateTimeSet=!cfgDateTimeSet;
+        if(cfgDateTimeSet) minute_set=minute;
+        if(!cfgDateTimeSet) rtc.adjust(DateTime(year,month,day,hour,minute_set,second));
+        break;
+      case 6: // second
+        cfgDateTimeSet=!cfgDateTimeSet;
+        if(cfgDateTimeSet) second_set=second;
+        if(!cfgDateTimeSet) rtc.adjust(DateTime(year,month,day,hour,minute,second_set));
         break;
     }
+    PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
   }
   if(dn.click()&&lcdBlackout==false){
     PlayerCTRL.screen_mode=SCR_CONFIG;
