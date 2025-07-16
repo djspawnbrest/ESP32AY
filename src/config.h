@@ -837,7 +837,7 @@ void umountSD(){
 
 void massStorage(){
   // Manual begin() is required on core without built-in support e.g. mbed rp2040
-  if(!TinyUSBDevice.isInitialized()){ 
+  if(!TinyUSBDevice.isInitialized()){
     TinyUSBDevice.begin(1);
   }
   // Set disk vendor id, product id and revision with string up to 8, 16, 4 characters respectively
@@ -845,14 +845,12 @@ void massStorage(){
   usb_msc.setReadWriteCallback(0,msc_read_cb,msc_write_cb,msc_flush_cb);
   mountSD();
   usb_msc.begin();
-  // printf("USB msc is begin!!!\n");
-
-  // // If already enumerated, additional class driverr begin() e.g msc, hid, midi won't take effect until re-enumeration
-  // if(TinyUSBDevice.mounted()){
-  //   TinyUSBDevice.detach();
-  //   delay(10);
-  //   TinyUSBDevice.attach();
-  // }
+  // If already enumerated, additional class driverr begin() e.g msc, hid, midi won't take effect until re-enumeration
+  if(TinyUSBDevice.mounted()){
+    TinyUSBDevice.detach();
+    delay(10);
+    TinyUSBDevice.attach();
+  }
 }
 #endif
 
@@ -877,9 +875,8 @@ void checkStartUpConfig(){
     sd_config_default();
     sd_config_save();
   }
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
-  // if(digitalRead(OK_BTN)==LOW){
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)
+    // Mount SD card to USB
     massStorage();
-  // }
-#endif
+  #endif
 }

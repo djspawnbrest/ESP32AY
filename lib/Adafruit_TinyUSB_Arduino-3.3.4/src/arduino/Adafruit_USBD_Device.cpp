@@ -211,8 +211,8 @@ void Adafruit_USBD_Device::clearConfiguration(void) {
 
   memset(_desc_str_arr, 0, sizeof(_desc_str_arr));
   _desc_str_arr[STRID_LANGUAGE] = (const char *)((uint32_t)USB_LANGUAGE);
-  _desc_str_arr[STRID_MANUFACTURER] = USB_MANUFACTURER;
-  _desc_str_arr[STRID_PRODUCT] = USB_PRODUCT;
+  _desc_str_arr[STRID_MANUFACTURER] = "Spawn Development";//USB_MANUFACTURER;
+  _desc_str_arr[STRID_PRODUCT] = "ZxPOD Mass Storage Device"; //USB_PRODUCT;
   _desc_str_arr[STRID_SERIAL] = nullptr;
   // STRID_SERIAL is platform dependent
 

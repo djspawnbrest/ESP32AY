@@ -861,7 +861,7 @@ void uartInfoShow(){
   img.setTextSize(2);
   img.fillScreen(0);
   img.setTextColor(WILD_RED,TFT_BLACK,true);
-  img.setCursor(0,16);
+  img.setCursor(10,16);
   img.print("Connect ZxPOD to PC");
   img.pushSprite(16,246);
   img.deleteSprite();
