@@ -4,8 +4,8 @@
 #define DN_BTN 40
 #define UP_BTN 41
 #define OK_BTN 42
-#define LT_ENC 1
-#define RT_ENC 2
+#define RT_ENC 1
+#define LT_ENC 2
 #elif defined(CONFIG_IDF_TARGET_ESP32)
 #define UP_BTN 39
 #define DN_BTN 36
