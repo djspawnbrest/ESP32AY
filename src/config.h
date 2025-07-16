@@ -280,7 +280,6 @@ void time_date_screen(){
           if(second_set<0) second_set=59;
           break;
       }
-      // rtc.adjust(DateTime(year,month,day,hour,minute,second));
     }
     PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
   }
@@ -315,7 +314,6 @@ void time_date_screen(){
           if(second_set>59) second_set=0;
           break;
       }
-      // rtc.adjust(DateTime(year,month,day,hour,minute,second));
     }
     PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
   }
