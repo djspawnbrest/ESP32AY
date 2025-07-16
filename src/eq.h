@@ -83,7 +83,7 @@ void fastEQ(){
     img.fillRect(shift,0,2,2,TFT_BLUE);
     shift+=4;
   }
-  if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M){
+  if((PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M)&&!lfsConfig.playerSource==PLAYER_MODE_UART){
     img.setFreeFont(&WildFont);
     img.setTextSize(2);
     img.setTextColor(WILD_CYAN);
