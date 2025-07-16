@@ -39,6 +39,7 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 - .mod - Amiga MOD tracker format designed for creating, storing and playing music on an Amiga PC
 - .s3m - (Scream Tracker 3 Module) is a module file format, based on the original MOD format used on the Amiga computer.
 - UART mode (available in player settings menu as Player source)
+- SD forwarding via USB as Mass Storage device (rev.D and above only)
 
 ### Controls
 - Before player turning on - hold left button and turn on player to enter root config (needed for change encoder type). Encoder types:
@@ -99,3 +100,6 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 
 ### UPD 18.06.2025
 - Change PCB to revision D (ESP32 chip change to ESP32-S3 (N16R8) chip)
+
+### UPD 16.07.2025
+- SD forwarding via USB as Mass Storage device (rev.D and above only)
