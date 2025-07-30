@@ -26672,9 +26672,9 @@
 		(at 120.65 215.9 90)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom no)
+		(in_bom yes)
 		(on_board yes)
-		(dnp yes)
+		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "4edd2fc8-9750-487c-ae74-e4e9755ec3de")
 		(property "Reference" "SW2"
@@ -27181,7 +27181,7 @@
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
-		(dnp yes)
+		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "51eaa612-3d3c-48dd-af44-c07ace838f6d")
 		(property "Reference" "SW1"
@@ -34365,9 +34365,9 @@
 		(at 107.95 207.01 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom no)
+		(in_bom yes)
 		(on_board yes)
-		(dnp yes)
+		(dnp no)
 		(uuid "9c25c5f3-9189-4cc1-baf6-5bdba2f755ff")
 		(property "Reference" "R17"
 			(at 109.474 205.994 0)
@@ -37886,9 +37886,9 @@
 		(at 120.65 207.01 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom no)
+		(in_bom yes)
 		(on_board yes)
-		(dnp yes)
+		(dnp no)
 		(uuid "b9fcd330-cdbb-4fd7-9b5c-805b4849a3cb")
 		(property "Reference" "R19"
 			(at 121.92 205.994 0)
@@ -44269,7 +44269,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "MB85RC256V"
+		(property "Value" "24С32"
 			(at 185.0233 201.93 0)
 			(effects
 				(font

@@ -43,6 +43,8 @@ void setup(){
   blPinSetup();
   display_brightness(0);
   startup_config_load();
+  ampInit();
+  muteAmp();
   checkStartUpConfig();
   initRTC();
   setRTC();
@@ -51,7 +53,7 @@ void setup(){
   buttonsSetup();
   DACInit();
   AYInit();
-  ampInit();
+  // ampInit();
   introTFT();
   delay(2000);
   show_frame();

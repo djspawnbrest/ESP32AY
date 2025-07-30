@@ -115,6 +115,7 @@
 			(psnegative no)
 			(psa4output no)
 			(plot_black_and_white yes)
+			(plotinvisibletext no)
 			(sketchpadsonfab no)
 			(plotpadnumbers no)
 			(hidednponfab no)
@@ -5021,7 +5022,7 @@
 		(path "/9c25c5f3-9189-4cc1-baf6-5bdba2f755ff")
 		(sheetname "/")
 		(sheetfile "ESP32AY-revD.kicad_sch")
-		(attr smd exclude_from_bom dnp)
+		(attr smd)
 		(fp_line
 			(start 0.227064 0.735)
 			(end -0.227064 0.735)
@@ -13930,7 +13931,7 @@
 		(path "/4edd2fc8-9750-487c-ae74-e4e9755ec3de")
 		(sheetname "/")
 		(sheetfile "ESP32AY-revD.kicad_sch")
-		(attr smd exclude_from_bom dnp)
+		(attr smd)
 		(fp_line
 			(start 2.2 -1.7)
 			(end -2.2 -1.7)
@@ -17002,7 +17003,7 @@
 		(path "/b9fcd330-cdbb-4fd7-9b5c-805b4849a3cb")
 		(sheetname "/")
 		(sheetfile "ESP32AY-revD.kicad_sch")
-		(attr smd exclude_from_bom dnp)
+		(attr smd)
 		(fp_line
 			(start 0.227064 -0.735)
 			(end -0.227064 -0.735)
@@ -19293,7 +19294,7 @@
 				(justify mirror)
 			)
 		)
-		(property "Value" "MB85RC256V"
+		(property "Value" "24С32"
 			(at 0 -3.4 180)
 			(layer "B.Fab")
 			(uuid "916875ef-8f39-4cc7-8adf-502195284051")
@@ -28795,7 +28796,7 @@
 		(path "/51eaa612-3d3c-48dd-af44-c07ace838f6d")
 		(sheetname "/")
 		(sheetfile "ESP32AY-revD.kicad_sch")
-		(attr smd dnp)
+		(attr smd)
 		(fp_line
 			(start 2.2 -1.7)
 			(end -2.2 -1.7)
