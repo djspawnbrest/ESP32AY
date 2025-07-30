@@ -10,7 +10,7 @@
 
 #define CHUNK_SIZE 32 // bytes to write at a time
 // Two 24LC256 EEPROMs on the bus
-JC_EEPROM eep(JC_EEPROM::kbits_32,1,CHUNK_SIZE,0x50); // device size, number of devices, page size
+JC_EEPROM eep(JC_EEPROM::kbits_32,1,CHUNK_SIZE,eepAddress); // device size, number of devices, page size
 constexpr uint32_t totalKBytes {4};           // total kBytes of eeprom
 uint8_t eepStatus=1;                          // eeprom init status ()
 bool eepInit=false;
