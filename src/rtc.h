@@ -25,16 +25,15 @@ void initRTC(){
 
 void setRTC(){
   if(foundRtc){
-    setTime = DateTime(F(__DATE__), F(__TIME__));
+    // setTime = DateTime(F(__DATE__), F(__TIME__));
   #ifdef TEST_RTC
     if(!rtc.isrunning()){
       printf("RTC is NOT running, let's set the time!\n");
   #else
     if(rtc.lostPower()){
-      printf("RTC is NOT running, let's set the time!\n");
+      printf("RTC is NOT running, let's set build time!\n");
   #endif
-      rtc.adjust(setTime);
-      printf("RTC set!\n");
+      rtc.adjust(DateTime(F(__DATE__),F(__TIME__)));  // this will flip the OSF bit also
     }
   }
 }

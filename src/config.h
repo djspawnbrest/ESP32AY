@@ -357,6 +357,7 @@ void time_date_screen(){
     PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
   }
   if(dn.click()&&lcdBlackout==false){
+    cfgDateTimeSet=false;
     PlayerCTRL.screen_mode=SCR_CONFIG;
     PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
   }
