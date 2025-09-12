@@ -169,10 +169,23 @@ int music_open(const char* filename,int ay_sub_song){
           memset(&AYInfo,0,sizeof(AYInfo));
           S3M_GetInfo(filename);
           break;
+      #if defined(CONFIG_IDF_TARGET_ESP32S3)
+        case TYPE_XM:
+          sd_play_file.close();
+          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          memset(&music_data,0,sizeof(music_data));
+          memset(&AYInfo,0,sizeof(AYInfo));
+          XM_GetInfo(filename);
+          break;
+      #endif
       }
     }
     xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
+  #ifdef DEBUG_RAM
+    printf("Music opened!\n");
+    checkHeap();
+  #endif
   return err;
 }
 
@@ -350,39 +363,35 @@ void music_init(){
     case TYPE_YRG: break;
     case TYPE_MOD: initOut(); break;
     case TYPE_S3M: initOut(); break;
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)
+    case TYPE_XM: initOut(); break;
+  #endif
   }
   unMuteAmp();
 }
 
 void music_play(){
-  // calls debug times per second
-  // static uint32_t play_counter=0;
-  // static uint32_t last_time=millis();
-  // static uint32_t start_time=millis();
-  // static float calls_per_second=0.0;
-  // static uint32_t total_samples=0;
-  // static float average_rate=0.0;
-  // // Increment counters
-  // play_counter++;
-  // total_samples++;
-  // // Get current time
-  // uint32_t current_time=millis();
-  // uint32_t elapsed_time=current_time-last_time;
-  // uint32_t total_time = current_time-start_time;
-  // // Calculate every second
-  // if(elapsed_time>=1000){
-  //   // Current second rate
-  //   calls_per_second=(float)play_counter*1000.0f/elapsed_time;
-  //   // Average rate over total time
-  //   average_rate=(float)total_samples*1000.0f/total_time;
-  //   printf("Current rate: %.3f calls/sec | Average rate: %.3f calls/sec | Total time: %.3f sec\r",calls_per_second,average_rate,total_time/1000.0f);
-  //   // Reset per-second counter
-  //   play_counter=0;
-  //   last_time=current_time;
-  // }
-  // end debug calls
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  static uint8_t last_play_mode=255;
+  static bool loop_change_pending=false;
+#endif
+
   if(lfsConfig.play_mode==PLAY_MODE_ONE){
-    if(PlayerCTRL.music_type!=TYPE_PSG&&PlayerCTRL.music_type!=TYPE_RSF&&PlayerCTRL.music_type!=TYPE_YRG&&PlayerCTRL.music_type!=TYPE_AY&&PlayerCTRL.music_type!=TYPE_MOD&&PlayerCTRL.music_type!=TYPE_S3M){
+    if(PlayerCTRL.music_type!=TYPE_PSG
+      &&PlayerCTRL.music_type!=TYPE_RSF
+      &&PlayerCTRL.music_type!=TYPE_YRG
+      &&PlayerCTRL.music_type!=TYPE_AY
+      &&PlayerCTRL.music_type!=TYPE_MOD
+      &&PlayerCTRL.music_type!=TYPE_S3M
+    ){
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)
+      if(PlayerCTRL.music_type==TYPE_XM){
+        if(xm&&xm->isRunning()&&last_play_mode!=PLAY_MODE_ONE&&!loop_change_pending){
+          xm->SetLoop(true);
+          loop_change_pending=true;
+        }
+      }else
+    #endif
       if(PlayerCTRL.trackFrame>=AYInfo.Length){
         if(AYInfo.Loop>0){
           PlayerCTRL.trackFrame=AYInfo.Loop;
@@ -397,11 +406,25 @@ void music_play(){
       }
     }
   }else{
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)
+    if(PlayerCTRL.music_type==TYPE_XM){
+      if(xm&&xm->isRunning()&&last_play_mode!=lfsConfig.play_mode&&!loop_change_pending){
+        xm->SetLoop(false);
+        loop_change_pending=true;
+      }
+    }
+  #endif
     if(PlayerCTRL.trackFrame>=AYInfo.Length){
       PlayerCTRL.isFinish=true;
       return;
     }
   }
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  if(last_play_mode!=lfsConfig.play_mode){
+    last_play_mode=lfsConfig.play_mode;
+    loop_change_pending=false; // Reset pending flag when mode actually changes
+  }
+#endif
   switch(PlayerCTRL.music_type){
     case TYPE_PT1: PT1_Play(AYInfo); break;
     case TYPE_PT2: PT2_Play(AYInfo); break;
@@ -417,6 +440,9 @@ void music_play(){
     case TYPE_YRG: YRG_Play(); break;
     case TYPE_MOD: MOD_Play(); break;
     case TYPE_S3M: S3M_Play(); break;
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)
+    case TYPE_XM: XM_Play(); break;
+  #endif
   }
 }
 
@@ -438,8 +464,15 @@ void music_stop(){
     case TYPE_YRG: YRG_Cleanup(); break;
     case TYPE_MOD: MOD_Cleanup(); break;
     case TYPE_S3M: S3M_Cleanup(); break;
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)
+    case TYPE_XM: XM_Cleanup(); break;
+  #endif
   }
   PlayerCTRL.trackFrame=0;
+#ifdef DEBUG_RAM
+  printf("Music stop\n");
+  checkHeap();
+#endif
 }
 
 void check_cursor_range(){
@@ -660,7 +693,12 @@ void showFileInfo(){
       }else{
         sprintf(tme, "%S %u/%u",file_ext_list[PlayerCTRL.music_type],ay_cur_song+1,AY_GetNumSongs()+1);
       }
-    }else if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M){
+    }else if(PlayerCTRL.music_type==TYPE_MOD
+      ||PlayerCTRL.music_type==TYPE_S3M
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)
+      ||PlayerCTRL.music_type==TYPE_XM
+    #endif
+    ){
       // sprintf(tme, "%S %uCh",file_ext_list[PlayerCTRL.music_type],modChannels);
       sprintf(tme,"%s %s%u%s",file_ext_list[PlayerCTRL.music_type],(modChannels>9)?"":" ",modChannels,"Ch");
     }else{
@@ -884,7 +922,12 @@ void uartInfoShow(){
 
 void ayClockShow(){
   // ay clock show
-  if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M){
+  if(PlayerCTRL.music_type==TYPE_MOD
+    ||PlayerCTRL.music_type==TYPE_S3M
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)
+    ||PlayerCTRL.music_type==TYPE_XM
+  #endif
+  ){
     switch(lfsConfig.modStereoSeparation){
       case MOD_FULLSTEREO: sprintf(tme,"Full Stereo");break;
       case MOD_HALFSTEREO: sprintf(tme,"Half Stereo");break;
@@ -904,7 +947,12 @@ void ayClockShow(){
   img.setTextSize(2);
   img.setCursor(0,16);
   img.setTextColor(WILD_CYAN);
-  if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M) img.print("Stereo ");
+  if(PlayerCTRL.music_type==TYPE_MOD
+    ||PlayerCTRL.music_type==TYPE_S3M
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)
+    ||PlayerCTRL.music_type==TYPE_XM
+  #endif
+  ) img.print("Stereo ");
   else img.print("AY clock ");
   img.setTextColor(TFT_RED);
   img.print(": ");
@@ -1028,8 +1076,10 @@ void player_screen(){
   if(lfsConfig.showClock&&foundRtc) showClock();
   //keypad survey
   if(lfsConfig.playerSource==PLAYER_MODE_SD){
-    if(enc.hasClicks(1)&&lcdBlackout==false){PlayerCTRL.isPlay=!PlayerCTRL.isPlay;PlayerCTRL.isPlay?unMuteAmp():muteAmp();}
-    if(!enc.holding()&&enc.right()&&lcdBlackout==false){
+    if(enc.hasClicks(1)&&lcdBlackout==false&&scrNotPlayer==false){
+      PlayerCTRL.isPlay=!PlayerCTRL.isPlay;PlayerCTRL.isPlay?unMuteAmp():muteAmp();
+    }
+    if(!enc.holding()&&enc.right()&&lcdBlackout==false&&scrNotPlayer==false){
       changeTrackIcon(true);
       if(lfsConfig.play_mode==PLAY_MODE_SHUFFLE) player_shuffle_cur();
       else sdConfig.play_cur++;
@@ -1055,6 +1105,11 @@ void player_screen(){
         if(PlayerCTRL.music_type==TYPE_S3M){
           if(s3m&&s3m->isRunning()) s3m->setSpeed(2);
         }
+      #if defined(CONFIG_IDF_TARGET_ESP32S3)
+        if(PlayerCTRL.music_type==TYPE_XM){
+          if(xm&&xm->isRunning()) xm->setSpeed(2);
+        }
+      #endif
         frame_max=frameMax(PLAY_FAST);
         PlayerCTRL.isSlowBackward=false;
         PlayerCTRL.isFastForward=true;
@@ -1075,6 +1130,11 @@ void player_screen(){
         if(PlayerCTRL.music_type==TYPE_S3M){
           if(s3m&&s3m->isRunning()) s3m->setSpeed(0);
         }
+      #if defined(CONFIG_IDF_TARGET_ESP32S3)
+        if(PlayerCTRL.music_type==TYPE_XM){
+          if(xm&&xm->isRunning()) xm->setSpeed(0);
+        }
+      #endif
         frame_max=frameMax(PLAY_SLOW);
         PlayerCTRL.isFastForward=false;
         PlayerCTRL.isSlowBackward=true;
@@ -1094,6 +1154,11 @@ void player_screen(){
       if(PlayerCTRL.music_type==TYPE_S3M){
         if(s3m&&s3m->isRunning()) s3m->setSpeed(1);
       }
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)
+      if(PlayerCTRL.music_type==TYPE_XM){
+        if(xm&&xm->isRunning()) xm->setSpeed(1);
+      }
+    #endif
       frame_max=frameMax(PLAY_NORMAL);
       PlayerCTRL.isFastForward=false;
       PlayerCTRL.isSlowBackward=false;
@@ -1155,7 +1220,12 @@ void player_screen(){
     }
   }
   if(dn.hasClicks(2)&&lcdBlackout==false&&scrNotPlayer==false){
-    if(PlayerCTRL.music_type==TYPE_MOD||PlayerCTRL.music_type==TYPE_S3M){
+    if(PlayerCTRL.music_type==TYPE_MOD
+      ||PlayerCTRL.music_type==TYPE_S3M
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)
+      ||PlayerCTRL.music_type==TYPE_XM
+    #endif
+    ){
       switch(lfsConfig.modStereoSeparation){
         case MOD_FULLSTEREO: lfsConfig.modStereoSeparation=MOD_HALFSTEREO;break;
         case MOD_HALFSTEREO: lfsConfig.modStereoSeparation=MOD_MONO;break;
@@ -1163,6 +1233,9 @@ void player_screen(){
       }
       if(PlayerCTRL.music_type==TYPE_MOD) setModSeparation();
       if(PlayerCTRL.music_type==TYPE_S3M) setS3mSeparation();
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)
+      if(PlayerCTRL.music_type==TYPE_XM) setXmSeparation();
+    #endif
     }else{
       switch(lfsConfig.ay_clock){
         case CLK_SPECTRUM: lfsConfig.ay_clock=CLK_PENTAGON;break;
@@ -1216,11 +1289,16 @@ void AYPlayTask(void *pvParameters){
           AY_PlayBuf();
         }
       }else{
-        if(PlayerCTRL.music_type!=TYPE_MOD&&PlayerCTRL.music_type!=TYPE_S3M) wait_frame();
+        if(PlayerCTRL.music_type!=TYPE_MOD
+          &&PlayerCTRL.music_type!=TYPE_S3M
+        #if defined(CONFIG_IDF_TARGET_ESP32S3)
+          &&PlayerCTRL.music_type!=TYPE_XM
+        #endif
+        ) wait_frame();
       }
     }
     yield();
-    vTaskDelay(10);
+    vTaskDelay(1);
     esp_task_wdt_reset();
   }
   vTaskDelete(NULL);

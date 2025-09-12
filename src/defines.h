@@ -2,7 +2,7 @@
 #include <SPI.h>
 #include <Wire.h>
 
-#define VERSION         "3.43"
+#define VERSION         "3.5"
 
 #define CLK_SPECTRUM  	1773400
 #define CLK_PENTAGON  	1750000
@@ -217,6 +217,7 @@ enum{
   SCR_ABOUT,
   SCR_NOFILES,
   SCR_SDEJECT,
+  SCR_ALERT,
 };
 
 enum{
@@ -229,7 +230,7 @@ struct{
   uint8_t music_type;
   int screen_mode=SCR_SDEJECT;
   int prev_screen_mode=SCR_PLAYER;
-  bool scr_mode_update[6]={true,true,true,true,true,true};
+  bool scr_mode_update[9]={true,true,true,true,true,true,true,true,true};
   bool isPlay=false;
   bool isFinish=true;
   bool autoPlay=true;
@@ -238,6 +239,8 @@ struct{
   bool isFastForward=false;
   bool isSlowBackward=false;
   unsigned long trackFrame=0;
+  char alert_message[128];
+  unsigned long alert_start_time;
 }PlayerCTRL;
 
 struct AYSongInfo{
@@ -291,7 +294,10 @@ const char* const file_ext_list[]={
   "rsf",
   "yrg",
   "mod",
-  "s3m"
+  "s3m",
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  "xm",
+#endif
 };
 
 enum{
@@ -311,6 +317,9 @@ enum{
   TYPE_YRG,
   TYPE_MOD,
   TYPE_S3M,
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  TYPE_XM,
+#endif
   TYPES_ALL
 };
 
@@ -348,15 +357,11 @@ void setModSeparation();
 void S3M_Loop();
 void S3M_Play();
 void setS3mSeparation();
-
-void checkHeap() {
-  printf("\nTotal heap: %d bytes\n", ESP.getHeapSize());
-  printf("Minimum free heap: %d bytes\n",ESP.getMinFreeHeap());
-  printf("Maximum allocatable block: %d bytes\n",ESP.getMaxAllocHeap());
-  printf("Free heap: %d bytes\n", ESP.getFreeHeap());
-  printf("\nTotal PSRAM: %d bytes\n", ESP.getPsramSize());
-  printf("Free PSRAM: %d bytes\n\n", ESP.getFreePsram());
-}
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+void XM_Loop();
+void XM_Play();
+void setXmSeparation();
+#endif
 
 //I2C autedect
 byte eepAddress=80;   // 0x50  - default

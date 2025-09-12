@@ -637,15 +637,15 @@ int browser_screen(int mode){
     }
   }
   //keypad survey
-  if(enc.left()&&lcdBlackout==false){
+  if(enc.left()&&lcdBlackout==false&&scrNotPlayer==false){
     PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
     browser_move_cur(-1,true);
   }
-  if(enc.right()&&lcdBlackout==false){
+  if(enc.right()&&lcdBlackout==false&&scrNotPlayer==false){
     PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
     browser_move_cur(1,true);
   }
-  if(enc.hasClicks(1)&&!up.holding()&&lcdBlackout==false){
+  if(enc.hasClicks(1)&&!up.holding()&&lcdBlackout==false&&scrNotPlayer==false){
     if(mode==BROWSE_DIR){
       if(sort_list[sdConfig.dir_cur].hash[0]==1){ //directory
         browser_enter_directory();
@@ -681,6 +681,9 @@ int browser_screen(int mode){
           case TYPE_YRG:
           case TYPE_MOD:
           case TYPE_S3M:
+        #if defined(CONFIG_IDF_TARGET_ESP32S3)
+          case TYPE_XM:
+        #endif
             PlayerCTRL.isPlay=false;
             memcpy(sdConfig.play_dir,sdConfig.active_dir,sizeof(sdConfig.active_dir));
             memcpy(sort_list_play,sort_list,sizeof(sort_list));
@@ -723,7 +726,7 @@ int browser_screen(int mode){
     sd_config_save();
     return sdConfig.dir_cur;
   }
-  if(up.holding()&&enc.hasClicks(1)&&mode==BROWSE_DIR&&sort_list[sdConfig.dir_cur].hash[0]!=1&&lcdBlackout==false){ // Remove file if not folder and not in playlist
+  if(up.holding()&&enc.hasClicks(1)&&mode==BROWSE_DIR&&sort_list[sdConfig.dir_cur].hash[0]!=1&&lcdBlackout==false&&scrNotPlayer==false){ // Remove file if not folder and not in playlist
     char pf[MAX_PATH];
     char rf[MAX_PATH];
     sdConfig.play_ayl_file[0]=0; // clean string
@@ -846,7 +849,7 @@ int browser_screen(int mode){
     sd_config_save();
     return sdConfig.dir_cur;
   }
-  if(dn.click()&&lcdBlackout==false){
+  if(dn.click()&&lcdBlackout==false&&scrNotPlayer==false){
     if(mode==BROWSE_DIR){
       browser_leave_directory();
       PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
@@ -862,6 +865,7 @@ int browser_screen(int mode){
     sd_config_save();
     return sdConfig.dir_cur;
   }
+  keysTimeOut();
   return 0;
 }
 

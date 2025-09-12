@@ -38,6 +38,7 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 - .yrg - [Custom AVR-AY format](https://www.avray.ru/ru/avr-ay-player/)
 - .mod - Amiga MOD tracker format designed for creating, storing and playing music on an Amiga PC
 - .s3m - (Scream Tracker 3 Module) is a module file format, based on the original MOD format used on the Amiga computer.
+- .xm  - The XM file format, also known as Extended Module, is a digital audio file type for music created in the FastTracker 2 software.
 - UART mode (available in player settings menu as Player source)
 - SD forwarding via USB as Mass Storage device (rev.D and above only)
 
@@ -103,3 +104,6 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 
 ### UPD 16.07.2025
 - SD forwarding via USB as Mass Storage device (rev.D and above only)
+
+### UPD 12.09.2025
+- Add .xm file format (rev.D and above only). Change Firmware version to 3.5

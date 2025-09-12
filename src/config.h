@@ -564,6 +564,9 @@ void config_screen(){
           }
           if(PlayerCTRL.music_type==TYPE_MOD) setModSeparation();
           if(PlayerCTRL.music_type==TYPE_S3M) setS3mSeparation();
+        #if defined(CONFIG_IDF_TARGET_ESP32S3)
+          if(PlayerCTRL.music_type==TYPE_XM) setXmSeparation();
+        #endif
           break;
         case 9:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
@@ -633,6 +636,9 @@ void config_screen(){
           }
           if(PlayerCTRL.music_type==TYPE_MOD) setModSeparation();
           if(PlayerCTRL.music_type==TYPE_S3M) setS3mSeparation();
+        #if defined(CONFIG_IDF_TARGET_ESP32S3)
+          if(PlayerCTRL.music_type==TYPE_XM) setXmSeparation();
+        #endif
           break;
         case 9:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;

@@ -5,6 +5,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
+// #define DEBUG_RAM 1
+
+#ifdef DEBUG_RAM
+#include "debug.h"
+#endif
+
 #include "defines.h"
 #include "rtc.h"
 #include "amp.h"
@@ -31,13 +37,19 @@
 #include "players/PSGPlay.h"
 #include "players/MODPlay.h"
 #include "players/S3MPlay.h"
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#include "players/XMPlay.h" 
+#endif
 
 // #include "sdTest.h"
 #include "player.h"
 #include "uart.h"
 
 void setup(){
+#ifdef DEBUG_RAM
+  printf("Setup start\n");
   checkHeap();
+#endif
   initSemaphore();
   i2cInit();
   blPinSetup();
@@ -53,13 +65,16 @@ void setup(){
   buttonsSetup();
   DACInit();
   AYInit();
-  // ampInit();
   introTFT();
   delay(2000);
   show_frame();
   playerSourceChange(); // ay playcore or uart playcore
   checkSDonStart();
   muteAYBeep();
+#ifdef DEBUG_RAM
+  printf("Setup end\n");
+  checkHeap();
+#endif  
 }
 
 void loop(){
@@ -92,6 +107,9 @@ void loop(){
     case SCR_SDEJECT:
       sdEject();
       checkSDonStart();
+      break;
+    case SCR_ALERT:
+      alert_screen();
       break;
   }
   vTaskDelay(pdMS_TO_TICKS(1));

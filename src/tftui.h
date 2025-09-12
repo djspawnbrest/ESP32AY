@@ -329,6 +329,41 @@ void clear_display_field(){
   tft.fillRect(8,8,224,304,0);
 }
 
+void showAlert(const char* message){
+  strncpy(PlayerCTRL.alert_message,message,sizeof(PlayerCTRL.alert_message)-1);
+  PlayerCTRL.alert_message[sizeof(PlayerCTRL.alert_message)-1]='\0';
+  PlayerCTRL.prev_screen_mode=PlayerCTRL.screen_mode;
+  PlayerCTRL.screen_mode=SCR_ALERT;
+  PlayerCTRL.scr_mode_update[SCR_ALERT]=true;
+  PlayerCTRL.alert_start_time=millis();
+}
+
+void alert_screen(){
+  if(PlayerCTRL.scr_mode_update[SCR_ALERT]){
+    PlayerCTRL.scr_mode_update[SCR_ALERT]=false;
+    img.setColorDepth(8);
+    img.createSprite(200,64);
+    // img.fillScreen(0);
+    img.setTextColor(TFT_WHITE);
+    img.setTextSize(2);
+    img.setFreeFont(&WildFont);
+    // Draw alert box
+    img.fillRoundRect(0,0,200,64,8,TFT_BLACK);
+    img.drawRoundRect(0,0,200,64,8,TFT_RED);
+    // Draw message
+    spr_println(img,0,2,PlayerCTRL.alert_message,2,ALIGN_CENTER,WILD_CYAN);
+    spr_println(img,0,6,"Press any key",1,ALIGN_CENTER,TFT_YELLOW);
+    // draw sprite
+    img.pushSprite(20,128);
+    img.deleteSprite();
+  }
+  // Auto-dismiss after 3 seconds or on any key press
+  if((millis()-PlayerCTRL.alert_start_time>3000)||enc.action()||dn.action()||up.action()){
+    PlayerCTRL.screen_mode=PlayerCTRL.prev_screen_mode;
+    PlayerCTRL.scr_mode_update[PlayerCTRL.screen_mode]=true;
+  }
+}
+
 void sdEject(){
   img.setColorDepth(8);
   img.createSprite(224,304);

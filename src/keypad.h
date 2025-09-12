@@ -52,4 +52,5 @@ void generalTick(){
       scrNotPlayer=true;
     }
   }
+  if(PlayerCTRL.screen_mode==SCR_ALERT){scrNotPlayer=true;}
 }

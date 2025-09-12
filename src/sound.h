@@ -104,7 +104,12 @@ done:
     if(frame_div>=frame_max){
       frame_div=0;
       frame_cnt++;
-      if(PlayerCTRL.music_type!=TYPE_MOD&&PlayerCTRL.music_type!=TYPE_S3M) PlayerCTRL.trackFrame++;
+      if(PlayerCTRL.music_type!=TYPE_MOD
+        &&PlayerCTRL.music_type!=TYPE_S3M
+      #if defined(CONFIG_IDF_TARGET_ESP32S3)
+        &&PlayerCTRL.music_type!=TYPE_XM
+      #endif
+      ) PlayerCTRL.trackFrame++;
     }
   }
 }
