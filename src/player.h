@@ -36,6 +36,7 @@ int music_open(const char* filename,int ay_sub_song){
       sd_play_file.getName(lfn,sizeof(lfn));
       memcpy(playedFileName,lfn,sizeof(lfn));
       PlayerCTRL.music_type=browser_check_ext(lfn);
+      unsigned long beforeLoading=millis();
       switch(PlayerCTRL.music_type){
         case TYPE_UNK: break;
         case TYPE_AYL: break;
@@ -179,6 +180,7 @@ int music_open(const char* filename,int ay_sub_song){
           break;
       #endif
       }
+      loadingTime=millis()-beforeLoading;
     }
     xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
@@ -347,7 +349,6 @@ void music_init(){
   AYInfo.module_len=music_data_size;
   AYInfo.file_data=music_data;
   AYInfo.file_len=music_data_size;
-
   switch(PlayerCTRL.music_type){
     case TYPE_PT1: PT1_Init(AYInfo); PT1_GetInfo(AYInfo); break;
     case TYPE_PT2: PT2_Init(AYInfo); PT2_GetInfo(AYInfo); break;
@@ -1091,7 +1092,8 @@ void player_screen(){
     if(!enc.holding()&&enc.left()&&lcdBlackout==false&&scrNotPlayer==false){
       changeTrackIcon(false);
       if(millis()-mlsPrevTrack<PREVTRACKDELAY) sdConfig.play_cur--;
-      mlsPrevTrack=millis();
+      mlsPrevTrack=millis()+loadingTime;
+      loadingTime=0;
       PlayerCTRL.isBrowserCommand=true;
       PlayerCTRL.autoPlay=false;
       PlayerCTRL.isFinish=true;

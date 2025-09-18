@@ -52,7 +52,7 @@ extern PLAYER_TASK t;
 void initialize_xm(AudioOutput *out,bool playerTask=true);
 int xmCTX(AudioFileSource* file,size_t fileSize);
 bool xm_send_to_dac();
-void xm_player_loop();
+bool xm_player_loop();
 void stop_xm();
 
 const char* xm_get_title();

@@ -187,20 +187,6 @@ extern "C"{
   }
 }
 
-// void *xm_malloc(size_t size){
-//   void *ctx_mem=heap_caps_malloc(size,MALLOC_CAP_SPIRAM);
-//   if(ctx_mem){
-//     memset(ctx_mem,0,size); // Zero initialize
-//   }
-
-// #ifdef LIBXM_DEBUG
-//   if(!ctx_mem) printf("\n\t\033[31m[ERROR]\tCannot allocate memory for XM context (\033[31m%u\033[0m \033[31mbytes)!\033[0m\n", size);
-//   else printf("\033[32m[INFO]\tMemory for XM allocated:\033[0m \033[31m0x%08X, %u\033[0m \033[32mbytes\033[0m\n", (unsigned int)ctx_mem, size);
-// #endif
-
-//   return ctx_mem;
-// }
-
 void *xm_malloc(size_t size){
   // Force PSRAM cleanup before large allocations
   void* cleanup1=heap_caps_malloc(1,MALLOC_CAP_SPIRAM);
@@ -300,6 +286,18 @@ int xmCTX(AudioFileSource* file,size_t fileSize){
       #ifdef LIBXM_DEBUG
         LOG_INFO("\tTrack loops: %d",xm_get_loop_count((xm_context_s*)xm_ctx));
         LOG_INFO("\tXM context created");
+        LOG_INFO("\tXM name: %s",xm_ctx->module.name);
+        LOG_INFO("\tXM channels: %d", xm_ctx->module.num_channels);
+        LOG_INFO("\tXM patterns: %d", xm_ctx->module.num_patterns);
+        LOG_INFO("\tXM instruments: %d", xm_ctx->module.num_instruments);
+        LOG_INFO("\tXM restart position: %d", xm_ctx->module.restart_position);
+        LOG_INFO("\tXM length: %d",xm_ctx->module.length);
+        LOG_INFO("\tXM order table:");
+        printf("\t\t");
+        for(int i=0;i<xm_ctx->module.length;i++){
+          printf("%d ", xm_ctx->module.pattern_table[i]);
+        }
+        printf("\n");
       #endif
       }
       break;
@@ -317,7 +315,7 @@ void XMPlaybackControl(u8 control){
 #endif
 }
 
-void xm_player_loop(){
+bool xm_player_loop(){
   if(player_task_handle==NULL){
     static PLAYER_TASK t;
     static int xm_buf_idx=0;
@@ -336,7 +334,7 @@ void xm_player_loop(){
               float left=0.0f,right=0.0f; 
               // Additional safety check before calling xm_sample
               if(t.ctx!=nullptr&&xm_ctx!=nullptr){
-                xm_sample(t.ctx,&left,&right);
+                if(!xm_sample(t.ctx,&left,&right)) return false;
                 // Update statistics
                 _st.xm_samp_min=min(_st.xm_samp_min,left);
                 _st.xm_samp_min=min(_st.xm_samp_min,right);
@@ -374,6 +372,7 @@ void xm_player_loop(){
         break;
     }
   }
+  return true;
 }
 
 void IRAM_ATTR player_task(void *arg){
@@ -443,21 +442,19 @@ void IRAM_ATTR i2s_task(void *arg){
   int idx;
   while(1){
     xQueueReceive(i2s_queue,&idx,portMAX_DELAY);
-
     // Update EQ buffers here - much better timing than in xm_sample
     extern void xm_update_eq_buffers(void);
     xm_update_eq_buffers();
-
     // Send samples one by one to ESP8266Audio
     for(int i=0;i<XM_SAMPLES_PER_BUFFER;i++){
       int16_t sample[2];
-      sample[0]=xm_buf[idx][2*i];     // Left
+      sample[0]=xm_buf[idx][2*i];   // Left
       sample[1]=xm_buf[idx][2*i+1]; // Right
       while (!output->ConsumeSample(sample)){
         vTaskDelay(1); // Wait if output buffer is full
       }
     }
-    vTaskDelay(1); // даёт шанс другим задачам выполниться
+    vTaskDelay(1);
   }
 }
 
@@ -602,109 +599,129 @@ void xm_init_track_frame(unsigned long* trackFrame){
   xm_track_frame=trackFrame;
 }
 
-// ------------------- Works good for both types (looped/non-looped tracks) -----------------------
+// Main calculate playing time function like player plays!
 signed long xm_get_playback_time(bool oneFiftieth){
   if(!xm_ctx) return -1;
-  uint8_t sim_current_table_index=0;
-  uint8_t sim_current_row=0;
-  uint16_t sim_current_tick=0;
-  uint16_t sim_tempo=xm_ctx->tempo;
-  uint16_t sim_bpm=xm_ctx->bpm;
-  uint16_t sim_extra_ticks=0;
-  bool sim_position_jump=false;
-  bool sim_pattern_break=false;
-  uint8_t sim_jump_dest=0;
-  uint8_t sim_jump_row=0;
+  // Save original state
+  uint8_t orig_ord=xm_ctx->current_table_index;
+  uint8_t orig_row=xm_ctx->current_row;
+  uint8_t orig_tick=xm_ctx->current_tick;
+  uint16_t orig_tempo=xm_ctx->tempo;
+  uint16_t orig_bpm=xm_ctx->bpm;
+  uint8_t orig_loop_count=xm_ctx->loop_count;
+  uint16_t orig_extra_ticks=xm_ctx->extra_ticks;
+  bool orig_position_jump=xm_ctx->position_jump;
+  bool orig_pattern_break=xm_ctx->pattern_break;
+  uint8_t orig_jump_dest=xm_ctx->jump_dest;
+  uint8_t orig_jump_row=xm_ctx->jump_row;
+  // Initialize simulation state
+  xm_ctx->current_table_index=0;
+  xm_ctx->current_row=0;
+  xm_ctx->current_tick=0;
+  xm_ctx->position_jump=false;
+  xm_ctx->pattern_break=false;
+  xm_ctx->jump_dest=0;
+  xm_ctx->jump_row=0;
+  xm_ctx->extra_ticks=0;
   uint64_t total_ticks=0;
-  // Track visited positions to detect loops - use small fixed array
-  struct pos_t{uint8_t table;uint8_t row;};
-  pos_t visited[256];
-  uint8_t visit_count[256];
-  uint16_t num_visited=0;
-  uint32_t max_iterations=1000000;
-  while(max_iterations-->0){
-    if(sim_current_tick==0){
-      // Check if we've been to this position before
-      uint16_t pos_key=(sim_current_table_index<<8)|sim_current_row;
-      bool found=false;
-      for(uint16_t i=0;i<num_visited;i++){
-        if(visited[i].table==sim_current_table_index&&visited[i].row==sim_current_row){
-          visit_count[i]++;
-          if(visit_count[i]>=1){ // Second visit = loop detected
-            goto loop_end;
-          }
-          found=true;
-          break;
+  uint8_t max_loop_count=1;
+  // Clear loop detection array
+  memset(xm_ctx->row_loop_count,0,MAX_NUM_ROWS*xm_ctx->module.length*sizeof(uint8_t));
+  while(true){
+    esp_task_wdt_reset();
+    // Simulate xm_tick() - only process row when current_tick==0
+    if(xm_ctx->current_tick==0){
+      // Handle position jumps and pattern breaks first
+      if(xm_ctx->position_jump){
+        xm_ctx->current_table_index=xm_ctx->jump_dest;
+        xm_ctx->current_row=xm_ctx->jump_row;
+        xm_ctx->position_jump=false;
+        xm_ctx->pattern_break=false;
+        xm_ctx->jump_row=0;
+        if(xm_ctx->current_table_index>=xm_ctx->module.length){
+          xm_ctx->current_table_index=xm_ctx->module.restart_position;
+        }
+      }else if(xm_ctx->pattern_break){
+        xm_ctx->current_table_index++;
+        xm_ctx->current_row=xm_ctx->jump_row;
+        xm_ctx->pattern_break=false;
+        xm_ctx->jump_row=0;
+        if(xm_ctx->current_table_index>=xm_ctx->module.length){
+          xm_ctx->current_table_index=xm_ctx->module.restart_position;
         }
       }
-      if(!found&&num_visited<256){
-        visited[num_visited].table=sim_current_table_index;
-        visited[num_visited].row=sim_current_row;
-        visit_count[num_visited]=0;
-        num_visited++;
-      }
-      if(sim_position_jump){
-        sim_current_table_index=sim_jump_dest;
-        sim_current_row=sim_jump_row;
-        sim_position_jump=false;
-        sim_pattern_break=false;
-        sim_jump_row=0;
-        if(sim_current_table_index>=xm_ctx->module.length){
-          sim_current_table_index=xm_ctx->module.restart_position;
+      xm_pattern_t* cur=xm_ctx->module.patterns+xm_ctx->module.pattern_table[xm_ctx->current_table_index];
+      // Process effects for this row
+      for(uint8_t i=0;i<xm_ctx->module.num_channels;++i){
+        xm_pattern_slot_t* s=cur->slots+xm_ctx->current_row*xm_ctx->module.num_channels+i;
+        switch(s->effect_type){
+          case 0xB: // Position jump
+            if(s->effect_param<xm_ctx->module.length){
+              xm_ctx->position_jump=true;
+              xm_ctx->jump_dest=s->effect_param;
+            }
+            break;
+          case 0xD: // Pattern break
+            xm_ctx->pattern_break=true;
+            xm_ctx->jump_row=(s->effect_param>>4)*10+(s->effect_param&0x0F);
+            break;
+          case 0xE: // Extended command
+            if((s->effect_param>>4)==0xE){ // Pattern delay
+              xm_ctx->extra_ticks=(s->effect_param&0x0F)*xm_ctx->tempo;
+            }
+            break;
+          case 0xF: // Set tempo/BPM
+            if(s->effect_param>0){
+              if(s->effect_param<=0x1F){
+                xm_ctx->tempo=s->effect_param;
+              }else{
+                xm_ctx->bpm=s->effect_param;
+              }
+            }
+            break;
         }
-      }else if(sim_pattern_break){
-        sim_current_table_index++;
-        sim_current_row=sim_jump_row;
-        sim_pattern_break=false;
-        sim_jump_row=0;
-        if(sim_current_table_index>=xm_ctx->module.length){
-          sim_current_table_index=xm_ctx->module.restart_position;
-        }
       }
-      // Check for natural end
-      if(sim_current_table_index>=xm_ctx->module.length){
+      // Loop detection - exact replication from xm_play.c
+      xm_ctx->loop_count=(xm_ctx->row_loop_count[MAX_NUM_ROWS*xm_ctx->current_table_index+xm_ctx->current_row]++);
+      if(xm_ctx->loop_count>=max_loop_count){
         break;
       }
-      xm_pattern_t* cur=xm_ctx->module.patterns+xm_ctx->module.pattern_table[sim_current_table_index];
-      for(uint8_t i=0;i<xm_ctx->module.num_channels;i++){
-        xm_pattern_slot_t* s=cur->slots+sim_current_row*xm_ctx->module.num_channels+i;
-        if(s->effect_type==0xF&&s->effect_param>0){
-          if(s->effect_param<=0x1F) sim_tempo=s->effect_param;
-          else sim_bpm=s->effect_param;
-        }
-        if(s->effect_type==0xB&&s->effect_param<xm_ctx->module.length){
-          sim_position_jump=true;
-          sim_jump_dest=s->effect_param;
-        }
-        if(s->effect_type==0xD){
-          sim_pattern_break=true;
-          sim_jump_row=(s->effect_param>>4)*10+(s->effect_param&0x0F);
-        }
-        if(s->effect_type==0xE&&(s->effect_param>>4)==0xE){
-          sim_extra_ticks=(s->effect_param&0x0F)*sim_tempo;
+      xm_ctx->current_row++;
+      // Handle pattern end
+      if(!xm_ctx->position_jump&&!xm_ctx->pattern_break&&
+         (xm_ctx->current_row>=cur->num_rows||xm_ctx->current_row==0)){
+        xm_ctx->current_table_index++;
+        xm_ctx->current_row=xm_ctx->jump_row;
+        xm_ctx->jump_row=0;
+        if(xm_ctx->current_table_index>=xm_ctx->module.length){
+          xm_ctx->current_table_index=xm_ctx->module.restart_position;
         }
       }
-      sim_current_row++;
-      if(!sim_position_jump&&!sim_pattern_break&&
-         (sim_current_row>=cur->num_rows||sim_current_row==0)){
-        sim_current_table_index++;
-        sim_current_row=0;
-        if(sim_current_table_index>=xm_ctx->module.length){
-          sim_current_table_index=xm_ctx->module.restart_position;
-        }
-      }
+    }
+    // Advance tick
+    xm_ctx->current_tick++;
+    if(xm_ctx->current_tick>=xm_ctx->tempo+xm_ctx->extra_ticks){
+      xm_ctx->current_tick=0;
+      xm_ctx->extra_ticks=0;
     }
     total_ticks++;
-    sim_current_tick++;
-    if(sim_current_tick>=sim_tempo+sim_extra_ticks){
-      sim_current_tick=0;
-      sim_extra_ticks=0;
-    }
   }
-  loop_end:
-  float total_seconds=(float)total_ticks/(sim_bpm*0.4f);
-  signed long factor=oneFiftieth?50:1000;
-  return (signed long)(total_seconds*factor);
+  // Restore original state
+  xm_ctx->current_table_index=orig_ord;
+  xm_ctx->current_row=orig_row;
+  xm_ctx->current_tick=orig_tick;
+  xm_ctx->tempo=orig_tempo;
+  xm_ctx->bpm=orig_bpm;
+  xm_ctx->loop_count=orig_loop_count;
+  xm_ctx->extra_ticks=orig_extra_ticks;
+  xm_ctx->position_jump=orig_position_jump;
+  xm_ctx->pattern_break=orig_pattern_break;
+  xm_ctx->jump_dest=orig_jump_dest;
+  xm_ctx->jump_row=orig_jump_row;
+  memset(xm_ctx->row_loop_count,0,MAX_NUM_ROWS*xm_ctx->module.length*sizeof(uint8_t));
+  // Returns result
+  float seconds=(float)total_ticks/(xm_ctx->bpm*0.4f);
+  return (signed long)(seconds*(oneFiftieth?50:1000));
 }
 
 void xm_set_loop(bool loop){

@@ -95,6 +95,7 @@ bool scrNotPlayer=false;
 bool tftInitialized=false;
 unsigned long mlsScr=0;
 unsigned long mlsPrevTrack=0;
+unsigned long loadingTime=0;
 #define PREVTRACKDELAY 2000
 
 #define S_UPD0 6  // browser cur filename

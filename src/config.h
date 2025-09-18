@@ -115,7 +115,7 @@ void startup_config_load(){
 
 void sd_config_save(){
   if(foundRom){
-    printf("Save sdConfig to eeprom...\n");
+    // printf("Save sdConfig to eeprom...\n");
     eeInit(eepAddress);
     eep.write(SD_START_ADDRESS,reinterpret_cast<uint8_t*>(&sdConfig),sizeof(sdConfig));
     eep.write(SD_FLAG_ADDRESS,64);
@@ -887,6 +887,7 @@ void checkStartUpConfig(){
   // TinyUSBDevice.begin(2);
   pinMode(DN_BTN,INPUT);
   pinMode(UP_BTN,INPUT);
+  pinMode(OK_BTN, INPUT);
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
   // pinMode(OK_BTN,INPUT);
 #endif
@@ -903,6 +904,9 @@ void checkStartUpConfig(){
     lfs_config_save();
     sd_config_default();
     sd_config_save();
+  }
+  if(digitalRead(OK_BTN)==LOW){
+    configResetPlayingPath();
   }
   #if defined(CONFIG_IDF_TARGET_ESP32S3)
     // Mount SD card to USB

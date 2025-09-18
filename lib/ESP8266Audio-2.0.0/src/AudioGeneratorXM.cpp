@@ -99,7 +99,9 @@ bool AudioGeneratorXM::loop(){
     return false;
   }
 
-  if(!playerTask) xm_player_loop();
+  if(!playerTask){
+    if(!xm_player_loop()) return false;
+  }
   
   return true;
 }

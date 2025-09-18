@@ -50,7 +50,7 @@ int xm_create_context_safe(xm_context_t** ctxp, void* moddata, size_t moddata_le
 	mempool += ctx->module.num_channels * sizeof(xm_channel_context_t);
 
 	ctx->global_volume = 1.f;
-	ctx->amplification = .10f; /* XXX: some bad modules may still clip. Find out something better. .25f is default */
+	ctx->amplification = .15f; /* XXX: some bad modules may still clip. Find out something better. .25f is default */
 
 #if XM_RAMPING
 	ctx->volume_ramp = (1.f / 128.f);

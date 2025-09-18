@@ -14,10 +14,8 @@
 #define LOG_INFO(fmt, ...)  printf("\033[32m[INFO] " fmt "\033[0m\n", ##__VA_ARGS__)
 
 // Global logical samples counter for time tracking
-static float logical_samples=0.0f;
-
-// Global variables to track loop state
-static float loop_destination_time=0.0f;
+static uint64_t logical_samples_scaled=0; // scaled by 1000
+static uint64_t loop_destination_time_scaled=0; // scaled by 1000
 static bool loop_time_calculated=false;
 
 // Global variables for EQ and channel buffers
@@ -61,7 +59,7 @@ static void xm_tick(xm_context_t*);
 
 static float xm_sample_at(xm_sample_t*, size_t);
 static float xm_next_of_sample(xm_channel_context_t*);
-void xm_sample(xm_context_t*, float*, float*);
+bool xm_sample(xm_context_t*, float*, float*);
 
 int xm_get_stereo_separation(void);
 void xm_reset_logical_samples(void);
@@ -1486,7 +1484,7 @@ static float IRAM_ATTR xm_next_of_sample(xm_channel_context_t* ch)
   return endval;
 }
 
-void IRAM_ATTR xm_sample(xm_context_t* ctx, float* left, float* right)
+bool IRAM_ATTR xm_sample(xm_context_t* ctx, float* left, float* right)
 {
   if (ctx->remaining_samples_in_tick <= 0)
     xm_tick(ctx);
@@ -1504,7 +1502,8 @@ void IRAM_ATTR xm_sample(xm_context_t* ctx, float* left, float* right)
       xm_pattern_t* pat=ctx->module.patterns+ctx->module.pattern_table[p];
       dest_ticks+=pat->num_rows*ctx->tempo;
     }
-    loop_destination_time=(float)dest_ticks/(ctx->bpm*0.4f);
+    // Convert to scaled integer: dest_ticks/(bpm*0.4) * 1000
+    loop_destination_time_scaled=(dest_ticks*1000*10)/(ctx->bpm*4);
     loop_time_calculated=true;
   }
   // Detect when we reach the end and loop back
@@ -1512,11 +1511,11 @@ void IRAM_ATTR xm_sample(xm_context_t* ctx, float* left, float* right)
     // Jump time back to loop start position
     extern int xm_get_original_sample_rate(void);
     int original_rate=xm_get_original_sample_rate();
-    logical_samples=loop_destination_time*original_rate;
+    logical_samples_scaled=loop_destination_time_scaled*original_rate;
   }
 
   if(ctx->max_loop_count>0&&ctx->loop_count>=ctx->max_loop_count){
-    return;
+    return false;
   }
 
   for (uint8_t i = 0; i < ctx->module.num_channels; ++i)
@@ -1560,19 +1559,21 @@ void IRAM_ATTR xm_sample(xm_context_t* ctx, float* left, float* right)
   *right*=fgvol;
   // Increment sample counter for time tracking
   ctx->generated_samples++;
-  // Update track frame pointer with logical time that advances at current speed
+  // Update track frame pointer with logical time using integer math
   unsigned long* track_frame=xm_get_track_frame_ptr();
   if(track_frame){
     extern int xm_get_original_sample_rate(void);
     int original_rate=xm_get_original_sample_rate();
-    // Logical time advances based on speed: slower when rate is higher, faster when rate is lower
-    logical_samples+=(float)original_rate/(float)ctx->rate;
-    *track_frame=(unsigned long)(logical_samples*50/original_rate);
+    // Scale by 1000 to avoid float: logical_samples += original_rate / ctx->rate
+    logical_samples_scaled+=(original_rate*1000)/ctx->rate;
+    // Convert to trackFrame: (logical_samples * 50) / original_rate
+    *track_frame=(logical_samples_scaled*50)/(original_rate*1000);
   }
+  return true;
 }
 
 void xm_reset_logical_samples(void){
-  logical_samples=0.0f;
-  loop_destination_time=0.0f;
+  logical_samples_scaled=0;
+  loop_destination_time_scaled=0;
   loop_time_calculated=false;
 }

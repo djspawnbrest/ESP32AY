@@ -49,6 +49,7 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
     3. STEP 2 - half cycle (2 phases) per click (Set by default)
     4. STEP 1 - quarter cycle (1 phase) per click, and non-latching encoders
 - Before player turning on - hold right button and turn on player to reset config to default.
+- Before player turning on - hold encoder button and turn on player to reset last playing track (if player freezes or reboot on this file).
 - Encoder Hold - change mode player/file browser
 - Encoder Click - in player mode - play/pause; in file browser mode select track/playlist/directory; select - in config mode
 - Encoder Double click - in player mode - open settings
