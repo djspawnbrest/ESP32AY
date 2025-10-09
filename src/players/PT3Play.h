@@ -183,11 +183,34 @@ void PT3_Init(AYSongInfo &info)
     {
         version = header->PT3_MusicName[13] - 0x30;
     }
+    
+    bool is_ts_37 = false;
+    if(version >= 7)
+    {
+        for(int pos = 0; pos < header->PT3_NumberOfPositions && pos < 256; pos++)
+        {
+            int pat_idx = header->PT3_PositionList[pos] / 3;
+            if(pat_idx >= 24 && pat_idx < 48)
+            {
+                is_ts_37 = true;
+                break;
+            }
+        }
+    }
+    
     unsigned char *ptr = PT3_FindSig(module + 0x63, info.module_len - 0x63);
-    if((unsigned long)ptr > 0)
+    if((unsigned long)ptr > 0 || is_ts_37)
     {
         info.is_ts = true;
-        info.module1 = ptr;
+        if(is_ts_37 && (unsigned long)ptr == 0)
+        {
+            info.module1 = module;
+        }
+        else
+        {
+            info.module1 = ptr;
+            is_ts_37 = false;
+        }
         info.data1 = (void *)new PT3_SongInfo;
         if(!info.data1)
         {
@@ -203,11 +226,19 @@ void PT3_Init(AYSongInfo &info)
 
     for(unsigned long y = 0; y < 2; y++)
     {
+        PT3.CurrentPosition = 0;
         i = header->PT3_PositionList[0];
         b = header->PT3_MusicName[0x62];
         if(b != 0x20)
         {
-            i = b * 3 - 3 - i;
+            int max_pos = b * 3 - 3;
+            i = max_pos - i;
+        }
+        if(is_ts_37 && y == 1)
+        {
+            int pat_idx = i / 3;
+            pat_idx = 47 - pat_idx;
+            i = pat_idx * 3;
         }
         PT3.Version = version;
         PT3.DelayCounter = 1;
@@ -249,8 +280,11 @@ void PT3_Init(AYSongInfo &info)
         if(!info.is_ts)
             break;
         data = info.data1;
-        module = info.module1;
-        header = (PT3_File *)module;
+        if(!is_ts_37)
+        {
+            module = info.module1;
+            header = (PT3_File *)module;
+        }
     }
 
     ay_resetay(&info, 0);
@@ -646,9 +680,25 @@ void PT3_Play_Chip(AYSongInfo &info, unsigned long chip_num)
                 PT3.CurrentPosition++;
                 if(PT3.CurrentPosition == header->PT3_NumberOfPositions)
                     PT3.CurrentPosition = header->PT3_LoopPosition;
-                PT3_A.Address_In_Pattern = ay_sys_getword(&module[PT3_PatternsPointer + header->PT3_PositionList[PT3.CurrentPosition] * 2]);
-                PT3_B.Address_In_Pattern = ay_sys_getword(&module[PT3_PatternsPointer + header->PT3_PositionList[PT3.CurrentPosition] * 2 + 2]);
-                PT3_C.Address_In_Pattern = ay_sys_getword(&module[PT3_PatternsPointer + header->PT3_PositionList[PT3.CurrentPosition] * 2 + 4]);
+                int pos_val = header->PT3_PositionList[PT3.CurrentPosition];
+                if(PT3.Version >= 7 && info.module1 == info.module)
+                {
+                    unsigned char b = header->PT3_MusicName[0x62];
+                    if(b != 0x20)
+                    {
+                        int max_pos = b * 3 - 3;
+                        pos_val = max_pos - pos_val;
+                    }
+                    int pat_idx = pos_val / 3;
+                    if(chip_num == 1)
+                    {
+                        pat_idx = 47 - pat_idx;
+                        pos_val = pat_idx * 3;
+                    }
+                }
+                PT3_A.Address_In_Pattern = ay_sys_getword(&module[PT3_PatternsPointer + pos_val * 2]);
+                PT3_B.Address_In_Pattern = ay_sys_getword(&module[PT3_PatternsPointer + pos_val * 2 + 2]);
+                PT3_C.Address_In_Pattern = ay_sys_getword(&module[PT3_PatternsPointer + pos_val * 2 + 4]);
                 PT3.Noise_Base = 0;
             }
             PT3_PatternIntterpreter(info, PT3_A, chip_num);

@@ -684,6 +684,7 @@ int browser_screen(int mode){
         #if defined(CONFIG_IDF_TARGET_ESP32S3)
           case TYPE_XM:
         #endif
+            muteAYBeep();
             PlayerCTRL.isPlay=false;
             memcpy(sdConfig.play_dir,sdConfig.active_dir,sizeof(sdConfig.active_dir));
             memcpy(sort_list_play,sort_list,sizeof(sort_list));
