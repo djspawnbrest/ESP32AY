@@ -128,13 +128,9 @@ void initOut(int buf=32){
 
 void DACInit(){
   initOut();
-  DACTimer=timerBegin(0,79,true); // timer_id = 0; divider=79;(old 80) countUp = true;
-  #if defined(CONFIG_IDF_TARGET_ESP32S3)
-  timerAttachInterrupt(DACTimer,&DACTimer_ISR,false); // edge = true
-  #else
+  DACTimer=timerBegin(0,80,true); // timer_id = 0; divider=79;(old 80) countUp = true;
   timerAttachInterrupt(DACTimer,&DACTimer_ISR,true); // edge = true
-  #endif
-  timerAlarmWrite(DACTimer,(uint64_t)ceil((float)F_CPU/TIMER_RATE/(F_CPU/1000000L)),true); // round up from 22.675737 to 23
+  timerAlarmWrite(DACTimer,1000000/TIMER_RATE,true);
   timerAlarmEnable(DACTimer);
   sound_init();
 }

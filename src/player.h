@@ -1263,7 +1263,7 @@ void player_screen(){
 
 void wait_frame(){
   uint32_t prev=frame_cnt;
-  while(frame_cnt==prev&&frame_max!=frameMax(PLAY_FAST)&&PlayerCTRL.isPlay){
+  while(frame_cnt==prev&&PlayerCTRL.isPlay){
     yield();
     vTaskDelay(1);
     esp_task_wdt_reset();
