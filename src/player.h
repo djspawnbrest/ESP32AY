@@ -358,14 +358,14 @@ void music_init(){
     case TYPE_ASC: ASC_Init(AYInfo); ASC_GetInfo(AYInfo); break;
     case TYPE_PSC: PSC_Init(AYInfo); PSC_GetInfo(AYInfo); break;
     case TYPE_SQT: SQT_Init(AYInfo); SQT_GetInfo(AYInfo); break;
-    case TYPE_AY: AY_Init(AYInfo); AY_GetInfo(AYInfo); initOut(8); out->begin(); break;
+    case TYPE_AY: AY_Init(AYInfo); AY_GetInfo(AYInfo); break;
     case TYPE_PSG: break;
     case TYPE_RSF: break;
     case TYPE_YRG: break;
-    case TYPE_MOD: initOut(); break;
-    case TYPE_S3M: initOut(); break;
+    case TYPE_MOD: break;
+    case TYPE_S3M: break;
   #if defined(CONFIG_IDF_TARGET_ESP32S3)
-    case TYPE_XM: initOut(); break;
+    case TYPE_XM: break;
   #endif
   }
   unMuteAmp();
@@ -459,7 +459,7 @@ void music_stop(){
     case TYPE_ASC: ASC_Cleanup(AYInfo); break;
     case TYPE_PSC: PSC_Cleanup(AYInfo); break;
     case TYPE_SQT: SQT_Cleanup(AYInfo); break;
-    case TYPE_AY: AY_Cleanup(AYInfo); out->stop(); initOut(); break;
+    case TYPE_AY: AY_Cleanup(AYInfo); break;
     case TYPE_PSG: PSG_Cleanup(); break;
     case TYPE_RSF: RSF_Cleanup(); break;
     case TYPE_YRG: YRG_Cleanup(); break;

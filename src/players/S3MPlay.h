@@ -58,6 +58,7 @@ void S3M_Loop(){
 
 void S3M_Play(){
   if(s3m&&!s3m->isRunning()){
+    initOut();
     s3m->begin(modFile,out);
   }
   S3M_Loop();

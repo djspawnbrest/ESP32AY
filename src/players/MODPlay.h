@@ -58,6 +58,7 @@ void MOD_Loop() {
 
 void MOD_Play(){
   if(mod&&!mod->isRunning()){
+    initOut();
     mod->begin(modFile,out);
   }
   MOD_Loop();

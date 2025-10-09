@@ -139,6 +139,8 @@ char playedFileName[MAX_PATH];
 byte fileInfoBuf[128]; // 31 bytes per frame max, 50*31=1550 per sec, 155 per 0.1 sec
 char tme[200];
 
+extern bool &ayPlayerAct;
+
 volatile uint32_t frame_cnt=0;
 volatile uint32_t frame_div=0;
 volatile uint32_t frame_max=TIMER_RATE*1000/48880; // Pentagon int

@@ -54,6 +54,8 @@ struct{
   int cycles_acc;
 }AyPlayer;
 
+bool &ayPlayerAct=AyPlayer.active;
+
 void mem_remap_reset(void){
   memset(music_data,0,sizeof(music_data));
   memset(AyPlayer.mem_remap,PAGE_UNDEF,sizeof(AyPlayer.mem_remap));
@@ -240,6 +242,9 @@ void AY_Init(AYSongInfo &info){
   AyPlayer.z80.registers.byte[Z80_IYH]=AyPlayer.hi_reg;
   AyPlayer.z80.registers.byte[Z80_IYL]=AyPlayer.lo_reg;
 
+  initOut(8);
+  out->begin();
+
   AyPlayer.active=true;
 }
 
@@ -289,6 +294,9 @@ void AY_Cleanup(AYSongInfo &info){
   memset(Sound.buf_1,0,sizeof(Sound.buf_1));
   memset(Sound.buf_2,0,sizeof(Sound.buf_2));
   Sound.buf_do_update=false;
+  out->stop();
+  delete out;
+  out=nullptr;
 }
 
 bool AY_IsMemFail(){

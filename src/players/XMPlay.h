@@ -68,6 +68,7 @@ void XM_Loop(){
 
 void XM_Play(){
   if(xm&&!xm->isRunning()){
+    initOut();
     xm->begin(modFile,out);
   }
   XM_Loop();

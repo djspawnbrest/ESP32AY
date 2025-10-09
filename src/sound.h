@@ -59,7 +59,7 @@ void sound_init(){
 }
 
 void sound_update(){
-  if(Sound.buf_rd&&PlayerCTRL.isPlay&&PlayerCTRL.music_type==TYPE_AY){  // else if AY buffer not empty (playing AY beeper)
+  if(Sound.buf_rd&&PlayerCTRL.isPlay&&PlayerCTRL.music_type==TYPE_AY&&ayPlayerAct){  // else if AY buffer not empty (playing AY beeper)
     Sound.dac=0x80+((Sound.buf_rd[Sound.buf_ptr_rd++])*7/10);  // rendered beeper sound is always unsigned
     if (Sound.buf_ptr_rd>=SOUND_BUF_MAX_SIZE){
       Sound.buf_ptr_rd=0;
@@ -81,7 +81,7 @@ void sound_update(){
 void IRAM_ATTR DACTimer_ISR(){
   BaseType_t xHigherPriorityTaskWoken=pdFALSE;
   // DAC only for ay format
-  if(PlayerCTRL.music_type==TYPE_AY){
+  if(PlayerCTRL.music_type==TYPE_AY&&ayPlayerAct){
     if(Sound.dac){
       sampleZX[0]=sampleZX[1]=Sound.dac<<8;
       if(xSemaphoreTakeFromISR(outSemaphore,&xHigherPriorityTaskWoken)==pdTRUE){  
