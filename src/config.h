@@ -577,7 +577,7 @@ void config_screen(){
           if(PlayerCTRL.music_type==TYPE_XM) setXmSeparation();
         #endif
           break;
-        case 9:
+        case 10:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
           lfsConfig.batCalib-=0.1;
           if(lfsConfig.batCalib<-1.0) lfsConfig.batCalib=1.0;
@@ -655,7 +655,7 @@ void config_screen(){
           if(PlayerCTRL.music_type==TYPE_XM) setXmSeparation();
         #endif
           break;
-        case 9:
+        case 10:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
           lfsConfig.batCalib+=0.1;
           if(lfsConfig.batCalib>1.0) lfsConfig.batCalib=-1.0;
@@ -690,6 +690,7 @@ void config_screen(){
       case 6:
       case 7:
       case 8:
+      case 10:
         cfgSet=!cfgSet;
         break;
       case 9:

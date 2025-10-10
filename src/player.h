@@ -19,7 +19,7 @@ void player_shuffle_cur(){
 
 void muteAYBeep(){
   sound_clear_buf();
-  for(uint8_t chip=0; chip<2;chip++){
+  for(uint8_t chip=0;chip<2;chip++){
     ay_write(chip,0x07,0xff);
     ay_write(chip,0x08,0x00);
     ay_write(chip,0x09,0x00);
