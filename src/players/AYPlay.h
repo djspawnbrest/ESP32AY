@@ -214,8 +214,6 @@ int AY_Load(AYSongInfo &info,int subsong){
   return FILE_ERR_NONE;
 }
 
-
-
 void AY_Init(AYSongInfo &info){
   AyPlayer.active=false;
 
@@ -267,6 +265,11 @@ int AY_FlushBuf(int cycles){
       AyPlayer.sample_acc=0;
     }
     Sound.buf_wr[Sound.buf_ptr_wr++]=s;
+    if(s>0&&PlayerCTRL.screen_mode==SCR_PLAYER){
+      int freq_idx=(s*96)/MAX_LEVEL;
+      if(freq_idx>=96) freq_idx=95;
+      bufEQ[freq_idx]|=(s*8)/MAX_LEVEL;
+    }
     if(Sound.buf_ptr_wr>=SOUND_BUF_MAX_SIZE) return 1;
   }
   return 0;
