@@ -81,7 +81,7 @@ void sound_update(){
 void IRAM_ATTR DACTimer_ISR(){
   BaseType_t xHigherPriorityTaskWoken=pdFALSE;
   // DAC only for ay format
-  if(PlayerCTRL.music_type==TYPE_AY&&ayPlayerAct){
+  if(PlayerCTRL.music_type==TYPE_AY&&ayPlayerAct&&out&&PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
     if(Sound.dac){
       sampleZX[0]=sampleZX[1]=Sound.dac<<8;
       if(xSemaphoreTakeFromISR(outSemaphore,&xHigherPriorityTaskWoken)==pdTRUE){  
@@ -114,12 +114,22 @@ done:
   }
 }
 
+void setDacGain(){
+  if(out) out->SetGain(lfsConfig.dacGain);
+}
+
 void initOut(int buf=32){
   muteAmp();
+  if(out){
+    out->stop();
+    vTaskDelay(pdMS_TO_TICKS(10));
+    delete out;
+    out=nullptr;
+  }
 #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(USE_EXTERNAL_DAC)
   out=new AudioOutputI2S(0,AudioOutputI2S::EXTERNAL_I2S,buf);
   out->SetPinout(PIN_BCK,PIN_LCK,PIN_DIN);
-  out->SetGain(0.2f);
+  out->SetGain(lfsConfig.dacGain);
 #else
   out=new AudioOutputI2S(0,AudioOutputI2S::INTERNAL_DAC,buf);  // I2S output
 #endif

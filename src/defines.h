@@ -178,6 +178,7 @@ struct{
   uint16_t scr_timeout;         // Screen off timeout
   uint32_t ay_clock;            // 1.75 MHz e.t.c.
   float batCalib;               // Battery calibration
+  float dacGain;
 }lfsConfig;
 
 enum{
@@ -350,6 +351,7 @@ void ay_set_clock(uint32_t f);
 void AY_PlayBuf();
 void music_play();
 void muteAYBeep();
+void setDacGain();
 int checkSDonStart();
 void playerSourceChange();
 uint16_t frameMax(uint8_t speed);

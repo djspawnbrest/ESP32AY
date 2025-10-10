@@ -219,6 +219,9 @@ int AY_Load(AYSongInfo &info,int subsong){
 void AY_Init(AYSongInfo &info){
   AyPlayer.active=false;
 
+  initOut(8);
+  out->begin();
+
   AyPlayer.speaker_state=0;
   AyPlayer.ay_reg=0;
   AyPlayer.cycles_per_sample_fp=(int)(AY_Z80_CLOCK*256.0/(double)TIMER_RATE);
@@ -241,9 +244,6 @@ void AY_Init(AYSongInfo &info){
   AyPlayer.z80.registers.byte[Z80_IXL]=AyPlayer.lo_reg;
   AyPlayer.z80.registers.byte[Z80_IYH]=AyPlayer.hi_reg;
   AyPlayer.z80.registers.byte[Z80_IYL]=AyPlayer.lo_reg;
-
-  initOut(8);
-  out->begin();
 
   AyPlayer.active=true;
 }
@@ -288,15 +288,15 @@ void AY_GetInfo(AYSongInfo &info){
 }
 
 void AY_Cleanup(AYSongInfo &info){
-  AyPlayer.active = false;
+  AyPlayer.active=false;
+  out->stop();
+  vTaskDelay(pdMS_TO_TICKS(10));
   memset(Sound.buf_rd,0,sizeof(Sound.buf_rd));
   memset(Sound.buf_wr,0,sizeof(Sound.buf_wr));
   memset(Sound.buf_1,0,sizeof(Sound.buf_1));
   memset(Sound.buf_2,0,sizeof(Sound.buf_2));
   Sound.buf_do_update=false;
-  out->stop();
-  delete out;
-  out=nullptr;
+  Sound.dac=0x00;
 }
 
 bool AY_IsMemFail(){

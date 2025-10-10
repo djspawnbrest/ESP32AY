@@ -18,8 +18,7 @@ void S3M_Cleanup(){
   s3m=nullptr;
   modFile=nullptr;
   out->stop();
-  delete out;
-  out=nullptr;
+  vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
 }
 

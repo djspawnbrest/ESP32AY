@@ -664,7 +664,7 @@ int browser_screen(int mode){
             PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
             browser_rebuild=1;
             sdConfig.isBrowserPlaylist=BROWSE_AYL;
-            xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+            // xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
             delay(30);
             break;
           case TYPE_PT1:
@@ -684,8 +684,9 @@ int browser_screen(int mode){
         #if defined(CONFIG_IDF_TARGET_ESP32S3)
           case TYPE_XM:
         #endif
+            muteAmp();
             muteAYBeep();
-            PlayerCTRL.isPlay=false;
+            // PlayerCTRL.isPlay=false;
             memcpy(sdConfig.play_dir,sdConfig.active_dir,sizeof(sdConfig.active_dir));
             memcpy(sort_list_play,sort_list,sizeof(sort_list));
             sdConfig.play_count_files=sort_list_len;
@@ -701,7 +702,7 @@ int browser_screen(int mode){
             PlayerCTRL.isBrowserCommand=true;
             PlayerCTRL.autoPlay=false;
             PlayerCTRL.isFinish=true;
-            xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+            // xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
             delay(30);
             break;
         }

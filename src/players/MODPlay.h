@@ -18,8 +18,7 @@ void MOD_Cleanup(){
   mod=nullptr;
   modFile=nullptr;
   out->stop();
-  delete out;
-  out=nullptr;
+  vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
 }
 

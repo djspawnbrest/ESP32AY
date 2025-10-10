@@ -25,6 +25,7 @@ void lfs_config_default(){
   lfsConfig.encType=EB_STEP2;
   lfsConfig.encReverse=false;
   lfsConfig.showClock=false;
+  lfsConfig.dacGain=0.2f;
 }
 
 void sd_config_default(){
@@ -462,26 +463,28 @@ void config_screen(){
       sprintf(buf,"%s%2us%s",(cfgSet&&ccur==6)?"<":"",lfsConfig.scr_timeout,(cfgSet&&ccur==6)?">":"");
     }
     spr_printmenu_item(img,8,2,PSTR("Scr.timeout"),(cfgSet&&ccur==6)?WILD_RED:WILD_CYAN_D2,ccur==6?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==6)?WILD_RED:TFT_YELLOW);
+    sprintf(buf,"%s%d%%%s",(cfgSet&&ccur==7)?"<":"",(int)roundf(lfsConfig.dacGain*100),(cfgSet&&ccur==7)?">":"");
+    spr_printmenu_item(img,9,2,PSTR("DAC Gain"),(cfgSet&&ccur==7)?WILD_RED:WILD_CYAN_D2,ccur==7?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==7)?WILD_RED:TFT_YELLOW);
     switch(lfsConfig.modStereoSeparation){
-      case MOD_FULLSTEREO: sprintf(buf,"%sFull Stereo%s",(cfgSet&&ccur==7)?"<":"",(cfgSet&&ccur==7)?">":"");break;
-      case MOD_HALFSTEREO: sprintf(buf,"%sHalf Stereo%s",(cfgSet&&ccur==7)?"<":"",(cfgSet&&ccur==7)?">":"");break;
-      case MOD_MONO: sprintf(buf,"%sMono%s",(cfgSet&&ccur==7)?"<":"",(cfgSet&&ccur==7)?">":"");break;
+      case MOD_FULLSTEREO: sprintf(buf,"%sFull Stereo%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
+      case MOD_HALFSTEREO: sprintf(buf,"%sHalf Stereo%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
+      case MOD_MONO: sprintf(buf,"%sMono%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
     }
-    spr_printmenu_item(img,9,2,PSTR("DAC Pan."),(cfgSet&&ccur==7)?WILD_RED:WILD_CYAN_D2,ccur==7?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==7)?WILD_RED:TFT_YELLOW);
-    spr_printmenu_item(img,10,2,PSTR("Enc direction"),WILD_CYAN_D2,ccur==8?TFT_RED:TFT_BLACK,enc_reverse[lfsConfig.encReverse],TFT_YELLOW);
-    sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==9)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==9)?">":"");
-    spr_printmenu_item(img,11,2,PSTR("Batt calib"),(cfgSet&&ccur==9)?WILD_RED:WILD_CYAN_D2,ccur==9?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==9)?WILD_RED:TFT_YELLOW);
-    if(foundRtc) spr_printmenu_item(img,12,2,PSTR("Date&Time"),WILD_CYAN_D2,ccur==10?TFT_RED:TFT_BLACK);
-    spr_printmenu_item(img,(foundRtc)?13:12,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK);
-    spr_printmenu_item(img,(foundRtc)?14:13,2,PSTR("About"),WILD_CYAN_D2,ccur==12?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,10,2,PSTR("DAC Pan."),(cfgSet&&ccur==8)?WILD_RED:WILD_CYAN_D2,ccur==8?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==8)?WILD_RED:TFT_YELLOW);
+    spr_printmenu_item(img,11,2,PSTR("Enc direction"),WILD_CYAN_D2,ccur==9?TFT_RED:TFT_BLACK,enc_reverse[lfsConfig.encReverse],TFT_YELLOW);
+    sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==10)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==10)?">":"");
+    spr_printmenu_item(img,12,2,PSTR("Batt calib"),(cfgSet&&ccur==10)?WILD_RED:WILD_CYAN_D2,ccur==10?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==10)?WILD_RED:TFT_YELLOW);
+    if(foundRtc) spr_printmenu_item(img,13,2,PSTR("Date&Time"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,(foundRtc)?14:13,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==12?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,(foundRtc)?15:14,2,PSTR("About"),WILD_CYAN_D2,ccur==13?TFT_RED:TFT_BLACK);
     // Push sprite
     img.pushSprite(8,8);
     img.deleteSprite();
   }
   // voltage debug
+  static uint64_t InVolt=0;
   if(millis()-mlsV>vUp){
-    static int chgP=0;
-    uint64_t InVolt=0;
+    InVolt=0;
     //Reading from a port with averaging
     for(int i=0;i<READ_CNT;i++){
       InVolt+=analogReadMilliVolts(VOLTPIN);
@@ -489,6 +492,8 @@ void config_screen(){
     InVolt=InVolt/READ_CNT;
     // printf("InVolt: %llu\n",InVolt);
     volt=((InVolt/1000.0)*VoltMult)+lfsConfig.batCalib;//+0.1;
+    mlsV=millis();
+  }
     img.setColorDepth(8);
     img.createSprite(224,16);
     img.fillScreen(0);
@@ -501,17 +506,15 @@ void config_screen(){
     spr_printmenu_item(img,2,1,PSTR("Battery voltage:"),WILD_RED,TFT_BLACK,buf,TFT_GREEN);
     img.pushSprite(8,296);
     img.deleteSprite();
-    mlsV=millis();
-  }
   // survey keypad
   if(enc.left()&&lcdBlackout==false){
     if(!cfgSet){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
       lfsConfig.cfg_cur--;
       if(!foundRtc){
-        if(lfsConfig.cfg_cur==10) lfsConfig.cfg_cur=9;
+        if(lfsConfig.cfg_cur==11) lfsConfig.cfg_cur=10;
       }
-      if(lfsConfig.cfg_cur<0)lfsConfig.cfg_cur=12;
+      if(lfsConfig.cfg_cur<0)lfsConfig.cfg_cur=13;
     }else{
       switch(lfsConfig.cfg_cur){
         case 2:
@@ -557,6 +560,12 @@ void config_screen(){
           break;
         case 7:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
+          lfsConfig.dacGain-=0.01f;
+          if(lfsConfig.dacGain<0.0f) lfsConfig.dacGain=1.0f;
+          setDacGain();
+          break;
+        case 8:
+          PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
           switch(lfsConfig.modStereoSeparation){
             case MOD_FULLSTEREO: lfsConfig.modStereoSeparation=MOD_MONO;break;
             case MOD_HALFSTEREO: lfsConfig.modStereoSeparation=MOD_FULLSTEREO;break;
@@ -581,9 +590,9 @@ void config_screen(){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
       lfsConfig.cfg_cur++;
       if(!foundRtc){
-        if(lfsConfig.cfg_cur==10) lfsConfig.cfg_cur=11;
+        if(lfsConfig.cfg_cur==11) lfsConfig.cfg_cur=12;
       }
-      if(lfsConfig.cfg_cur>12) lfsConfig.cfg_cur=0;
+      if(lfsConfig.cfg_cur>13) lfsConfig.cfg_cur=0;
     }else{
       switch(lfsConfig.cfg_cur){
         case 2:
@@ -629,6 +638,12 @@ void config_screen(){
           break;
         case 7:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
+          lfsConfig.dacGain+=0.01f;
+          if(lfsConfig.dacGain>1.0f) lfsConfig.dacGain=0.0f;
+          setDacGain();
+          break;
+        case 8:
+          PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
           switch(lfsConfig.modStereoSeparation){
             case MOD_FULLSTEREO: lfsConfig.modStereoSeparation=MOD_HALFSTEREO;break;
             case MOD_HALFSTEREO: lfsConfig.modStereoSeparation=MOD_MONO;break;
@@ -660,7 +675,7 @@ void config_screen(){
     PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
     switch(lfsConfig.cfg_cur){
       case 0:
-      lfsConfig.playerSource++;
+        lfsConfig.playerSource++;
         if(lfsConfig.playerSource>=PLAYER_MODE_ALL) lfsConfig.playerSource=PLAYER_MODE_SD;
         playerSourceChange();
         break;
@@ -674,23 +689,23 @@ void config_screen(){
       case 5:
       case 6:
       case 7:
-      case 9:
+      case 8:
         cfgSet=!cfgSet;
         break;
-      case 8:
+      case 9:
         lfsConfig.encReverse=!lfsConfig.encReverse;
         enc.setEncReverse(lfsConfig.encReverse);
         break;
-      case 10:
+      case 11:
         PlayerCTRL.screen_mode=SCR_DATETIME;
         PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
         break;
-      case 11:
+      case 12:
         PlayerCTRL.msg_cur=NO;
         PlayerCTRL.screen_mode=SCR_RESET_CONFIG;
         PlayerCTRL.scr_mode_update[SCR_RESET_CONFIG]=true;
         break;
-      case 12:
+      case 13:
         PlayerCTRL.screen_mode=SCR_ABOUT;
         PlayerCTRL.scr_mode_update[SCR_ABOUT]=true;
         break;
