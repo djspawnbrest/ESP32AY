@@ -13,6 +13,8 @@ bool cfgDateTimeSet=false;
 // Forward declarations
 void sd_config_save();
 void lfs_config_save();
+void setTapSpeed();
+void setTzxSpeed();
 
 void lfs_config_default(){
   memset(&lfsConfig,0,sizeof(lfsConfig));
@@ -624,6 +626,8 @@ void config_screen(){
             case TAPE_TURBO1: lfsConfig.tapeSpeed=TAPE_NORMAL;break;
             case TAPE_TURBO2: lfsConfig.tapeSpeed=TAPE_TURBO1;break;
           }
+          if(PlayerCTRL.music_type==TYPE_TAP) setTapSpeed();
+          if(PlayerCTRL.music_type==TYPE_TZX) setTzxSpeed();
           break;
         case 12:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
@@ -710,6 +714,8 @@ void config_screen(){
             case TAPE_TURBO1: lfsConfig.tapeSpeed=TAPE_TURBO2;break;
             case TAPE_TURBO2: lfsConfig.tapeSpeed=TAPE_NORMAL;break;
           }
+          if(PlayerCTRL.music_type==TYPE_TAP) setTapSpeed();
+          if(PlayerCTRL.music_type==TYPE_TZX) setTzxSpeed();
           break;
         case 12:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;

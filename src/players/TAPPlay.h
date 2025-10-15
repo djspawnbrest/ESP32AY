@@ -12,8 +12,7 @@ static int tapPrevBlock = -1;
 void setTapSpeed(){
   if(tap){
     tap->setSpeed(lfsConfig.tapeSpeed);
-    uint8_t mult = (lfsConfig.tapeSpeed == TAPE_NORMAL) ? 1 : (lfsConfig.tapeSpeed == TAPE_TURBO1) ? 2 : 4;
-    AYInfo.Length = tapBaseLength / mult;
+    AYInfo.Length = tap->getPlaybackTime();
   }
 }
 
@@ -50,11 +49,9 @@ void TAP_GetInfo(const char *filename){
     return;
   }
   tap->initEQBuffers(bufEQ,modEQchn);
-  tap->setSpeed(TAPE_NORMAL);
-  tapBaseLength=tap->getPlaybackTime();
   tap->setSpeed(lfsConfig.tapeSpeed);
-  uint8_t mult = (lfsConfig.tapeSpeed == TAPE_NORMAL) ? 1 : (lfsConfig.tapeSpeed == TAPE_TURBO1) ? 2 : 4;
-  AYInfo.Length = tapBaseLength / mult;
+  AYInfo.Length = tap->getPlaybackTime();
+  tapBaseLength = AYInfo.Length;
   tap->getTitle(AYInfo.Name,sizeof(AYInfo.Name));
   tap->initTrackFrame(&PlayerCTRL.trackFrame);
   tap_total_blocks=tap->getTotalBlocks();

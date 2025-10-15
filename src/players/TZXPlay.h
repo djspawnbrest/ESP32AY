@@ -14,8 +14,7 @@ static int tzxPrevBlock = -1;
 void setTzxSpeed(){
   if(tzx){
     tzx->setSpeed(lfsConfig.tapeSpeed);
-    uint8_t mult = (lfsConfig.tapeSpeed == TAPE_NORMAL) ? 1 : (lfsConfig.tapeSpeed == TAPE_TURBO1) ? 2 : 4;
-    AYInfo.Length = tzxBaseLength / mult;
+    AYInfo.Length = tzx->getPlaybackTime();
   }
 }
 
@@ -50,11 +49,9 @@ void TZX_GetInfo(const char *filename){
     return;
   }
   tzx->initEQBuffers(bufEQ,modEQchn);
-  tzx->setSpeed(TAPE_NORMAL);
-  tzxBaseLength=tzx->getPlaybackTime();
   tzx->setSpeed(lfsConfig.tapeSpeed);
-  uint8_t mult = (lfsConfig.tapeSpeed == TAPE_NORMAL) ? 1 : (lfsConfig.tapeSpeed == TAPE_TURBO1) ? 2 : 4;
-  AYInfo.Length = tzxBaseLength / mult;
+  AYInfo.Length = tzx->getPlaybackTime();
+  tzxBaseLength = AYInfo.Length;
   tzx->getTitle(tzxFullTitle,sizeof(tzxFullTitle));
   tzx->initTrackFrame(&PlayerCTRL.trackFrame);
   tzx_total_blocks=tzx->getTotalBlocks();

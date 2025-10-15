@@ -847,7 +847,8 @@ void AudioGeneratorTZX::setCurrentBlock(uint8_t block)
   currentBlock = block;
   file->seek(10, SEEK_SET);
   
-  uint32_t elapsedUs = 0;
+  uint32_t signalUs = 0;
+  uint32_t pauseUs = 0;
   uint8_t id;
   uint32_t targetBlockPos = 0;
   uint8_t dataBlockCount = 0;  // Count only DATA blocks (0x10, 0x11, 0x14)
@@ -861,22 +862,22 @@ void AudioGeneratorTZX::setCurrentBlock(uint8_t block)
         uint16_t len = readWord();
         uint8_t flag;
         file->read(&flag, 1);
-        elapsedUs += 1000000;
+        pauseUs += 1000000;
         uint16_t pilot = (flag == 0) ? TZX_PILOT_HEADER : TZX_PILOT_DATA;
-        elapsedUs += pilot * TZX_PILOT_PULSE + TZX_SYNC1_PULSE + TZX_SYNC2_PULSE;
+        signalUs += pilot * TZX_PILOT_PULSE + TZX_SYNC1_PULSE + TZX_SYNC2_PULSE;
         for (uint8_t bit = 0; bit < 8; bit++) {
-          elapsedUs += 2 * ((flag & 0x80) ? TZX_ONE_PULSE : TZX_ZERO_PULSE);
+          signalUs += 2 * ((flag & 0x80) ? TZX_ONE_PULSE : TZX_ZERO_PULSE);
           flag <<= 1;
         }
         for (uint16_t j = 1; j < len; j++) {
           uint8_t byte;
           if (file->read(&byte, 1) != 1) return;
           for (uint8_t bit = 0; bit < 8; bit++) {
-            elapsedUs += 2 * ((byte & 0x80) ? TZX_ONE_PULSE : TZX_ZERO_PULSE);
+            signalUs += 2 * ((byte & 0x80) ? TZX_ONE_PULSE : TZX_ZERO_PULSE);
             byte <<= 1;
           }
         }
-        elapsedUs += pause * 1000;
+        pauseUs += pause * 1000;
         dataBlockCount++;  // This is a DATA block
       } else if (id == 0x11) {
         uint16_t pilotPulse = tickToUs(readWord());
@@ -889,10 +890,10 @@ void AudioGeneratorTZX::setCurrentBlock(uint8_t block)
         file->read(&usedBits, 1);
         uint16_t pause = readWord();
         uint32_t dataLen = readLong();
-        elapsedUs += pilotLen * pilotPulse;
-        elapsedUs += (dataLen - 1) * 8 * 2 * ((zero + one) / 2) + usedBits * 2 * ((zero + one) / 2);
+        signalUs += pilotLen * pilotPulse;
+        signalUs += (dataLen - 1) * 8 * 2 * ((zero + one) / 2) + usedBits * 2 * ((zero + one) / 2);
         file->seek(file->getPos() + dataLen, SEEK_SET);
-        elapsedUs += pause * 1000;
+        pauseUs += pause * 1000;
         dataBlockCount++;  // This is a DATA block
       } else if (id == 0x14) {
         uint16_t zero = tickToUs(readWord());
@@ -901,9 +902,9 @@ void AudioGeneratorTZX::setCurrentBlock(uint8_t block)
         file->read(&usedBits, 1);
         uint16_t pause = readWord();
         uint32_t dataLen = readLong();
-        elapsedUs += (dataLen - 1) * 8 * 2 * ((zero + one) / 2) + usedBits * 2 * ((zero + one) / 2);
+        signalUs += (dataLen - 1) * 8 * 2 * ((zero + one) / 2) + usedBits * 2 * ((zero + one) / 2);
         file->seek(file->getPos() + dataLen, SEEK_SET);
-        elapsedUs += pause * 1000;
+        pauseUs += pause * 1000;
         dataBlockCount++;  // This is a DATA block
       } else if (id == 0x20 || id == 0x12) {
         file->seek(file->getPos() + 2, SEEK_SET);
@@ -928,9 +929,10 @@ void AudioGeneratorTZX::setCurrentBlock(uint8_t block)
   
   targetBlockPos = file->getPos();
   file->seek(targetBlockPos, SEEK_SET);
-  baseSample = (elapsedUs * sampleRate) / 1000000;
+  uint32_t totalUs = (signalUs / speedMultiplier) + pauseUs;
+  baseSample = (totalUs * sampleRate) / 1000000;
   currentSample = baseSample;
-  savedTrackFrame = elapsedUs / 20000;
+  savedTrackFrame = totalUs / 20000;
   if (trackFrame) *trackFrame = savedTrackFrame;
   state = STATE_GET_ID;
   blockAlreadyRead = true;

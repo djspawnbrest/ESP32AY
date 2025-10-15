@@ -393,7 +393,8 @@ void AudioGeneratorTAP::setCurrentBlock(uint8_t block)
   currentBlock = block;
   file->seek(0, SEEK_SET);
   
-  uint32_t elapsedUs = 0;
+  uint32_t signalUs = 0;
+  uint32_t pauseUs = 0;
   uint8_t lenBuf[2];
   
   for (uint8_t i = 0; i <= block; i++) {
@@ -405,32 +406,33 @@ void AudioGeneratorTAP::setCurrentBlock(uint8_t block)
       uint8_t flag;
       if (file->read(&flag, 1) != 1) return;
       
-      elapsedUs += 1000000;
+      pauseUs += 1000000;
       uint16_t pilot = (flag == 0x00) ? TAP_PILOT_HEADER : TAP_PILOT_DATA;
-      elapsedUs += (uint32_t)pilot * TAP_PILOT_PULSE;
-      elapsedUs += TAP_SYNC1_PULSE + TAP_SYNC2_PULSE;
+      signalUs += (uint32_t)pilot * TAP_PILOT_PULSE;
+      signalUs += TAP_SYNC1_PULSE + TAP_SYNC2_PULSE;
       
       for (uint8_t bit = 0; bit < 8; bit++) {
-        elapsedUs += (flag & 0x80) ? (2 * TAP_ONE_PULSE) : (2 * TAP_ZERO_PULSE);
+        signalUs += (flag & 0x80) ? (2 * TAP_ONE_PULSE) : (2 * TAP_ZERO_PULSE);
         flag <<= 1;
       }
       for (uint16_t j = 1; j < blockLen; j++) {
         uint8_t byte;
         if (file->read(&byte, 1) != 1) return;
         for (uint8_t bit = 0; bit < 8; bit++) {
-          elapsedUs += (byte & 0x80) ? (2 * TAP_ONE_PULSE) : (2 * TAP_ZERO_PULSE);
+          signalUs += (byte & 0x80) ? (2 * TAP_ONE_PULSE) : (2 * TAP_ZERO_PULSE);
           byte <<= 1;
         }
       }
-      elapsedUs += (uint32_t)TAP_PAUSE_MS * 1000;
+      pauseUs += (uint32_t)TAP_PAUSE_MS * 1000;
     } else {
       file->seek(file->getPos() - 2, SEEK_SET);
     }
   }
   
-  baseSample = (elapsedUs * sampleRate) / 1000000;
+  uint32_t totalUs = (signalUs / speedMultiplier) + pauseUs;
+  baseSample = (totalUs * sampleRate) / 1000000;
   currentSample = baseSample;
-  savedTrackFrame = elapsedUs / 20000;
+  savedTrackFrame = totalUs / 20000;
   if (trackFrame) {
     *trackFrame = savedTrackFrame;
   }
