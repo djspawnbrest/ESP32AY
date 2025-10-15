@@ -39,6 +39,8 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 - .mod - Amiga MOD tracker format designed for creating, storing and playing music on an Amiga PC
 - .s3m - (Scream Tracker 3 Module) is a module file format, based on the original MOD format used on the Amiga computer.
 - .xm  - The XM file format, also known as Extended Module, is a digital audio file type for music created in the FastTracker 2 software.
+- .tap - A file format for emulating ZX Spectrum magnetic tape images, which stores data from standard Sinclair BASIC procedures for working with a cassette.
+- .tzx - A file format used to store programs and games for the ZX Spectrum computer as audio data from magnetic tape.
 - UART mode (available in player settings menu as Player source)
 - SD forwarding via USB as Mass Storage device (rev.D and above only)
 
@@ -53,8 +55,8 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 - Encoder Hold - change mode player/file browser
 - Encoder Click - in player mode - play/pause; in file browser mode select track/playlist/directory; select - in config mode
 - Encoder Double click - in player mode - open settings
-- Encoder Push and turn right - fast forward (for ay format change next subsong)
-- Encoder Push and turn left - slow down (for ay format change previous subsong)
+- Encoder Push and turn right - fast forward (for ay format change next subsong, for tape formats - change next block)
+- Encoder Push and turn left - slow down (for ay format change previous subsong, for tape formats - change previous block)
 - Left button click/hold - volume - (in player mode); cancel - in config mode
 - Right button click/hold - volume + (in player mode)
 - Left button double click - change AY clock (in player mode) for PSG formats or change stereo panning for formats over DAC (mod,s3m etc.)
@@ -108,3 +110,6 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 
 ### UPD 12.09.2025
 - Add .xm file format (rev.D and above only). Change Firmware version to 3.5
+
+### UPD 15.10.2025
+- Add .tap, .tzx formats to play and loads programms on ZX-Spectrum.

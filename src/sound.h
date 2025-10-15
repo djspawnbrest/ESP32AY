@@ -109,6 +109,8 @@ done:
       #if defined(CONFIG_IDF_TARGET_ESP32S3)
         &&PlayerCTRL.music_type!=TYPE_XM
       #endif
+        &&PlayerCTRL.music_type!=TYPE_TAP
+        &&PlayerCTRL.music_type!=TYPE_TZX
       ) PlayerCTRL.trackFrame++;
     }
   }

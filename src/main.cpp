@@ -40,6 +40,8 @@
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
 #include "players/XMPlay.h" 
 #endif
+#include "players/TAPPlay.h"
+#include "players/TZXPlay.h"
 
 // #include "sdTest.h"
 #include "player.h"

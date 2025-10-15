@@ -10,8 +10,13 @@ bool cfgSet=false;
 bool sdFlag=false;
 bool cfgDateTimeSet=false;
 
+// Forward declarations
+void sd_config_save();
+void lfs_config_save();
+
 void lfs_config_default(){
   memset(&lfsConfig,0,sizeof(lfsConfig));
+  lfsConfig.version=LFSCONFIG_VERSION;
   lfsConfig.playerSource=PLAYER_MODE_SD;
   lfsConfig.zx_int=PENT_INT;
   lfsConfig.ay_layout=LAY_ABC;
@@ -25,16 +30,20 @@ void lfs_config_default(){
   lfsConfig.encType=EB_STEP2;
   lfsConfig.encReverse=false;
   lfsConfig.showClock=false;
+  lfsConfig.skipTapeFormats=false;
+  lfsConfig.tapeSpeed=TAPE_NORMAL;
   lfsConfig.dacGain=0.2f;
 }
 
 void sd_config_default(){
   memset(&sdConfig,0,sizeof(sdConfig));
+  sdConfig.version=SDCONFIG_VERSION;
   sdConfig.volume=32;
   browser_reset_directory();
 }
 
 void sd_config_load(){
+  bool needReset=false;
   if(foundRom){
     eeInit(eepAddress);
     uint8_t sdConfigEepromFlag=255;
@@ -47,17 +56,24 @@ void sd_config_load(){
     }else if(sdConfigEepromFlag==64){ // Read config
       printf("Load sdConfig from eeprom...\n");
       eep.read(SD_START_ADDRESS,reinterpret_cast<uint8_t*>(&sdConfig),sizeof(sdConfig));
+      if(sdConfig.version!=SDCONFIG_VERSION){
+        printf("SD Config version mismatch! Expected %d, got %d. Resetting...\n",SDCONFIG_VERSION,sdConfig.version);
+        needReset=true;
+      }
     }
   }else{
     if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
       if(sd_fat.begin(SD_CONFIG)){
         bool result=false;
-        uint32_t fileSize=0;
         FsFile f;
         result=f.open(CFG_FILENAME,O_RDONLY);
         if(result){
           f.read(&sdConfig,sizeof(sdConfig));
           f.close();
+          if(sdConfig.version!=SDCONFIG_VERSION){
+            printf("SD Config version mismatch! Expected %d, got %d. Resetting...\n",SDCONFIG_VERSION,sdConfig.version);
+            needReset=true;
+          }
         }else{
           result=f.open(CFG_FILENAME,O_RDWR|O_CREAT|O_TRUNC);
           if(result){
@@ -69,10 +85,15 @@ void sd_config_load(){
       xSemaphoreGive(sdCardSemaphore);
     }
   }
-  printf("SD Config size: %d bytes.\n",sizeof(sdConfig));
+  if(needReset){
+    sd_config_default();
+    sd_config_save();
+  }
+  printf("SD Config size: %d bytes, version: %d\n",sizeof(sdConfig),sdConfig.version);
 }
 
 void lfs_config_load(){
+  bool needReset=false;
   if(foundRom){
     eeInit(eepAddress);
     uint8_t lfsConfigEepromFlag=255;
@@ -85,6 +106,10 @@ void lfs_config_load(){
     }else if(lfsConfigEepromFlag==64){ // Read config
       printf("Load lfsConfig from eeprom...\n");
       eep.read(LFS_START_ADDRESS,reinterpret_cast<uint8_t*>(&lfsConfig),sizeof(lfsConfig));
+      if(lfsConfig.version!=LFSCONFIG_VERSION){
+        printf("LFS Config version mismatch! Expected %d, got %d. Resetting...\n",LFSCONFIG_VERSION,lfsConfig.version);
+        needReset=true;
+      }
     }
   }else{
     LittleFS.begin(true);
@@ -92,6 +117,10 @@ void lfs_config_load(){
     if(f){
       if(f.size()==sizeof(lfsConfig)){
         f.readBytes((char*)&lfsConfig,sizeof(lfsConfig));
+        if(lfsConfig.version!=LFSCONFIG_VERSION){
+          printf("LFS Config version mismatch! Expected %d, got %d. Resetting...\n",LFSCONFIG_VERSION,lfsConfig.version);
+          needReset=true;
+        }
       }
       f.close();
     }else{
@@ -104,7 +133,11 @@ void lfs_config_load(){
       }
     }
   }
-  printf("LFS Config size: %d bytes.\n",sizeof(lfsConfig));
+  if(needReset){
+    lfs_config_default();
+    lfs_config_save();
+  }
+  printf("LFS Config size: %d bytes, version: %d\n",sizeof(lfsConfig),lfsConfig.version);
 }
 
 void startup_config_load(){
@@ -187,7 +220,7 @@ void config_about_screen(){
     spr_println(img,0,9,PSTR("       ,"),2,ALIGN_LEFT,WILD_GREEN);
     spr_println(img,0,9,PSTR("  Spawn"),2,ALIGN_LEFT,TFT_YELLOW);
     spr_println(img,0,9,PSTR("Andy Karpov  "),2,ALIGN_RIGHT,TFT_YELLOW);
-    spr_println(img,0,10,PSTR("04'25"),2,ALIGN_CENTER,WILD_RED);
+    spr_println(img,0,10,PSTR("10'25"),2,ALIGN_CENTER,WILD_RED);
     spr_println(img,0,11,PSTR("powered with"),2,ALIGN_CENTER,TFT_CYAN);
     spr_println(img,0,12,PSTR("libayfly, z80emu,"),2,ALIGN_CENTER,WILD_GREEN);
     spr_println(img,0,13,PSTR("ESP8266Audio"),2,ALIGN_CENTER,WILD_GREEN);
@@ -471,12 +504,19 @@ void config_screen(){
       case MOD_MONO: sprintf(buf,"%sMono%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
     }
     spr_printmenu_item(img,10,2,PSTR("DAC Pan."),(cfgSet&&ccur==8)?WILD_RED:WILD_CYAN_D2,ccur==8?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==8)?WILD_RED:TFT_YELLOW);
-    spr_printmenu_item(img,11,2,PSTR("Enc direction"),WILD_CYAN_D2,ccur==9?TFT_RED:TFT_BLACK,enc_reverse[lfsConfig.encReverse],TFT_YELLOW);
-    sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==10)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==10)?">":"");
-    spr_printmenu_item(img,12,2,PSTR("Batt calib"),(cfgSet&&ccur==10)?WILD_RED:WILD_CYAN_D2,ccur==10?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==10)?WILD_RED:TFT_YELLOW);
-    if(foundRtc) spr_printmenu_item(img,13,2,PSTR("Date&Time"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK);
-    spr_printmenu_item(img,(foundRtc)?14:13,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==12?TFT_RED:TFT_BLACK);
-    spr_printmenu_item(img,(foundRtc)?15:14,2,PSTR("About"),WILD_CYAN_D2,ccur==13?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,11,2,PSTR("Skip tape"),WILD_CYAN_D2,ccur==9?TFT_RED:TFT_BLACK,lfsConfig.skipTapeFormats?PSTR("Yes"):PSTR("No"),TFT_YELLOW);
+    switch(lfsConfig.tapeSpeed){
+      case TAPE_NORMAL: sprintf(buf,"%s3.5MHz(1x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
+      case TAPE_TURBO1: sprintf(buf,"%s7MHz(2x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
+      case TAPE_TURBO2: sprintf(buf,"%s14MHz(4x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
+    }
+    spr_printmenu_item(img,12,2,PSTR("Tape speed"),(cfgSet&&ccur==10)?WILD_RED:WILD_CYAN_D2,ccur==10?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==10)?WILD_RED:TFT_YELLOW);
+    spr_printmenu_item(img,13,2,PSTR("Enc direction"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK,enc_reverse[lfsConfig.encReverse],TFT_YELLOW);
+    sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==12)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==12)?">":"");
+    spr_printmenu_item(img,14,2,PSTR("Batt calib"),(cfgSet&&ccur==12)?WILD_RED:WILD_CYAN_D2,ccur==12?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==12)?WILD_RED:TFT_YELLOW);
+    if(foundRtc) spr_printmenu_item(img,15,2,PSTR("Date&Time"),WILD_CYAN_D2,ccur==13?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,(foundRtc)?16:15,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==14?TFT_RED:TFT_BLACK);
+    spr_printmenu_item(img,(foundRtc)?17:16,2,PSTR("About"),WILD_CYAN_D2,ccur==15?TFT_RED:TFT_BLACK);
     // Push sprite
     img.pushSprite(8,8);
     img.deleteSprite();
@@ -512,9 +552,9 @@ void config_screen(){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
       lfsConfig.cfg_cur--;
       if(!foundRtc){
-        if(lfsConfig.cfg_cur==11) lfsConfig.cfg_cur=10;
+        if(lfsConfig.cfg_cur==13) lfsConfig.cfg_cur=12;
       }
-      if(lfsConfig.cfg_cur<0)lfsConfig.cfg_cur=13;
+      if(lfsConfig.cfg_cur<0)lfsConfig.cfg_cur=15;
     }else{
       switch(lfsConfig.cfg_cur){
         case 2:
@@ -579,6 +619,14 @@ void config_screen(){
           break;
         case 10:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
+          switch(lfsConfig.tapeSpeed){
+            case TAPE_NORMAL: lfsConfig.tapeSpeed=TAPE_TURBO2;break;
+            case TAPE_TURBO1: lfsConfig.tapeSpeed=TAPE_NORMAL;break;
+            case TAPE_TURBO2: lfsConfig.tapeSpeed=TAPE_TURBO1;break;
+          }
+          break;
+        case 12:
+          PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
           lfsConfig.batCalib-=0.1;
           if(lfsConfig.batCalib<-1.0) lfsConfig.batCalib=1.0;
           break;
@@ -590,9 +638,9 @@ void config_screen(){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
       lfsConfig.cfg_cur++;
       if(!foundRtc){
-        if(lfsConfig.cfg_cur==11) lfsConfig.cfg_cur=12;
+        if(lfsConfig.cfg_cur==13) lfsConfig.cfg_cur=14;
       }
-      if(lfsConfig.cfg_cur>13) lfsConfig.cfg_cur=0;
+      if(lfsConfig.cfg_cur>15) lfsConfig.cfg_cur=0;
     }else{
       switch(lfsConfig.cfg_cur){
         case 2:
@@ -657,6 +705,14 @@ void config_screen(){
           break;
         case 10:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
+          switch(lfsConfig.tapeSpeed){
+            case TAPE_NORMAL: lfsConfig.tapeSpeed=TAPE_TURBO1;break;
+            case TAPE_TURBO1: lfsConfig.tapeSpeed=TAPE_TURBO2;break;
+            case TAPE_TURBO2: lfsConfig.tapeSpeed=TAPE_NORMAL;break;
+          }
+          break;
+        case 12:
+          PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
           lfsConfig.batCalib+=0.1;
           if(lfsConfig.batCalib>1.0) lfsConfig.batCalib=-1.0;
           break;
@@ -691,22 +747,26 @@ void config_screen(){
       case 7:
       case 8:
       case 10:
+      case 12:
         cfgSet=!cfgSet;
         break;
       case 9:
+        lfsConfig.skipTapeFormats=!lfsConfig.skipTapeFormats;
+        break;
+      case 11:
         lfsConfig.encReverse=!lfsConfig.encReverse;
         enc.setEncReverse(lfsConfig.encReverse);
         break;
-      case 11:
+      case 13:
         PlayerCTRL.screen_mode=SCR_DATETIME;
         PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
         break;
-      case 12:
+      case 14:
         PlayerCTRL.msg_cur=NO;
         PlayerCTRL.screen_mode=SCR_RESET_CONFIG;
         PlayerCTRL.scr_mode_update[SCR_RESET_CONFIG]=true;
         break;
-      case 13:
+      case 15:
         PlayerCTRL.screen_mode=SCR_ABOUT;
         PlayerCTRL.scr_mode_update[SCR_ABOUT]=true;
         break;
@@ -926,6 +986,6 @@ void checkStartUpConfig(){
   }
   #if defined(CONFIG_IDF_TARGET_ESP32S3)
     // Mount SD card to USB
-    massStorage();
+    // massStorage();
   #endif
 }

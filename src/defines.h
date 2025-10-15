@@ -2,7 +2,9 @@
 #include <SPI.h>
 #include <Wire.h>
 
-#define VERSION         "3.5"
+#define VERSION         "3.6"
+#define LFSCONFIG_VERSION 1  // Increment when lfsConfig structure changes
+#define SDCONFIG_VERSION  1  // Increment when sdConfig structure changes
 
 #define CLK_SPECTRUM  	1773400
 #define CLK_PENTAGON  	1750000
@@ -146,6 +148,7 @@ volatile uint32_t frame_div=0;
 volatile uint32_t frame_max=TIMER_RATE*1000/48880; // Pentagon int
 
 struct{
+  uint8_t version;              // Config version for validation
   bool isBrowserPlaylist;       // browser mode
   bool isPlayAYL;               // player mode
   int16_t dir_cur;              // Browser cursor pointer
@@ -163,9 +166,11 @@ struct{
 }sdConfig;
 
 struct{
+  uint8_t version;              // Config version for validation
   bool zx_int;                  // ZX/PENTAGON
   bool encReverse;
   bool showClock;
+  bool skipTapeFormats;         // Skip TAP/TZX in auto play
   int8_t ay_layout;             // ABC/BCA/ACB e.t.c.
   int8_t play_mode;             // ALL/Shuffle/One
   int8_t scr_bright;            // Screen brightness
@@ -175,6 +180,7 @@ struct{
   uint8_t encType;              // Encoder type
   uint8_t playerSource;         // SD/UART
   uint8_t modStereoSeparation;  // DAC channels panning
+  uint8_t tapeSpeed;            // Tape speed mode
   uint16_t scr_timeout;         // Screen off timeout
   uint32_t ay_clock;            // 1.75 MHz e.t.c.
   float batCalib;               // Battery calibration
@@ -210,6 +216,13 @@ enum{
   MOD_HALFSTEREO=32,  // for S3M*2
   MOD_MONO=64,        // for S3M*2
   MOD_SEPARATION_ALL
+};
+
+enum{
+  TAPE_NORMAL=0,  // 3.5MHz
+  TAPE_TURBO1=1,  // 7MHz (2x)
+  TAPE_TURBO2=2,  // 14MHz (4x)
+  TAPE_SPEED_ALL
 };
 
 enum{
@@ -302,6 +315,8 @@ const char* const file_ext_list[]={
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
   "xm",
 #endif
+  "tap",
+  "tzx",
 };
 
 enum{
@@ -324,6 +339,8 @@ enum{
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
   TYPE_XM,
 #endif
+  TYPE_TAP,
+  TYPE_TZX,
   TYPES_ALL
 };
 

@@ -234,6 +234,29 @@ void fastEQ(){
         }
         break;
     }
+  }else if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX){
+    // For tape formats show L and R channels
+    img.setFreeFont(&WildFont);
+    img.setTextSize(2);
+    img.setTextColor(WILD_CYAN);
+    img.setCursor(0,20);
+    img.print("L");
+    img.setCursor(113,20);
+    img.print("R");
+    // L channel
+    if(modEQchn[0]>0){
+      int w=(modEQchn[0]*98)/64;
+      if(w>98) w=98;
+      img.fillRectHGradient(11,6,w,12,TFT_GREEN,TFT_RED);
+      modEQchn[0]--;
+    }
+    // R channel
+    if(modEQchn[1]>0){
+      int w=(modEQchn[1]*98)/64;
+      if(w>98) w=98;
+      img.fillRectHGradient(124,6,w,12,TFT_GREEN,TFT_RED);
+      modEQchn[1]--;
+    }
   }else{
     img.setFreeFont(&WildFont);
     img.setTextSize(2);

@@ -2,6 +2,11 @@ static bool dynRebuild=true;
 static bool clockShowFlag=true;
 static bool colCh2=false;
 int ay_cur_song=0;
+int tap_cur_block=0;
+int tzx_cur_block=0;
+int tap_total_blocks=0;
+int tzx_total_blocks=0;
+char blockTypeLabel[16] = "Author";
 uint16_t prev_file_id=0;
 
 TaskHandle_t ayPlayTaskHandle=NULL;
@@ -179,6 +184,20 @@ int music_open(const char* filename,int ay_sub_song){
           XM_GetInfo(filename);
           break;
       #endif
+        case TYPE_TAP:
+          sd_play_file.close();
+          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          memset(&music_data,0,sizeof(music_data));
+          memset(&AYInfo,0,sizeof(AYInfo));
+          TAP_GetInfo(filename);
+          break;
+        case TYPE_TZX:
+          sd_play_file.close();
+          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          memset(&music_data,0,sizeof(music_data));
+          memset(&AYInfo,0,sizeof(AYInfo));
+          TZX_GetInfo(filename);
+          break;
       }
       loadingTime=millis()-beforeLoading;
     }
@@ -367,6 +386,8 @@ void music_init(){
   #if defined(CONFIG_IDF_TARGET_ESP32S3)
     case TYPE_XM: break;
   #endif
+    case TYPE_TAP: break;
+    case TYPE_TZX: break;
   }
   unMuteAmp();
 }
@@ -384,6 +405,8 @@ void music_play(){
       &&PlayerCTRL.music_type!=TYPE_AY
       &&PlayerCTRL.music_type!=TYPE_MOD
       &&PlayerCTRL.music_type!=TYPE_S3M
+      &&PlayerCTRL.music_type!=TYPE_TAP
+      &&PlayerCTRL.music_type!=TYPE_TZX
     ){
     #if defined(CONFIG_IDF_TARGET_ESP32S3)
       if(PlayerCTRL.music_type==TYPE_XM){
@@ -444,6 +467,8 @@ void music_play(){
   #if defined(CONFIG_IDF_TARGET_ESP32S3)
     case TYPE_XM: XM_Play(); break;
   #endif
+    case TYPE_TAP: TAP_Play(); break;
+    case TYPE_TZX: TZX_Play(); break;
   }
 }
 
@@ -468,6 +493,8 @@ void music_stop(){
   #if defined(CONFIG_IDF_TARGET_ESP32S3)
     case TYPE_XM: XM_Cleanup(); break;
   #endif
+    case TYPE_TAP: TAP_Cleanup(); break;
+    case TYPE_TZX: TZX_Cleanup(); break;
   }
   PlayerCTRL.trackFrame=0;
 #ifdef DEBUG_RAM
@@ -538,6 +565,19 @@ void playFinish(){
         }
       }
       check_cursor_range();
+      if(lfsConfig.skipTapeFormats&&PlayerCTRL.autoPlay&&PlayerCTRL.music_type!=TYPE_AY){
+        char tempPath[MAX_PATH];
+        int attempts=0;
+        while(attempts<sdConfig.play_count_files-sdConfig.play_cur_start){
+          if(player_full_path(sdConfig.play_cur,tempPath,sizeof(tempPath))){
+            int type=browser_check_ext(tempPath);
+            if(type!=TYPE_TAP&&type!=TYPE_TZX) break;
+          }
+          sdConfig.play_cur++;
+          check_cursor_range();
+          attempts++;
+        }
+      }
       break;
     case PLAY_MODE_SHUFFLE:
       if(PlayerCTRL.autoPlay){
@@ -554,6 +594,18 @@ void playFinish(){
         }
       }
       check_cursor_range();
+      if(lfsConfig.skipTapeFormats&&PlayerCTRL.autoPlay&&PlayerCTRL.music_type!=TYPE_AY){
+        char tempPath[MAX_PATH];
+        int attempts=0;
+        while(attempts<sdConfig.play_count_files-sdConfig.play_cur_start){
+          if(player_full_path(sdConfig.play_cur,tempPath,sizeof(tempPath))){
+            int type=browser_check_ext(tempPath);
+            if(type!=TYPE_TAP&&type!=TYPE_TZX) break;
+          }
+          player_shuffle_cur();
+          attempts++;
+        }
+      }
       break;
   }
   sd_config_save();
@@ -588,11 +640,15 @@ void player(){
       muteAYBeep();
       if(sdConfig.isPlayAYL){
         playlist_get_entry_full_path(sdConfig.play_cur,lfn,sizeof(lfn),true);
-        if(sdConfig.play_prev_cur!=sdConfig.play_cur) ay_cur_song=0;
+        if(sdConfig.play_prev_cur!=sdConfig.play_cur){
+          ay_cur_song=0;
+        }
         sdConfig.play_prev_cur=sdConfig.play_cur;
       }else{
         player_full_path(sdConfig.play_cur,lfn,sizeof(lfn));
-        if(prev_file_id!=sort_list_play[sdConfig.play_cur].file_id) ay_cur_song=0;
+        if(prev_file_id!=sort_list_play[sdConfig.play_cur].file_id){
+          ay_cur_song=0;
+        }
         prev_file_id=sort_list_play[sdConfig.play_cur].file_id;
       }
       memcpy(playFileName,lfn,sizeof(lfn));
@@ -602,7 +658,15 @@ void player(){
       PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
       browser_rebuild=1;
       PlayerCTRL.isFinish=false;
-      PlayerCTRL.isPlay=true;
+      if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX){
+        if(!PlayerCTRL.autoPlay||lfsConfig.skipTapeFormats){
+          PlayerCTRL.isPlay=false;
+        }else{
+          PlayerCTRL.isPlay=true;
+        }
+      }else{
+        PlayerCTRL.isPlay=true;
+      }
       return;
     }else{
       switch(PlayerCTRL.music_type){
@@ -694,6 +758,18 @@ void showFileInfo(){
       }else{
         sprintf(tme, "%S %u/%u",file_ext_list[PlayerCTRL.music_type],ay_cur_song+1,AY_GetNumSongs()+1);
       }
+    }else if(PlayerCTRL.music_type==TYPE_TAP){
+      if(tap_total_blocks==0){
+        sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
+      }else{
+        sprintf(tme, "%S %d/%d",file_ext_list[PlayerCTRL.music_type],tap_cur_block+1,tap_total_blocks);
+      }
+    }else if(PlayerCTRL.music_type==TYPE_TZX){
+      if(tzx_total_blocks==0){
+        sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
+      }else{
+        sprintf(tme, "%S %d/%d",file_ext_list[PlayerCTRL.music_type],tzx_cur_block+1,tzx_total_blocks);
+      }
     }else if(PlayerCTRL.music_type==TYPE_MOD
       ||PlayerCTRL.music_type==TYPE_S3M
     #if defined(CONFIG_IDF_TARGET_ESP32S3)
@@ -709,7 +785,7 @@ void showFileInfo(){
     sprintf(tme,"%S","UART");
   }
   img.setColorDepth(8);
-  img.createSprite((20*10)-2,16);
+  img.createSprite((23*10)-2,16);
   img.setTextSize(2);
   img.setCursor(0,16);
   img.setTextColor(WILD_CYAN);
@@ -747,20 +823,34 @@ void showFileInfo(){
     img.print(":");
     img.pushSprite(9,238);
     img.deleteSprite();
-    scrollInfos(AYInfo.Name,2,TFT_YELLOW,170,16,60,238,1);
+    if(PlayerCTRL.music_type==TYPE_TZX){
+      extern char tzxFullTitle[256];
+      scrollInfos(tzxFullTitle,2,TFT_YELLOW,170,16,60,238,1);
+    }else{
+      scrollInfos(AYInfo.Name,2,TFT_YELLOW,170,16,60,238,1);
+    }
     // Author
+    static char prevBlockTypeLabel[16]="";
+    int labelLen = strlen(blockTypeLabel);
+    int labelWidth = (labelLen*10)+10;
+    int scrollXPos = 9 + labelWidth;
+    int scrollWidth = 230 - scrollXPos;
+    if(strcmp(prevBlockTypeLabel,blockTypeLabel)!=0){
+      tft.fillRect(9,256,221,16,TFT_BLACK);
+      strcpy(prevBlockTypeLabel,blockTypeLabel);
+    }
     img.setColorDepth(8);
-    img.createSprite((7*10)-2,16);
+    img.createSprite(labelWidth,16);
     img.fillScreen(0);
     img.setTextSize(2);
     img.setCursor(0,16);
     img.setTextColor(WILD_CYAN);
-    img.print("Author");
+    img.print(blockTypeLabel);
     img.setTextColor(TFT_RED);
     img.print(":");
     img.pushSprite(9,256);
     img.deleteSprite();
-    scrollInfos(AYInfo.Author,2,TFT_YELLOW,150,16,80,256,2);
+    scrollInfos(AYInfo.Author,2,TFT_YELLOW,scrollWidth,16,scrollXPos,256,2);
     // File name
     img.setColorDepth(8);
     img.createSprite((5*10)-2,16);
@@ -934,6 +1024,12 @@ void ayClockShow(){
       case MOD_HALFSTEREO: sprintf(tme,"Half Stereo");break;
       case MOD_MONO: sprintf(tme,"Mono");break;
     }
+  }else if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX){
+    switch(lfsConfig.tapeSpeed){
+      case TAPE_NORMAL: sprintf(tme,"Normal 3.5MHz");break;
+      case TAPE_TURBO1: sprintf(tme,"Turbo 7MHz");break;
+      case TAPE_TURBO2: sprintf(tme,"Turbo 14MHz");break;
+    }
   }else{
     switch(lfsConfig.ay_clock){
       case CLK_SPECTRUM: sprintf(tme,"ZX 1.77MHz");break;
@@ -954,6 +1050,7 @@ void ayClockShow(){
     ||PlayerCTRL.music_type==TYPE_XM
   #endif
   ) img.print("Stereo ");
+  else if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX) img.print("Tape mode");
   else img.print("AY clock ");
   img.setTextColor(TFT_RED);
   img.print(": ");
@@ -1078,7 +1175,8 @@ void player_screen(){
   //keypad survey
   if(lfsConfig.playerSource==PLAYER_MODE_SD){
     if(enc.hasClicks(1)&&lcdBlackout==false&&scrNotPlayer==false){
-      PlayerCTRL.isPlay=!PlayerCTRL.isPlay;PlayerCTRL.isPlay?unMuteAmp():muteAmp();
+      PlayerCTRL.isPlay=!PlayerCTRL.isPlay;
+      PlayerCTRL.isPlay?unMuteAmp():muteAmp();
     }
     if(!enc.holding()&&enc.right()&&lcdBlackout==false&&scrNotPlayer==false){
       changeTrackIcon(true);
@@ -1100,7 +1198,7 @@ void player_screen(){
       delay(30);
     }
     if(enc.rightH()&&lcdBlackout==false&&scrNotPlayer==false){
-      if(PlayerCTRL.music_type!=TYPE_AY){
+      if(PlayerCTRL.music_type!=TYPE_AY&&PlayerCTRL.music_type!=TYPE_TAP&&PlayerCTRL.music_type!=TYPE_TZX){
         if(PlayerCTRL.music_type==TYPE_MOD){
           if(mod&&mod->isRunning()) mod->setSpeed(2);
         }
@@ -1122,10 +1220,37 @@ void player_screen(){
         PlayerCTRL.isFinish=true;
         PlayerCTRL.autoPlay=false;
         PlayerCTRL.isBrowserCommand=true;
+      }else if(PlayerCTRL.music_type==TYPE_TAP){
+        if(tap&&tap_cur_block<tap_total_blocks-1){
+          tap_cur_block++;
+          tap->setCurrentBlock(tap_cur_block);
+          strcpy(blockTypeLabel, tap->getBlockType(tap_cur_block));
+          tap->getBlockName(tap_cur_block, AYInfo.Author, sizeof(AYInfo.Author));
+          extern int tapPrevBlock;
+          tapPrevBlock = -1;
+          PlayerCTRL.isPlay=false;
+          muteAmp();
+        }
+      }else if(PlayerCTRL.music_type==TYPE_TZX){
+        if(tzx&&tzx_cur_block<tzx_total_blocks-1){
+          tzx_cur_block++;
+          tzx->setCurrentBlock(tzx_cur_block);
+          const char* blockType = tzx->getBlockType(tzx_cur_block);
+          char blockName[32];
+          memset(blockName, 0, sizeof(blockName));
+          tzx->getBlockName(tzx_cur_block, blockName, sizeof(blockName));
+          if(strlen(blockName)==0) snprintf(AYInfo.Author, sizeof(AYInfo.Author), "Block %d", tzx_cur_block+1);
+          else snprintf(AYInfo.Author, sizeof(AYInfo.Author), "%s", blockName);
+          snprintf(blockTypeLabel, sizeof(blockTypeLabel), "%s", blockType);
+          extern int tzxPrevBlock;
+          tzxPrevBlock = -1;
+          PlayerCTRL.isPlay=false;
+          muteAmp();
+        }
       }
     }
     if(enc.leftH()&&lcdBlackout==false&&scrNotPlayer==false){
-      if(PlayerCTRL.music_type!=TYPE_AY){
+      if(PlayerCTRL.music_type!=TYPE_AY&&PlayerCTRL.music_type!=TYPE_TAP&&PlayerCTRL.music_type!=TYPE_TZX){
         if(PlayerCTRL.music_type==TYPE_MOD){
           if(mod&&mod->isRunning()) mod->setSpeed(0);
         }
@@ -1147,6 +1272,33 @@ void player_screen(){
         PlayerCTRL.isFinish=true;
         PlayerCTRL.autoPlay=false;
         PlayerCTRL.isBrowserCommand=true;
+      }else if(PlayerCTRL.music_type==TYPE_TAP){
+        if(tap&&tap_cur_block>0){
+          tap_cur_block--;
+          tap->setCurrentBlock(tap_cur_block);
+          strcpy(blockTypeLabel, tap->getBlockType(tap_cur_block));
+          tap->getBlockName(tap_cur_block, AYInfo.Author, sizeof(AYInfo.Author));
+          extern int tapPrevBlock;
+          tapPrevBlock = -1;
+          PlayerCTRL.isPlay=false;
+          muteAmp();
+        }
+      }else if(PlayerCTRL.music_type==TYPE_TZX){
+        if(tzx&&tzx_cur_block>0){
+          tzx_cur_block--;
+          tzx->setCurrentBlock(tzx_cur_block);
+          const char* blockType = tzx->getBlockType(tzx_cur_block);
+          char blockName[32];
+          memset(blockName, 0, sizeof(blockName));
+          tzx->getBlockName(tzx_cur_block, blockName, sizeof(blockName));
+          if(strlen(blockName)==0) snprintf(AYInfo.Author, sizeof(AYInfo.Author), "Block %d", tzx_cur_block+1);
+          else snprintf(AYInfo.Author, sizeof(AYInfo.Author), "%s", blockName);
+          snprintf(blockTypeLabel, sizeof(blockTypeLabel), "%s", blockType);
+          extern int tzxPrevBlock;
+          tzxPrevBlock = -1;
+          PlayerCTRL.isPlay=false;
+          muteAmp();
+        }
       }
     }
     if(enc.release()){
@@ -1238,6 +1390,14 @@ void player_screen(){
     #if defined(CONFIG_IDF_TARGET_ESP32S3)
       if(PlayerCTRL.music_type==TYPE_XM) setXmSeparation();
     #endif
+    }else if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX){
+      switch(lfsConfig.tapeSpeed){
+        case TAPE_NORMAL: lfsConfig.tapeSpeed=TAPE_TURBO1;break;
+        case TAPE_TURBO1: lfsConfig.tapeSpeed=TAPE_TURBO2;break;
+        case TAPE_TURBO2: lfsConfig.tapeSpeed=TAPE_NORMAL;break;
+      }
+      if(PlayerCTRL.music_type==TYPE_TAP) setTapSpeed();
+      if(PlayerCTRL.music_type==TYPE_TZX) setTzxSpeed();
     }else{
       switch(lfsConfig.ay_clock){
         case CLK_SPECTRUM: lfsConfig.ay_clock=CLK_PENTAGON;break;
@@ -1296,6 +1456,8 @@ void AYPlayTask(void *pvParameters){
         #if defined(CONFIG_IDF_TARGET_ESP32S3)
           &&PlayerCTRL.music_type!=TYPE_XM
         #endif
+          &&PlayerCTRL.music_type!=TYPE_TAP
+          &&PlayerCTRL.music_type!=TYPE_TZX
         ) wait_frame();
       }
     }

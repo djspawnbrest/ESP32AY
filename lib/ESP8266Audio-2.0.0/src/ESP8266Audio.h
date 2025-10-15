@@ -25,6 +25,7 @@
 #include "AudioStatus.h"
 
 // Actual decode/audio generation logic
+#include "AudioGeneratorAY.h"
 #include "AudioGeneratorAAC.h"
 #include "AudioGeneratorFLAC.h"
 #include "AudioGenerator.h"
@@ -36,6 +37,8 @@
 #include "AudioGeneratorRTTTL.h"
 #include "AudioGeneratorS3M.h"
 #include "AudioGeneratorTalkie.h"
+#include "AudioGeneratorTAP.h"
+#include "AudioGeneratorTZX.h"
 #include "AudioGeneratorWAV.h"
 #include "AudioGeneratorXM.h"
 

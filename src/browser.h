@@ -683,6 +683,8 @@ int browser_screen(int mode){
         #if defined(CONFIG_IDF_TARGET_ESP32S3)
           case TYPE_XM:
         #endif
+          case TYPE_TAP:
+          case TYPE_TZX:
             muteAmp();
             muteAYBeep();
             memcpy(sdConfig.play_dir,sdConfig.active_dir,sizeof(sdConfig.active_dir));
