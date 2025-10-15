@@ -986,6 +986,6 @@ void checkStartUpConfig(){
   }
   #if defined(CONFIG_IDF_TARGET_ESP32S3)
     // Mount SD card to USB
-    // massStorage();
+    massStorage();
   #endif
 }

@@ -610,7 +610,6 @@ void playFinish(){
   }
   sd_config_save();
   PlayerCTRL.autoPlay=true;
-  PlayerCTRL.isBrowserCommand=false;
 }
 
 void player(){
@@ -659,9 +658,7 @@ void player(){
       browser_rebuild=1;
       PlayerCTRL.isFinish=false;
       if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX){
-        if(!PlayerCTRL.autoPlay){
-          PlayerCTRL.isPlay=false;
-        }else if(lfsConfig.skipTapeFormats){
+        if(PlayerCTRL.isBrowserCommand||lfsConfig.skipTapeFormats){
           PlayerCTRL.isPlay=false;
         }else{
           PlayerCTRL.isPlay=true;
@@ -669,6 +666,7 @@ void player(){
       }else{
         PlayerCTRL.isPlay=true;
       }
+      PlayerCTRL.isBrowserCommand=false;
       return;
     }else{
       switch(PlayerCTRL.music_type){
