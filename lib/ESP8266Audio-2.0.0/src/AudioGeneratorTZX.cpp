@@ -14,6 +14,7 @@ AudioGeneratorTZX::AudioGeneratorTZX()
   currentSample = 0;
   baseSample = 0;
   savedTrackFrame = 0;
+  baseTimeUs = 0;
   blockCount = 0;
   totalBlocks = 0;
   currentBlock = 0;
@@ -90,7 +91,7 @@ bool AudioGeneratorTZX::begin(AudioFileSource *source, AudioOutput *out)
   if(!output->SetChannels(2)) return false;
   if(!output->begin()) return false;
   
-  level = 32767 / 8;  // Start with HIGH level
+  level = 32767;  // Start with HIGH level
   running = true;
   stopping = false;
   totalSamples = 0;
@@ -204,8 +205,8 @@ bool AudioGeneratorTZX::processBlock()
       
       pilotRemain = pilotCount;
       
-      // Add 1 second lead-in silence before pilot (NOT affected by speed)
-      leadInRemain = sampleRate;
+      // Add 1 second lead-in silence before pilot (affected by speed)
+      leadInRemain = sampleRate / speedMultiplier;
       state = STATE_LEAD_IN;
       break;
     }
@@ -263,8 +264,8 @@ bool AudioGeneratorTZX::processBlock()
     case ID20: {
       pauseLength = readWord();
       if (pauseLength > 0) {
-        // Pause NOT affected by speed - ZX needs time to process
-        pauseRemain = (sampleRate * pauseLength) / 1000;
+        // Pause affected by speed
+        pauseRemain = (sampleRate * pauseLength) / (1000 * speedMultiplier);
         state = STATE_PAUSE;
       } else {
         state = STATE_GET_ID;
@@ -459,8 +460,8 @@ signed long AudioGeneratorTZX::getPlaybackTime(bool oneFiftieth)
   pauseUs += 2000000;  // Final pause (2 seconds)
   file->seek(currentPos, SEEK_SET);
   
-  // Signals are affected by speed, pauses are not
-  uint32_t totalUs = (signalUs / speedMultiplier) + pauseUs;
+  // Both signals and pauses are affected by speed
+  uint32_t totalUs = (signalUs + pauseUs) / speedMultiplier;
   return oneFiftieth ? (totalUs / 20000) : (totalUs / 1000);
 }
 
@@ -665,7 +666,7 @@ bool AudioGeneratorTZX::loop()
         
       case STATE_GET_ID:
         if (!processBlock()) {
-          finalPauseRemain = sampleRate * 2;
+          finalPauseRemain = (sampleRate * 2) / speedMultiplier;
           state = STATE_FINAL_PAUSE;
         } else {
           bool isDataBlock = (currentID == ID10 || currentID == ID11 || currentID == ID14);
@@ -709,8 +710,8 @@ bool AudioGeneratorTZX::loop()
         if (currentBit == 0) {
           if (bytesToRead == 0) {
             if (pauseLength > 0) {
-              // Pause NOT affected by speed - ZX needs time to process
-              pauseRemain = (sampleRate * pauseLength) / 1000;
+              // Pause affected by speed
+              pauseRemain = (sampleRate * pauseLength) / (1000 * speedMultiplier);
               state = STATE_PAUSE;
             } else {
               // Pause of 0 is ignored per TZX spec
@@ -929,10 +930,11 @@ void AudioGeneratorTZX::setCurrentBlock(uint8_t block)
   
   targetBlockPos = file->getPos();
   file->seek(targetBlockPos, SEEK_SET);
-  uint32_t totalUs = (signalUs / speedMultiplier) + pauseUs;
+  baseTimeUs = signalUs + pauseUs;
+  uint32_t totalUs = baseTimeUs / speedMultiplier;
+  savedTrackFrame = totalUs / 20000;
   baseSample = (totalUs * sampleRate) / 1000000;
   currentSample = baseSample;
-  savedTrackFrame = totalUs / 20000;
   if (trackFrame) *trackFrame = savedTrackFrame;
   state = STATE_GET_ID;
   blockAlreadyRead = true;
@@ -1250,16 +1252,33 @@ void AudioGeneratorTZX::setSpeed(uint8_t speed)
   
   if (oldSpeed == newSpeed) return;
   
-  // Recalculate pulseRemain for current pulse if active (only when running)
-  if (running && pulseRemain > 0) {
+  speedMultiplier = newSpeed;
+  
+  // Recalculate savedTrackFrame and baseSample from base time with new speed
+  if (baseTimeUs > 0) {
+    uint32_t totalUs = baseTimeUs / newSpeed;
+    savedTrackFrame = totalUs / 20000;
+    baseSample = (totalUs * sampleRate) / 1000000;
+    currentSample = baseSample;
+    if (trackFrame) *trackFrame = savedTrackFrame;
+  }
+  
+  if (!running) return;
+  
+  // Recalculate pulseRemain for current pulse if active
+  if (pulseRemain > 0) {
     pulseRemain = (pulseRemain * oldSpeed) / newSpeed;
     if (pulseRemain == 0) pulseRemain = 1;
   }
   
-  // Recalculate currentSample: fewer samples at higher speed
-  if (running) {
-    currentSample = (currentSample * oldSpeed) / newSpeed;
+  // Recalculate pause counters if in pause states
+  if (state == STATE_LEAD_IN && leadInRemain > 0) {
+    leadInRemain = (leadInRemain * oldSpeed) / newSpeed;
   }
-  
-  speedMultiplier = newSpeed;
+  if (state == STATE_PAUSE && pauseRemain > 0) {
+    pauseRemain = (pauseRemain * oldSpeed) / newSpeed;
+  }
+  if (state == STATE_FINAL_PAUSE && finalPauseRemain > 0) {
+    finalPauseRemain = (finalPauseRemain * oldSpeed) / newSpeed;
+  }
 }

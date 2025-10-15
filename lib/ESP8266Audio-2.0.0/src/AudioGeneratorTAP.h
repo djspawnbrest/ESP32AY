@@ -82,6 +82,7 @@ class AudioGeneratorTAP : public AudioGenerator
     uint32_t currentSample;
     uint32_t baseSample;
     unsigned long savedTrackFrame;
+    uint32_t baseTimeUs;  // Base time in microseconds (without speed multiplier)
     
     char programName[11];
     uint8_t blockCount;
