@@ -659,7 +659,9 @@ void player(){
       browser_rebuild=1;
       PlayerCTRL.isFinish=false;
       if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX){
-        if(!PlayerCTRL.autoPlay||lfsConfig.skipTapeFormats){
+        if(!PlayerCTRL.autoPlay){
+          PlayerCTRL.isPlay=false;
+        }else if(lfsConfig.skipTapeFormats){
           PlayerCTRL.isPlay=false;
         }else{
           PlayerCTRL.isPlay=true;
