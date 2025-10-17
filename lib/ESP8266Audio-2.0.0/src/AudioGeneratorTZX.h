@@ -10,45 +10,50 @@
 
 #include "AudioGenerator.h"
 
-#define TZX_PILOT_PULSE     619
-#define TZX_SYNC1_PULSE     191
-#define TZX_SYNC2_PULSE     210
-#define TZX_ZERO_PULSE      244
-#define TZX_ONE_PULSE       489
-#define TZX_PILOT_HEADER    8063
-#define TZX_PILOT_DATA      3223
+#define TZX_PILOT_PULSE 619
+#define TZX_SYNC1_PULSE 191
+#define TZX_SYNC2_PULSE 210
+#define TZX_ZERO_PULSE 244
+#define TZX_ONE_PULSE 489
+#define TZX_PILOT_HEADER 8063
+#define TZX_PILOT_DATA 3223
 
-class AudioGeneratorTZX : public AudioGenerator
-{
+class AudioGeneratorTZX:public AudioGenerator{
   public:
     AudioGeneratorTZX();
     virtual ~AudioGeneratorTZX() override;
-    virtual bool begin(AudioFileSource *source, AudioOutput *out) override;
+    virtual bool begin(AudioFileSource *source,AudioOutput *out) override;
     virtual bool loop() override;
     virtual bool stop() override;
     virtual bool isRunning() override;
     signed long getPlaybackTime(bool oneFiftieth=true);
-    void initTrackFrame(unsigned long* tF) { trackFrame = tF; }
-    void getTitle(char* title, size_t maxLen);
-    void getDescription(char* description, size_t maxLen);
-    void initEQBuffers(uint8_t* eqBuffer, uint8_t* channelEQBuffer);
-    bool initializeFile(AudioFileSource* source, const char** message = nullptr);
+    void initTrackFrame(unsigned long* tF,signed long* totalLength=nullptr,char* authorStr=nullptr,char* typeLabel=nullptr){
+      trackFrame=tF;
+      trackLength=totalLength;
+      authorString=authorStr;
+      typeString=typeLabel;
+    }
+    void getTitle(char* title,size_t maxLen);
+    void getDescription(char* description,size_t maxLen);
+    void initEQBuffers(uint8_t* eqBuffer,uint8_t* channelEQBuffer);
+    bool initializeFile(AudioFileSource* source,const char** message=nullptr);
     uint8_t getTotalBlocks();
     void setCurrentBlock(uint8_t block);
-    uint8_t getCurrentBlock() { return currentBlock; }
-    void getBlockName(uint8_t block, char* name, size_t maxLen);
+    uint8_t getCurrentBlock(){return currentBlock;}
+    void getBlockName(uint8_t block,char* name,size_t maxLen);
     const char* getBlockType(uint8_t block);
-    void setSpeed(uint8_t speed);  // Change speed dynamically during playback
-    unsigned long getBlockStartTime(uint8_t block);  // Get start time of block in frames
+    unsigned long setSpeed(uint8_t speed);
+    uint32_t getBlockStartSample(uint8_t block);
     
   private:
-    unsigned long* trackFrame = nullptr;
-    
+    unsigned long* trackFrame=nullptr;
+    signed long* trackLength=nullptr;
+    char* authorString=nullptr;
+    char* typeString=nullptr;
   private:
-    enum State {
+    enum State{
       STATE_HEADER,
       STATE_GET_ID,
-      STATE_LEAD_IN,
       STATE_PILOT,
       STATE_SYNC1,
       STATE_SYNC2,
@@ -59,19 +64,7 @@ class AudioGeneratorTZX : public AudioGenerator
       STATE_FINAL_PAUSE,
       STATE_DONE
     };
-    
-    enum BlockID {
-      ID10 = 0x10,
-      ID11 = 0x11,
-      ID12 = 0x12,
-      ID13 = 0x13,
-      ID14 = 0x14,
-      ID20 = 0x20,
-      ID21 = 0x21,
-      ID22 = 0x22,
-      ID30 = 0x30,
-      TEOF = 0xFF
-    };
+    enum BlockID{ID10=0x10,ID11=0x11,ID12=0x12,ID13=0x13,ID14=0x14,ID20=0x20,ID21=0x21,ID22=0x22,ID30=0x30,TEOF=0xFF};
     
     void generatePulse(uint16_t durationUs);
     bool readHeader();
@@ -106,27 +99,20 @@ class AudioGeneratorTZX : public AudioGenerator
     uint32_t pulseRemain;
     uint16_t pulseDuration;
     uint32_t pauseRemain;
-    uint32_t leadInRemain;
     uint32_t finalPauseRemain;
-    uint32_t totalSamples;
     uint32_t currentSample;
     uint32_t baseSample;
-    unsigned long savedTrackFrame;
-    uint32_t baseTimeUs;  // Base time in microseconds (without speed multiplier)
-    
+    uint32_t sampleAccumulator;
     char textDescription[256];
     char groupName[256];
-    uint16_t blockCount;
     uint8_t totalBlocks;
     uint8_t currentBlock;
     bool hasText;
-    
     uint8_t* eqBuffer;
     uint8_t* channelEQBuffer;
-    uint8_t signalLevel;
-    uint8_t speedMultiplier = 1;
-    volatile bool stopping = false;
-    bool blockAlreadyRead = false;
+    uint8_t speedMultiplier=1;
+    volatile bool stopping=false;
+    bool blockAlreadyRead=false;
     int16_t lastSample[2];
 };
 

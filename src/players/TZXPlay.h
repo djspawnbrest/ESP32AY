@@ -5,17 +5,12 @@ extern int tzx_total_blocks;
 extern char blockTypeLabel[16];
 extern AudioGeneratorTZX *tzx;
 extern char tzxFullTitle[256];
-AudioGeneratorTZX *tzx = nullptr;
-char tzxFullTitle[256] = {0};
-static unsigned long tzxBaseLength = 0;
-static bool tzxInitialized = false;
-static int tzxPrevBlock = -1;
+AudioGeneratorTZX *tzx=nullptr;
+char tzxFullTitle[256]={0};
+
 
 void setTzxSpeed(){
-  if(tzx){
-    tzx->setSpeed(lfsConfig.tapeSpeed);
-    AYInfo.Length = tzx->getPlaybackTime();
-  }
+  if(tzx) tzx->setSpeed(lfsConfig.tapeSpeed);
 }
 
 void TZX_Cleanup(){
@@ -32,7 +27,6 @@ void TZX_Cleanup(){
   out->stop();
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
-  tzxInitialized=false;
 }
 
 void TZX_GetInfo(const char *filename){
@@ -45,30 +39,28 @@ void TZX_GetInfo(const char *filename){
     if(message&&strlen(message)>0) showAlert(message);
     AYInfo.Length=1;
     skipMod=true;
-    strcpy(blockTypeLabel, "Author");
     return;
   }
   tzx->initEQBuffers(bufEQ,modEQchn);
-  tzx->setSpeed(lfsConfig.tapeSpeed);
+  tzx->initTrackFrame(&PlayerCTRL.trackFrame,&AYInfo.Length,AYInfo.Author,blockTypeLabel);
   AYInfo.Length = tzx->getPlaybackTime();
-  tzxBaseLength = AYInfo.Length;
+  tzx->setSpeed(lfsConfig.tapeSpeed);
   tzx->getTitle(tzxFullTitle,sizeof(tzxFullTitle));
-  tzx->initTrackFrame(&PlayerCTRL.trackFrame);
   tzx_total_blocks=tzx->getTotalBlocks();
   tzx_cur_block=tzx->getCurrentBlock();
-  const char* blockType = tzx->getBlockType(tzx_cur_block);
+  const char* blockType=tzx->getBlockType(tzx_cur_block);
   char blockName[32];
-  memset(blockName, 0, sizeof(blockName));
-  tzx->getBlockName(tzx_cur_block, blockName, sizeof(blockName));
-  if(strlen(blockName)==0) snprintf(blockName, sizeof(blockName), "Block %d", tzx_cur_block+1);
+  memset(blockName,0,sizeof(blockName));
+  tzx->getBlockName(tzx_cur_block,blockName,sizeof(blockName));
+  if(strlen(blockName)==0) snprintf(blockName,sizeof(blockName),"Block %d", tzx_cur_block+1);
   if(strlen(tzxFullTitle)==0){
-    strncpy(tzxFullTitle, blockName, sizeof(tzxFullTitle) - 1);
-    tzxFullTitle[sizeof(tzxFullTitle) - 1] = '\0';
+    strncpy(tzxFullTitle,blockName,sizeof(tzxFullTitle)-1);
+    tzxFullTitle[sizeof(tzxFullTitle)-1]='\0';
   }
-  strncpy(AYInfo.Name, tzxFullTitle, sizeof(AYInfo.Name) - 1);
-  AYInfo.Name[sizeof(AYInfo.Name) - 1] = '\0';
-  snprintf(AYInfo.Author, sizeof(AYInfo.Author), "%s", blockName);
-  snprintf(blockTypeLabel, sizeof(blockTypeLabel), "%s", blockType);
+  strncpy(AYInfo.Name,tzxFullTitle,sizeof(AYInfo.Name)-1);
+  AYInfo.Name[sizeof(AYInfo.Name)-1]='\0';
+  snprintf(AYInfo.Author,sizeof(AYInfo.Author),"%s",blockName);
+  snprintf(blockTypeLabel,sizeof(blockTypeLabel),"%s",blockType);
 }
 
 void TZX_Loop(){
@@ -79,29 +71,12 @@ void TZX_Loop(){
   }
   if(tzx&&tzx->isRunning()){
     tzx_cur_block=tzx->getCurrentBlock();
-    if(tzx_cur_block != tzxPrevBlock){
-      char blockName[32];
-      memset(blockName, 0, sizeof(blockName));
-      const char* blockType = tzx->getBlockType(tzx_cur_block);
-      tzx->getBlockName(tzx_cur_block, blockName, sizeof(blockName));
-      if(strlen(blockName)==0) snprintf(AYInfo.Author, sizeof(AYInfo.Author), "Block %d", tzx_cur_block+1);
-      else snprintf(AYInfo.Author, sizeof(AYInfo.Author), "%s", blockName);
-      snprintf(blockTypeLabel, sizeof(blockTypeLabel), "%s", blockType);
-      tzxPrevBlock = tzx_cur_block;
-    }
     if(PlayerCTRL.isPlay){
       if(!tzx->loop()){
         tzx->stop();
-        PlayerCTRL.isFinish=true;
+        if(lfsConfig.skipTapeFormats) PlayerCTRL.isFinish=true;
+        else PlayerCTRL.isPlay=false;
       }
-    } else {
-      char blockName[32];
-      memset(blockName, 0, sizeof(blockName));
-      const char* blockType = tzx->getBlockType(tzx_cur_block);
-      tzx->getBlockName(tzx_cur_block, blockName, sizeof(blockName));
-      if(strlen(blockName)==0) snprintf(AYInfo.Author, sizeof(AYInfo.Author), "Block %d", tzx_cur_block+1);
-      else snprintf(AYInfo.Author, sizeof(AYInfo.Author), "%s", blockName);
-      snprintf(blockTypeLabel, sizeof(blockTypeLabel), "%s", blockType);
     }
   }
 }
@@ -112,10 +87,9 @@ void TZX_Play(){
     PlayerCTRL.isFinish=true;
     return;
   }
-  if(tzx&&!tzxInitialized){
+  if(tzx&&!tzx->isRunning()){
     initOut();
     tzx->begin(modFile,out);
-    tzxInitialized=true;
   }
   TZX_Loop();
 }

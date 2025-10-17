@@ -4,16 +4,10 @@ extern int tap_cur_block;
 extern int tap_total_blocks;
 extern char blockTypeLabel[16];
 extern AudioGeneratorTAP *tap;
-AudioGeneratorTAP *tap = nullptr;
-static unsigned long tapBaseLength = 0;
-static bool tapInitialized = false;
-static int tapPrevBlock = -1;
+AudioGeneratorTAP *tap=nullptr;
 
 void setTapSpeed(){
-  if(tap){
-    tap->setSpeed(lfsConfig.tapeSpeed);
-    AYInfo.Length = tap->getPlaybackTime();
-  }
+  if(tap) tap->setSpeed(lfsConfig.tapeSpeed);
 }
 
 void TAP_Cleanup(){
@@ -30,7 +24,6 @@ void TAP_Cleanup(){
   out->stop();
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
-  tapInitialized=false;
 }
 
 void TAP_GetInfo(const char *filename){
@@ -45,27 +38,25 @@ void TAP_GetInfo(const char *filename){
     }
     AYInfo.Length=1;
     skipMod=true;
-    strcpy(blockTypeLabel, "Author");
     return;
   }
   tap->initEQBuffers(bufEQ,modEQchn);
+  tap->initTrackFrame(&PlayerCTRL.trackFrame,&AYInfo.Length,AYInfo.Author,blockTypeLabel);
+  AYInfo.Length=tap->getPlaybackTime();
   tap->setSpeed(lfsConfig.tapeSpeed);
-  AYInfo.Length = tap->getPlaybackTime();
-  tapBaseLength = AYInfo.Length;
   tap->getTitle(AYInfo.Name,sizeof(AYInfo.Name));
-  tap->initTrackFrame(&PlayerCTRL.trackFrame);
   tap_total_blocks=tap->getTotalBlocks();
   tap_cur_block=tap->getCurrentBlock();
-  const char* blockType = tap->getBlockType(tap_cur_block);
+  const char* blockType=tap->getBlockType(tap_cur_block);
   char blockName[32];
-  memset(blockName, 0, sizeof(blockName));
-  tap->getBlockName(tap_cur_block, blockName, sizeof(blockName));
+  memset(blockName,0,sizeof(blockName));
+  tap->getBlockName(tap_cur_block,blockName,sizeof(blockName));
   if(strlen(blockName)==0){
-    snprintf(AYInfo.Author, sizeof(AYInfo.Author), "Block %d", tap_cur_block+1);
+    snprintf(AYInfo.Author,sizeof(AYInfo.Author),"Block %d",tap_cur_block+1);
   }else{
-    snprintf(AYInfo.Author, sizeof(AYInfo.Author), "%s", blockName);
+    snprintf(AYInfo.Author,sizeof(AYInfo.Author),"%s",blockName);
   }
-  snprintf(blockTypeLabel, sizeof(blockTypeLabel), "%s", blockType);
+  snprintf(blockTypeLabel,sizeof(blockTypeLabel),"%s",blockType);
 }
 
 void TAP_Loop(){
@@ -76,36 +67,12 @@ void TAP_Loop(){
   }
   if(tap&&tap->isRunning()){
     tap_cur_block=tap->getCurrentBlock();
-    if(tap_cur_block != tapPrevBlock){
-      char blockName[32];
-      memset(blockName, 0, sizeof(blockName));
-      const char* blockType = tap->getBlockType(tap_cur_block);
-      tap->getBlockName(tap_cur_block, blockName, sizeof(blockName));
-      if(strlen(blockName)==0){
-        snprintf(AYInfo.Author, sizeof(AYInfo.Author), "Block %d", tap_cur_block+1);
-      }else{
-        snprintf(AYInfo.Author, sizeof(AYInfo.Author), "%s", blockName);
-      }
-      snprintf(blockTypeLabel, sizeof(blockTypeLabel), "%s", blockType);
-      tapPrevBlock = tap_cur_block;
-    }
     if(PlayerCTRL.isPlay){
       if(!tap->loop()){
         tap->stop();
-        PlayerCTRL.isFinish=true;
+        if(lfsConfig.skipTapeFormats) PlayerCTRL.isFinish=true;
+        else PlayerCTRL.isPlay=false;
       }
-    } else {
-      // Update info even on pause
-      char blockName[32];
-      memset(blockName, 0, sizeof(blockName));
-      const char* blockType = tap->getBlockType(tap_cur_block);
-      tap->getBlockName(tap_cur_block, blockName, sizeof(blockName));
-      if(strlen(blockName)==0){
-        snprintf(AYInfo.Author, sizeof(AYInfo.Author), "Block %d", tap_cur_block+1);
-      }else{
-        snprintf(AYInfo.Author, sizeof(AYInfo.Author), "%s", blockName);
-      }
-      snprintf(blockTypeLabel, sizeof(blockTypeLabel), "%s", blockType);
     }
   }
 }
@@ -116,10 +83,9 @@ void TAP_Play(){
     PlayerCTRL.isFinish=true;
     return;
   }
-  if(tap&&!tapInitialized){
+  if(tap&&!tap->isRunning()){
     initOut();
     tap->begin(modFile,out);
-    tapInitialized=true;
   }
   TAP_Loop();
 }

@@ -439,8 +439,10 @@ void music_play(){
     }
   #endif
     if(PlayerCTRL.trackFrame>=AYInfo.Length){
-      PlayerCTRL.isFinish=true;
-      return;
+      if(PlayerCTRL.music_type!=TYPE_TAP&&PlayerCTRL.music_type!=TYPE_TZX){
+        PlayerCTRL.isFinish=true;
+        return;
+      }
     }
   }
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
@@ -762,13 +764,13 @@ void showFileInfo(){
       if(tap_total_blocks==0){
         sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
       }else{
-        sprintf(tme, "%S %d/%d",file_ext_list[PlayerCTRL.music_type],tap_cur_block+1,tap_total_blocks);
+        sprintf(tme,"%S %d/%d",file_ext_list[PlayerCTRL.music_type],(tap_cur_block+1>tap_total_blocks)?tap_total_blocks:tap_cur_block+1,tap_total_blocks);
       }
     }else if(PlayerCTRL.music_type==TYPE_TZX){
       if(tzx_total_blocks==0){
         sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
       }else{
-        sprintf(tme, "%S %d/%d",file_ext_list[PlayerCTRL.music_type],tzx_cur_block+1,tzx_total_blocks);
+        sprintf(tme,"%S %d/%d",file_ext_list[PlayerCTRL.music_type],(tzx_cur_block+1>tzx_total_blocks)?tzx_total_blocks:tzx_cur_block+1,tzx_total_blocks);
       }
     }else if(PlayerCTRL.music_type==TYPE_MOD
       ||PlayerCTRL.music_type==TYPE_S3M
@@ -829,28 +831,45 @@ void showFileInfo(){
     }else{
       scrollInfos(AYInfo.Name,2,TFT_YELLOW,170,16,60,238,1);
     }
-    // Author
-    static char prevBlockTypeLabel[16]="";
-    int labelLen = strlen(blockTypeLabel);
-    int labelWidth = (labelLen*10)+10;
-    int scrollXPos = 9 + labelWidth;
-    int scrollWidth = 230 - scrollXPos;
-    if(strcmp(prevBlockTypeLabel,blockTypeLabel)!=0){
-      tft.fillRect(9,256,221,16,TFT_BLACK);
-      strcpy(prevBlockTypeLabel,blockTypeLabel);
+    // Author / Block type
+    if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX){
+      // For tape formats: show block type as label, block name as text
+      static char prevBlockTypeLabel[16]="";
+      int labelLen = strlen(blockTypeLabel);
+      int labelWidth = (labelLen*10)+10;
+      int scrollXPos = 9 + labelWidth;
+      int scrollWidth = 230 - scrollXPos;
+      if(strcmp(prevBlockTypeLabel,blockTypeLabel)!=0){
+        tft.fillRect(9,256,221,16,TFT_BLACK);
+        strcpy(prevBlockTypeLabel,blockTypeLabel);
+      }
+      img.setColorDepth(8);
+      img.createSprite(labelWidth,16);
+      img.fillScreen(0);
+      img.setTextSize(2);
+      img.setCursor(0,16);
+      img.setTextColor(WILD_CYAN);
+      img.print(blockTypeLabel);
+      img.setTextColor(TFT_RED);
+      img.print(":");
+      img.pushSprite(9,256);
+      img.deleteSprite();
+      scrollInfos(AYInfo.Author,2,TFT_YELLOW,scrollWidth,16,scrollXPos,256,2);
+    }else{
+      // For other formats: show "Author" as label
+      img.setColorDepth(8);
+      img.createSprite((6*10)+10,16);
+      img.fillScreen(0);
+      img.setTextSize(2);
+      img.setCursor(0,16);
+      img.setTextColor(WILD_CYAN);
+      img.print("Author");
+      img.setTextColor(TFT_RED);
+      img.print(":");
+      img.pushSprite(9,256);
+      img.deleteSprite();
+      scrollInfos(AYInfo.Author,2,TFT_YELLOW,150,16,80,256,2);
     }
-    img.setColorDepth(8);
-    img.createSprite(labelWidth,16);
-    img.fillScreen(0);
-    img.setTextSize(2);
-    img.setCursor(0,16);
-    img.setTextColor(WILD_CYAN);
-    img.print(blockTypeLabel);
-    img.setTextColor(TFT_RED);
-    img.print(":");
-    img.pushSprite(9,256);
-    img.deleteSprite();
-    scrollInfos(AYInfo.Author,2,TFT_YELLOW,scrollWidth,16,scrollXPos,256,2);
     // File name
     img.setColorDepth(8);
     img.createSprite((5*10)-2,16);
@@ -911,7 +930,10 @@ void timeShow(){
       step+=2;
     }
   }
-  img.fillRect(0,0,map(PlayerCTRL.trackFrame,0,AYInfo.Length,1,222),4,TFT_YELLOW);
+  static unsigned long tF=0;
+  if(PlayerCTRL.trackFrame>=AYInfo.Length) tF=AYInfo.Length;
+  else tF=PlayerCTRL.trackFrame;
+  img.fillRect(0,0,map(tF,0,AYInfo.Length,1,222),4,TFT_YELLOW);
   img.pushSprite(9,161);
   img.deleteSprite();
   //time elapsed
@@ -937,27 +959,51 @@ void timeShow(){
   img.pushSprite(9,172+8);
   img.deleteSprite();
   //track time
-  sprintf(tme, "%2.2u:%2.2u:%2.2u", AYInfo.Length/50/60, AYInfo.Length/50%60, AYInfo.Length*2%100);
-  img.setColorDepth(8);
-  img.createSprite((8*10)-2,8);
-  img.setFreeFont(&WildFont);
-  img.setTextSize(2);
-  img.fillScreen(0);
-  img.setCursor(0,16);
-  img.setTextColor(TFT_WHITE,TFT_BLACK,true);
-  img.print(tme);
-  img.pushSprite(153,172);
-  img.deleteSprite();
-  img.setColorDepth(8);
-  img.createSprite((8*10)-2,8);
-  img.setFreeFont(&WildFont);
-  img.setTextSize(2);
-  img.fillScreen(0);
-  img.setCursor(0,8);
-  img.setTextColor(WILD_CYAN_D2,TFT_BLACK,true);
-  img.print(tme);
-  img.pushSprite(153,172+8);
-  img.deleteSprite();
+  if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX){
+    sprintf(tme, "~%2.2u:%2.2u:%2.2u", AYInfo.Length/50/60, AYInfo.Length/50%60, AYInfo.Length*2%100);
+    img.setColorDepth(8);
+    img.createSprite((9*10)-2,8);
+    img.setFreeFont(&WildFont);
+    img.setTextSize(2);
+    img.fillScreen(0);
+    img.setCursor(0,16);
+    img.setTextColor(TFT_WHITE,TFT_BLACK,true);
+    img.print(tme);
+    img.pushSprite(153-10,172);
+    img.deleteSprite();
+    img.setColorDepth(8);
+    img.createSprite((9*10)-2,8);
+    img.setFreeFont(&WildFont);
+    img.setTextSize(2);
+    img.fillScreen(0);
+    img.setCursor(0,8);
+    img.setTextColor(WILD_CYAN_D2,TFT_BLACK,true);
+    img.print(tme);
+    img.pushSprite(153-10,172+8);
+    img.deleteSprite();
+  }else{
+    sprintf(tme, "%2.2u:%2.2u:%2.2u", AYInfo.Length/50/60, AYInfo.Length/50%60, AYInfo.Length*2%100);
+    img.setColorDepth(8);
+    img.createSprite((8*10)-2,8);
+    img.setFreeFont(&WildFont);
+    img.setTextSize(2);
+    img.fillScreen(0);
+    img.setCursor(0,16);
+    img.setTextColor(TFT_WHITE,TFT_BLACK,true);
+    img.print(tme);
+    img.pushSprite(153,172);
+    img.deleteSprite();
+    img.setColorDepth(8);
+    img.createSprite((8*10)-2,8);
+    img.setFreeFont(&WildFont);
+    img.setTextSize(2);
+    img.fillScreen(0);
+    img.setCursor(0,8);
+    img.setTextColor(WILD_CYAN_D2,TFT_BLACK,true);
+    img.print(tme);
+    img.pushSprite(153,172+8);
+    img.deleteSprite();
+  }
 }
 
 void uartInfoShow(){
@@ -1226,8 +1272,6 @@ void player_screen(){
           tap->setCurrentBlock(tap_cur_block);
           strcpy(blockTypeLabel, tap->getBlockType(tap_cur_block));
           tap->getBlockName(tap_cur_block, AYInfo.Author, sizeof(AYInfo.Author));
-          extern int tapPrevBlock;
-          tapPrevBlock = -1;
           PlayerCTRL.isPlay=false;
           muteAmp();
         }
@@ -1242,8 +1286,6 @@ void player_screen(){
           if(strlen(blockName)==0) snprintf(AYInfo.Author, sizeof(AYInfo.Author), "Block %d", tzx_cur_block+1);
           else snprintf(AYInfo.Author, sizeof(AYInfo.Author), "%s", blockName);
           snprintf(blockTypeLabel, sizeof(blockTypeLabel), "%s", blockType);
-          extern int tzxPrevBlock;
-          tzxPrevBlock = -1;
           PlayerCTRL.isPlay=false;
           muteAmp();
         }
@@ -1278,8 +1320,6 @@ void player_screen(){
           tap->setCurrentBlock(tap_cur_block);
           strcpy(blockTypeLabel, tap->getBlockType(tap_cur_block));
           tap->getBlockName(tap_cur_block, AYInfo.Author, sizeof(AYInfo.Author));
-          extern int tapPrevBlock;
-          tapPrevBlock = -1;
           PlayerCTRL.isPlay=false;
           muteAmp();
         }
@@ -1294,8 +1334,6 @@ void player_screen(){
           if(strlen(blockName)==0) snprintf(AYInfo.Author, sizeof(AYInfo.Author), "Block %d", tzx_cur_block+1);
           else snprintf(AYInfo.Author, sizeof(AYInfo.Author), "%s", blockName);
           snprintf(blockTypeLabel, sizeof(blockTypeLabel), "%s", blockType);
-          extern int tzxPrevBlock;
-          tzxPrevBlock = -1;
           PlayerCTRL.isPlay=false;
           muteAmp();
         }
