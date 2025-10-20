@@ -656,12 +656,14 @@ bool AudioGeneratorMOD::ProcessRow(){
             if(effectParameterY){
               if(Player.patternLoopCount[channel])
                 Player.patternLoopCount[channel]--;
-              else
+              else{
                 Player.patternLoopCount[channel]=effectParameterY;
+                if(Player.patternLoopRow[channel]==0) Player.patternLoopRow[channel]=1;
+              }
               if(Player.patternLoopCount[channel])
-                Player.row=Player.patternLoopRow[channel];
-            } else
-              Player.patternLoopRow[channel]=Player.row+1;
+                Player.row=Player.patternLoopRow[channel]-1;
+            }else
+              Player.patternLoopRow[channel]=Player.row;
             break;
           case SETTREMOLOWAVEFORM:
             Player.waveControl[channel]&=0xF;
