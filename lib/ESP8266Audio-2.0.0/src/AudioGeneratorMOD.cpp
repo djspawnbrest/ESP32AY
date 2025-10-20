@@ -659,9 +659,9 @@ bool AudioGeneratorMOD::ProcessRow(){
               else
                 Player.patternLoopCount[channel]=effectParameterY;
               if(Player.patternLoopCount[channel])
-                Player.row=Player.patternLoopRow[channel]-1;
+                Player.row=Player.patternLoopRow[channel];
             } else
-              Player.patternLoopRow[channel]=Player.row;
+              Player.patternLoopRow[channel]=Player.row+1;
             break;
           case SETTREMOLOWAVEFORM:
             Player.waveControl[channel]&=0xF;
@@ -940,32 +940,47 @@ void AudioGeneratorMOD::GetSample(int16_t sample[2]){
     if(!Mixer.channelVolume[channel]) continue;
     
     #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
-    samplePointer=Mixer.sampleBegin[Mixer.channelSampleNumber[channel]]+(Mixer.channelSampleOffset[channel]>>FIXED_DIVIDER);
-    if(Mixer.sampleLoopLength[Mixer.channelSampleNumber[channel]]){
-      if(samplePointer>=Mixer.sampleLoopEnd[Mixer.channelSampleNumber[channel]]){
-        Mixer.channelSampleOffset[channel]-=Mixer.sampleLoopLength[Mixer.channelSampleNumber[channel]]<<FIXED_DIVIDER;
-        samplePointer-=Mixer.sampleLoopLength[Mixer.channelSampleNumber[channel]];
+    uint8_t sampleNum=Mixer.channelSampleNumber[channel];
+    samplePointer=Mixer.sampleBegin[sampleNum]+(Mixer.channelSampleOffset[channel]>>FIXED_DIVIDER);
+    // Checking the boundaries BEFORE processing the loop
+    if(sampleNum>=SAMPLES||!Mod.samples[sampleNum].length){
+      Mixer.channelFrequency[channel]=0;
+      continue;
+    }
+    if(Mixer.sampleLoopLength[sampleNum]){
+      if(samplePointer>=Mixer.sampleLoopEnd[sampleNum]){
+        Mixer.channelSampleOffset[channel]-=Mixer.sampleLoopLength[sampleNum]<<FIXED_DIVIDER;
+        samplePointer-=Mixer.sampleLoopLength[sampleNum];
       }
     }else{
-      if(samplePointer>=Mixer.sampleEnd[Mixer.channelSampleNumber[channel]]){
+      if(samplePointer>=Mixer.sampleEnd[sampleNum]){
         Mixer.channelFrequency[channel]=0;
-        samplePointer=Mixer.sampleEnd[Mixer.channelSampleNumber[channel]];
+        samplePointer=Mixer.sampleEnd[sampleNum]-1;
       }
-
     }
-    if(samplePointer<FatBuffer.samplePointer[channel]||samplePointer>=FatBuffer.samplePointer[channel]+fatBufferSize-1||Mixer.channelSampleNumber[channel]!=FatBuffer.channelSampleNumber[channel]){
-      uint32_t toRead=Mixer.sampleEnd[Mixer.channelSampleNumber[channel]]-samplePointer+1;
+    // Final check after all calculations
+    if(samplePointer>=Mixer.sampleEnd[sampleNum]){
+      samplePointer=Mixer.sampleEnd[sampleNum]-1;
+    }
+    if(samplePointer<FatBuffer.samplePointer[channel]||samplePointer>=FatBuffer.samplePointer[channel]+fatBufferSize-1||sampleNum!=FatBuffer.channelSampleNumber[channel]){
+      uint32_t toRead=Mixer.sampleEnd[sampleNum]-samplePointer+1;
       if(toRead>(uint32_t)fatBufferSize) toRead=fatBufferSize;
       if(!file->seek(samplePointer,SEEK_SET)) continue;
       if(toRead!=file->read(FatBuffer.channels[channel],toRead)) continue;
       FatBuffer.samplePointer[channel]=samplePointer;
-      FatBuffer.channelSampleNumber[channel]=Mixer.channelSampleNumber[channel];
+      FatBuffer.channelSampleNumber[channel]=sampleNum;
     }
-    current=FatBuffer.channels[channel][(samplePointer-FatBuffer.samplePointer[channel])];
-    next=FatBuffer.channels[channel][(samplePointer+1-FatBuffer.samplePointer[channel])];
+    uint32_t bufferOffset=samplePointer-FatBuffer.samplePointer[channel];
+    current=FatBuffer.channels[channel][bufferOffset];
+    next=(bufferOffset+1<fatBufferSize&&samplePointer+1<Mixer.sampleEnd[sampleNum])?FatBuffer.channels[channel][bufferOffset+1]:current;
     #else
     uint8_t sampleNum=Mixer.channelSampleNumber[channel];
     samplePointer=Mixer.channelSampleOffset[channel]>>FIXED_DIVIDER;
+    // Checking the boundaries BEFORE processing the loop
+    if(sampleNum>=SAMPLES||!Mod.samples[sampleNum].data||!Mod.samples[sampleNum].length){
+      Mixer.channelFrequency[channel]=0;
+      continue;
+    }
     if(Mod.samples[sampleNum].loopLength>2){
       uint32_t loopEnd=Mod.samples[sampleNum].loopBegin+Mod.samples[sampleNum].loopLength;
       if(samplePointer>=loopEnd){
@@ -977,6 +992,10 @@ void AudioGeneratorMOD::GetSample(int16_t sample[2]){
         Mixer.channelFrequency[channel]=0;
         samplePointer=Mod.samples[sampleNum].length-1;
       }
+    }
+    // Final check after all calculations
+    if(samplePointer>=Mod.samples[sampleNum].length){
+      samplePointer=Mod.samples[sampleNum].length-1;
     }
     current=static_cast<int8_t>(Mod.samples[sampleNum].data[samplePointer]);
     next=(samplePointer+1< Mod.samples[sampleNum].length)?static_cast<int8_t>(Mod.samples[sampleNum].data[samplePointer+1]):current;
