@@ -216,7 +216,7 @@ void config_about_screen(){
     img.setFreeFont(&WildFont);
     spr_println(img,0,1,PSTR("About"),2,ALIGN_CENTER,WILD_CYAN);
     //print message
-    sprintf(buf,"ZxPOD Player v.%s",VERSION);
+    sprintf(buf,"ZxPOD Player v.%s",FW_VERSION);
     spr_println(img,0,7,buf,2,ALIGN_CENTER,TFT_RED);
     spr_println(img,0,8,PSTR("by"),2,ALIGN_CENTER,TFT_CYAN);
     spr_println(img,0,9,PSTR("       ,"),2,ALIGN_LEFT,WILD_GREEN);

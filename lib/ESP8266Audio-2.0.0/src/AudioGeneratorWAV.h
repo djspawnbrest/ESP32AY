@@ -22,6 +22,7 @@
 #define _AUDIOGENERATORWAV_H
 
 #include "AudioGenerator.h"
+#include "arduinoFFT.h"
 
 class AudioGeneratorWAV : public AudioGenerator
 {
@@ -33,6 +34,16 @@ class AudioGeneratorWAV : public AudioGenerator
     virtual bool stop() override;
     virtual bool isRunning() override;
     void SetBufferSize(int sz) { buffSize = sz; }
+
+    bool initializeFile(AudioFileSource *source);
+    signed long getPlaybackTime(bool oneFiftieth=true);
+    void initTrackFrame(unsigned long* tF);
+    void getTitle(char* title, size_t maxLen);
+    void getDescription(char* description, size_t maxLen);
+    int getBitrate();
+    int getChannelMode();
+    void initEQBuffers(uint8_t* eqBuffer, uint8_t* channelEQBuffer);
+    void setSpeed(int speed); // 0=slow(0.5x), 1=normal(1x), 2=fast(2x)
 
   private:
     bool ReadU32(uint32_t *dest) { return file->read(reinterpret_cast<uint8_t*>(dest), 4); }
@@ -55,7 +66,35 @@ class AudioGeneratorWAV : public AudioGenerator
     uint8_t *buff;
     uint16_t buffPtr;
     uint16_t buffLen;
+    
+    // Track frame for current position
+    unsigned long* trackFrame = nullptr;
+    bool trackFrameInitialized = false;
+    uint32_t samplesPlayed = 0;
+    
+    // Playback speed control
+    int playbackSpeed = 1; // 0=0.5x, 1=1x, 2=2x
+    int speedCounter = 0;
+    
+    // Metadata
+    char wavTitle[128] = {0};
+    char wavArtist[128] = {0};
+    
+    // EQ buffers
+    uint8_t* eqBuffer = nullptr;
+    uint8_t* channelEQBuffer = nullptr;
+    
+    // Spectrum analyzer buffers (separate for L/R)
+    double vRealL[128];
+    double vImagL[128];
+    double vRealR[128];
+    double vImagR[128];
+    uint8_t fftPos = 0;
+    uint16_t sampleSkip = 0;
+    ArduinoFFT<double> *FFTL = nullptr;
+    ArduinoFFT<double> *FFTR = nullptr;
 };
+
 
 #endif
 

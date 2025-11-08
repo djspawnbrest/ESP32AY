@@ -42,6 +42,8 @@
 #endif
 #include "players/TAPPlay.h"
 #include "players/TZXPlay.h"
+#include "players/MP3Play.h"
+#include "players/WAVPlay.h"
 
 // #include "sdTest.h"
 #include "player.h"

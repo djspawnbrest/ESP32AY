@@ -234,8 +234,8 @@ void fastEQ(){
         }
         break;
     }
-  }else if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX){
-    // For tape formats show L and R channels
+  }else if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX||PlayerCTRL.music_type==TYPE_MP3||PlayerCTRL.music_type==TYPE_WAV){
+    // For tape formats and MP3\WAV show L and R channels
     img.setFreeFont(&WildFont);
     img.setTextSize(2);
     img.setTextColor(WILD_CYAN);

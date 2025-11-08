@@ -111,6 +111,8 @@ done:
       #endif
         &&PlayerCTRL.music_type!=TYPE_TAP
         &&PlayerCTRL.music_type!=TYPE_TZX
+        &&PlayerCTRL.music_type!=TYPE_MP3
+        &&PlayerCTRL.music_type!=TYPE_WAV
       ) PlayerCTRL.trackFrame++;
     }
   }

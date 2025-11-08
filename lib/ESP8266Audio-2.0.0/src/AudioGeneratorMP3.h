@@ -24,6 +24,7 @@
 #include "AudioGenerator.h"
 #include "libmad/config.h"
 #include "libmad/mad.h"
+#include "arduinoFFT.h"
 
 class AudioGeneratorMP3 : public AudioGenerator
 {
@@ -37,6 +38,16 @@ class AudioGeneratorMP3 : public AudioGenerator
     virtual bool stop() override;
     virtual bool isRunning() override;
     virtual void desync () override;
+
+    bool initializeFile(AudioFileSource *source);
+    signed long getPlaybackTime(bool oneFiftieth=true);
+    void initTrackFrame(unsigned long* tF);
+    void getTitle(char* title, size_t maxLen);
+    void getDescription(char* description, size_t maxLen);
+    int getBitrate();
+    int getChannelMode();
+    void initEQBuffers(uint8_t* eqBuffer, uint8_t* channelEQBuffer);
+    void setSpeed(int speed); // 0=slow(0.5x), 1=normal(1x), 2=fast(2x)
 
     static constexpr int preAllocSize () { return preAllocBuffSize() + preAllocStreamSize() + preAllocFrameSize() + preAllocSynthSize(); }
     static constexpr int preAllocBuffSize () { return ((buffLen + 7) & ~7); }
@@ -69,6 +80,28 @@ class AudioGeneratorMP3 : public AudioGenerator
     int samplePtr;
     int nsCount;
     int nsCountMax;
+    
+    // Track frame for current position
+    unsigned long* trackFrame;
+    bool trackFrameInitialized = false;
+    
+    // EQ buffers
+    uint8_t* eqBuffer = nullptr;
+    uint8_t* channelEQBuffer = nullptr;
+    
+    // Spectrum analyzer buffers (separate for L/R)
+    double vRealL[128];
+    double vImagL[128];
+    double vRealR[128];
+    double vImagR[128];
+    uint8_t fftPos = 0;
+    uint16_t sampleSkip = 0;
+    ArduinoFFT<double> *FFTL = nullptr;
+    ArduinoFFT<double> *FFTR = nullptr;
+    
+    // Playback speed control
+    int playbackSpeed = 1; // 0=0.5x, 1=1x, 2=2x
+    int speedCounter = 0;
 
     // The internal helpers
     enum mad_flow ErrorToFlow();

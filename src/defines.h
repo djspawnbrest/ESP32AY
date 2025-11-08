@@ -2,7 +2,7 @@
 #include <SPI.h>
 #include <Wire.h>
 
-#define VERSION         "3.6"
+#define FW_VERSION         "3.7"
 #define LFSCONFIG_VERSION 1  // Increment when lfsConfig structure changes
 #define SDCONFIG_VERSION  1  // Increment when sdConfig structure changes
 
@@ -122,6 +122,8 @@ uint16_t scrollSY=0;
 uint8_t modEQchn[8];
 uint8_t modChannels=0;
 uint8_t modChannelsEQ=0;
+int bitrate=0;
+int channelMode=0;
 
 SdFs sd_fat;
 FsFile sd_dir;
@@ -317,6 +319,8 @@ const char* const file_ext_list[]={
 #endif
   "tap",
   "tzx",
+  "mp3",
+  "wav",
 };
 
 enum{
@@ -341,6 +345,8 @@ enum{
 #endif
   TYPE_TAP,
   TYPE_TZX,
+  TYPE_MP3,
+  TYPE_WAV,
   TYPES_ALL
 };
 
@@ -384,6 +390,10 @@ void XM_Loop();
 void XM_Play();
 void setXmSeparation();
 #endif
+void MP3_Loop();
+void MP3_Play();
+void WAV_Loop();
+void WAV_Play();
 
 //I2C autedect
 byte eepAddress=80;   // 0x50  - default

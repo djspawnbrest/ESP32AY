@@ -41,6 +41,8 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 - .xm  - The XM file format, also known as Extended Module, is a digital audio file type for music created in the FastTracker 2 software.
 - .tap - A file format for emulating ZX Spectrum magnetic tape images, which stores data from standard Sinclair BASIC procedures for working with a cassette.
 - .tzx - A file format used to store programs and games for the ZX Spectrum computer as audio data from magnetic tape.
+- .mp3 - MP3 (MPEG-1 Audio Layer 3) is a widely used digital audio format that uses a lossy compression method to significantly reduce file size while maintaining near-CD quality audio.
+- .wav - is an audio file format for storing uncompressed audio data, developed by Microsoft and IBM. It is known for high-quality audio that retains all original data, but results in large file sizes, making it popular for professional audio recording and editing. The format stores audio data in chunks and commonly uses linear pulse-code modulation (LPCM) for encoding.
 - UART mode (available in player settings menu as Player source)
 - SD forwarding via USB as Mass Storage device (rev.D and above only)
 
@@ -113,3 +115,6 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 
 ### UPD 15.10.2025
 - Add .tap, .tzx formats to play and loads programms on ZX-Spectrum.
+
+### UPD 08.10.2025
+- Add .mp3, .wav formats.

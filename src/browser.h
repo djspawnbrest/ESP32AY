@@ -685,6 +685,8 @@ int browser_screen(int mode){
         #endif
           case TYPE_TAP:
           case TYPE_TZX:
+          case TYPE_MP3:
+          case TYPE_WAV:
             muteAmp();
             muteAYBeep();
             memcpy(sdConfig.play_dir,sdConfig.active_dir,sizeof(sdConfig.active_dir));
