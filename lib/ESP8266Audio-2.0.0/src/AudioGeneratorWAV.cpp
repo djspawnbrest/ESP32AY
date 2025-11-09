@@ -154,7 +154,7 @@ bool AudioGeneratorWAV::loop()
       int16_t absL = abs(lastSample[AudioOutput::LEFTCHANNEL]);
       int16_t absR = abs(lastSample[AudioOutput::RIGHTCHANNEL]);
       channelEQBuffer[0] = (absL >> 9) & 0x3F;
-      channelEQBuffer[1] = (absR >> 9) & 0x3F;
+      channelEQBuffer[1] = (channels == 1) ? channelEQBuffer[0] : ((absR >> 9) & 0x3F);
     }
     
     // Update spectrum analyzer (96 bands) - separate L/R channels
@@ -235,6 +235,13 @@ bool AudioGeneratorWAV::loop()
             
             int val = (int)(sum / 2048.0) & 0x1F;
             if(val > eqBuffer[band * 2 + 1]) eqBuffer[band * 2 + 1] = val;
+          }
+          
+          // For mono: duplicate left channel to right
+          if(channels == 1) {
+            for(int band = 0; band < 48; band++) {
+              eqBuffer[band * 2 + 1] = eqBuffer[band * 2];
+            }
           }
         }
       }
