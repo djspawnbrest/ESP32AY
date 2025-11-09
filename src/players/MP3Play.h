@@ -16,6 +16,7 @@ void MP3_Cleanup(){
   out->stop();
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
+  isVBR=false;
 }
 
 void MP3_GetInfo(const char *filename){
@@ -30,6 +31,7 @@ void MP3_GetInfo(const char *filename){
   mp3->initTrackFrame(&PlayerCTRL.trackFrame);
   bitrate=mp3->getBitrate();
   channelMode=mp3->getChannelMode();
+  isVBR=mp3->isVBR();
 }
 
 void MP3_Loop(){

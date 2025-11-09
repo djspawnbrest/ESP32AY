@@ -89,9 +89,15 @@ extern "C" {
 //--------------------------------------------------------------------
 
 // Enable host stack with MAX3421E (host shield)
+#ifndef CFG_TUH_ENABLED
 #define CFG_TUH_ENABLED 1
+#endif
+#ifndef CFG_TUH_MAX_SPEED
 #define CFG_TUH_MAX_SPEED OPT_MODE_FULL_SPEED
+#endif
+#ifndef CFG_TUH_MAX3421
 #define CFG_TUH_MAX3421 1
+#endif
 
 #ifndef CFG_TUH_MAX3421_ENDPOINT_TOTAL
 #define CFG_TUH_MAX3421_ENDPOINT_TOTAL (8 + 4 * (CFG_TUH_DEVICE_MAX - 1))
@@ -101,7 +107,9 @@ extern "C" {
 #define CFG_TUH_ENUMERATION_BUFSIZE 256
 
 // Number of hub devices
+#ifndef CFG_TUH_HUB
 #define CFG_TUH_HUB 1
+#endif
 
 // max device support (excluding hub device): 1 hub typically has 4 ports
 #define CFG_TUH_DEVICE_MAX (3 * CFG_TUH_HUB + 1)
@@ -110,18 +118,30 @@ extern "C" {
 // #define CFG_TUH_API_EDPT_XFER       1
 
 // Number of mass storage
+#ifndef CFG_TUH_MSC
 #define CFG_TUH_MSC 1
+#endif
 
 // Number of HIDs
 // typical keyboard + mouse device can have 3,4 HID interfaces
+#ifndef CFG_TUH_HID
 #define CFG_TUH_HID (3 * CFG_TUH_DEVICE_MAX)
+#endif
 
 // Number of CDC interfaces
 // FTDI and CP210x are not part of CDC class, only to re-use CDC driver API
+#ifndef CFG_TUH_CDC
 #define CFG_TUH_CDC 1
+#endif
+#ifndef CFG_TUH_CDC_FTDI
 #define CFG_TUH_CDC_FTDI 1
+#endif
+#ifndef CFG_TUH_CDC_CP210X
 #define CFG_TUH_CDC_CP210X 1
+#endif
+#ifndef CFG_TUH_CDC_CH34X
 #define CFG_TUH_CDC_CH34X 1
+#endif
 
 // RX & TX fifo size
 #define CFG_TUH_CDC_RX_BUFSIZE 64

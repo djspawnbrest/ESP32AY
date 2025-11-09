@@ -802,7 +802,8 @@ void showFileInfo(){
     ){
       sprintf(tme,"%s %s%u%s",file_ext_list[PlayerCTRL.music_type],(modChannels>9)?"":" ",modChannels,"Ch");
     }else if(PlayerCTRL.music_type==TYPE_MP3||PlayerCTRL.music_type==TYPE_WAV){
-      sprintf(tme,"%s %uk/s",file_ext_list[PlayerCTRL.music_type],bitrate);
+      if(PlayerCTRL.music_type==TYPE_MP3&&isVBR) sprintf(tme,"%s %u",file_ext_list[PlayerCTRL.music_type],bitrate);
+      else sprintf(tme,"%s %uk/s",file_ext_list[PlayerCTRL.music_type],bitrate);
     }else{
       sprintf(tme,"%S",file_ext_list[PlayerCTRL.music_type]);
     }
@@ -819,6 +820,11 @@ void showFileInfo(){
   img.print(": ");
   img.setTextColor(TFT_YELLOW);
   img.print(tme);
+  if(PlayerCTRL.music_type==TYPE_MP3&&isVBR){
+    img.setTextColor(WILD_GREEN);
+    img.print(" VBR");
+    img.setTextColor(TFT_YELLOW);
+  }
   img.pushSprite(9,220);
   img.deleteSprite();
   // is Turbo Sound
@@ -1128,7 +1134,7 @@ void ayClockShow(){
   ) img.print("Stereo ");
   else if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX) img.print("Tape mode");
   else if(PlayerCTRL.music_type==TYPE_MP3||PlayerCTRL.music_type==TYPE_WAV) img.print("Mode");
-  else img.print("AY clock ");
+  else img.print("AY clock");
   img.setTextColor(TFT_RED);
   img.print(": ");
   img.setTextColor(TFT_YELLOW);

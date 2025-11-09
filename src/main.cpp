@@ -16,6 +16,8 @@
 #include "amp.h"
 #include "keypad.h"
 #include "tftui.h"
+#undef FILE_READ
+#undef FILE_WRITE
 #include "config.h"
 #include "playlist.h"
 #include "browser.h"
@@ -75,6 +77,7 @@ void setup(){
   playerSourceChange(); // ay playcore or uart playcore
   checkSDonStart();
   muteAYBeep();
+  if(lfsConfig.playerSource==PLAYER_MODE_UART) unMuteAmp();
 #ifdef DEBUG_RAM
   printf("Setup end\n");
   checkHeap();

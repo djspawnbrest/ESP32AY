@@ -46,6 +46,7 @@ class AudioGeneratorMP3 : public AudioGenerator
     void getDescription(char* description, size_t maxLen);
     int getBitrate();
     int getChannelMode();
+    bool isVBR();
     void initEQBuffers(uint8_t* eqBuffer, uint8_t* channelEQBuffer);
     void setSpeed(int speed); // 0=slow(0.5x), 1=normal(1x), 2=fast(2x)
 

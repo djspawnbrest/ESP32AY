@@ -415,6 +415,16 @@ bool AudioGeneratorMP3::begin(AudioFileSource *source, AudioOutput *output)
   // Reset error count from previous file
   unrecoverable = 0;
 
+  // Skip ID3v2 tag (including album art) to avoid playback delay
+  uint8_t id3hdr[10];
+  file->seek(0, SEEK_SET);
+  if(file->read(id3hdr, 10) == 10 && id3hdr[0]=='I' && id3hdr[1]=='D' && id3hdr[2]=='3') {
+    uint32_t id3size = ((id3hdr[6]&0x7F)<<21)|((id3hdr[7]&0x7F)<<14)|((id3hdr[8]&0x7F)<<7)|(id3hdr[9]&0x7F) + 10;
+    file->seek(id3size, SEEK_SET);
+  } else {
+    file->seek(0, SEEK_SET);
+  }
+
   output->SetBitsPerSample(16); // Constant for MP3 decoder
   output->SetChannels(2);
 
@@ -525,9 +535,37 @@ signed long AudioGeneratorMP3::getPlaybackTime(bool oneFiftieth) {
       return (signed long)(sec * (oneFiftieth ? 50 : 1000));
     }
   }
-  float sec = (float)(file->getSize() - start) * 8.0f / (float)(br[bi] * 1000);
+  // No Xing/Info: scan frames to get average bitrate (handles VBR)
+  uint32_t totalBitrate = 0;
+  int frameCount = 0;
+  uint32_t scanPos = start;
+  for(int i = 0; i < 50 && scanPos < file->getSize() - 4; i++) {
+    file->seek(scanPos, SEEK_SET);
+    uint8_t hdr[4];
+    if(file->read(hdr, 4) < 4) break;
+    if(hdr[0] != 0xFF || (hdr[1] & 0xE0) != 0xE0) break;
+    int fbi = (hdr[2] >> 4) & 0xF;
+    int fsi = (hdr[2] >> 2) & 3;
+    int padding = (hdr[2] >> 1) & 1;
+    int fv = (hdr[1] >> 3) & 3;
+    if(fbi > 0 && fbi < 15 && fsi < 3) {
+      totalBitrate += br[fbi];
+      frameCount++;
+      int frameSize = (fv == 3) ? (144 * br[fbi] * 1000 / sr[fsi] + padding) : (72 * br[fbi] * 1000 / sr[fsi] + padding);
+      scanPos += frameSize;
+    } else {
+      break;
+    }
+  }
+  if(frameCount > 0) {
+    int avgBitrate = totalBitrate / frameCount;
+    float sec = (float)(file->getSize() - start) * 8.0f / (float)(avgBitrate * 1000);
+    file->seek(currentPos, SEEK_SET);
+    return (signed long)(sec * (oneFiftieth ? 50 : 1000));
+  }
+  
   file->seek(currentPos, SEEK_SET);
-  return (signed long)(sec * (oneFiftieth ? 50 : 1000));
+  return -1;
 }
 
 // The following are helper routines for use in libmad to check stack/heap free
@@ -612,13 +650,29 @@ int AudioGeneratorMP3::getBitrate(){
     start=((h[6]&0x7F)<<21)|((h[7]&0x7F)<<14)|((h[8]&0x7F)<<7)|(h[9]&0x7F)+10;
   }
   file->seek(start,SEEK_SET);
-  uint8_t d[4];
-  if(file->read(d,4)<4){file->seek(currentPos,SEEK_SET);return 0;}
-  if(d[0]!=0xFF||(d[1]&0xE0)!=0xE0){file->seek(currentPos,SEEK_SET);return 0;}
-  int bi=(d[2]>>4)&0xF;
   const int br[16]={0,32,40,48,56,64,80,96,112,128,160,192,224,256,320,0};
+  const int sr[3]={44100,48000,32000};
+  uint32_t totalBitrate=0;
+  int frameCount=0;
+  uint32_t scanPos=start;
+  for(int i=0;i<20&&scanPos<file->getSize()-4;i++){
+    file->seek(scanPos,SEEK_SET);
+    uint8_t d[4];
+    if(file->read(d,4)<4)break;
+    if(d[0]!=0xFF||(d[1]&0xE0)!=0xE0)break;
+    int bi=(d[2]>>4)&0xF;
+    int si=(d[2]>>2)&3;
+    int pad=(d[2]>>1)&1;
+    int v=(d[1]>>3)&3;
+    if(bi>0&&bi<15&&si<3){
+      totalBitrate+=br[bi];
+      frameCount++;
+      int frameSize=(v==3)?(144*br[bi]*1000/sr[si]+pad):(72*br[bi]*1000/sr[si]+pad);
+      scanPos+=frameSize;
+    }else break;
+  }
   file->seek(currentPos,SEEK_SET);
-  return br[bi];
+  return frameCount>0?totalBitrate/frameCount:0;
 }
 
 int AudioGeneratorMP3::getChannelMode(){
@@ -637,6 +691,40 @@ int AudioGeneratorMP3::getChannelMode(){
   int mode=(d[3]>>6)&0x3;
   file->seek(currentPos,SEEK_SET);
   return mode;
+}
+
+bool AudioGeneratorMP3::isVBR(){
+  if(!file||!file->isOpen())return false;
+  uint32_t currentPos=file->getPos();
+  file->seek(0,SEEK_SET);
+  uint8_t h[10];
+  uint32_t start=0;
+  if(file->read(h,10)==10&&h[0]=='I'&&h[1]=='D'&&h[2]=='3'){
+    start=((h[6]&0x7F)<<21)|((h[7]&0x7F)<<14)|((h[8]&0x7F)<<7)|(h[9]&0x7F)+10;
+  }
+  file->seek(start,SEEK_SET);
+  const int br[16]={0,32,40,48,56,64,80,96,112,128,160,192,224,256,320,0};
+  const int sr[3]={44100,48000,32000};
+  int firstBitrate=-1;
+  uint32_t scanPos=start;
+  for(int i=0;i<20&&scanPos<file->getSize()-4;i++){
+    file->seek(scanPos,SEEK_SET);
+    uint8_t d[4];
+    if(file->read(d,4)<4)break;
+    if(d[0]!=0xFF||(d[1]&0xE0)!=0xE0)break;
+    int bi=(d[2]>>4)&0xF;
+    int si=(d[2]>>2)&3;
+    int pad=(d[2]>>1)&1;
+    int v=(d[1]>>3)&3;
+    if(bi>0&&bi<15&&si<3){
+      if(firstBitrate==-1)firstBitrate=br[bi];
+      else if(br[bi]!=firstBitrate){file->seek(currentPos,SEEK_SET);return true;}
+      int frameSize=(v==3)?(144*br[bi]*1000/sr[si]+pad):(72*br[bi]*1000/sr[si]+pad);
+      scanPos+=frameSize;
+    }else break;
+  }
+  file->seek(currentPos,SEEK_SET);
+  return false;
 }
 
 void AudioGeneratorMP3::initEQBuffers(uint8_t* eqBuf, uint8_t* channelEQBuf){

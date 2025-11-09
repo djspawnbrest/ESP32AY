@@ -1,4 +1,4 @@
-/* TinySoundFont - v0.8 - SoundFont2 synthesizer - https://github.com/schellingb/TinySoundFont
+/* TinySoundFont - v0.9 - SoundFont2 synthesizer - https://github.com/schellingb/TinySoundFont
                                      no warranty implied; use at your own risk
    Do this:
       #define TSF_IMPLEMENTATION
@@ -21,7 +21,7 @@
 
    LICENSE (MIT)
 
-   Copyright (C) 2017, 2018 Bernhard Schelling
+   Copyright (C) 2017-2025 Bernhard Schelling
    Based on SFZero, Copyright (C) 2012 Steve Folta (https://github.com/stevefolta/SFZero)
 
    Permission is hereby granted, free of charge, to any person obtaining a copy of this
@@ -42,20 +42,20 @@
 
 */
 
-// ESP32 as of 3.x has a compiler bug in this section, with the G++ generated assembly
-// being illegal.  There's nothing wrong with the code here, it just looks like an
-// Xtensa backend issue.  Until that's fixed, no MIDI for you!
-///home/earle/Arduino/libraries/ESP8266Audio/src/libtinysoundfont/tsf.h: In function 'void tsf_channel_midi_control(tsf*, int, int, int)':
-// /home/earle/Arduino/libraries/ESP8266Audio/src/libtinysoundfont/tsf.h:2101:1: error: insn does not satisfy its constraints:
-//  2101 | }
-//       | ^
-
-#if defined(ESP32) && (__GNUC__ >= 8) && (__XTENSA__)
-// Not defined, can't build
-#else
+#pragma GCC push_options
+#pragma GCC optimize ("O2")
 
 #ifndef TSF_INCLUDE_TSF_INL
 #define TSF_INCLUDE_TSF_INL
+
+#ifdef TSF_SAMPLES_SHORT
+#include "fastpow.h"
+#include "fastlog.h"
+#define TSF_POWF fastpow
+// Following have almost no impact on performance but can be used if your chip's implementations are bad.
+//#define TSF_EXP fastexp
+//#define TSF_LOG fastlog
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -71,12 +71,23 @@ extern "C" {
 #define TSFDEF extern
 #endif
 
+// Define this to disable any load infra and use a precompiled SF2 header
+#ifdef TSF_CONST_FILE
+#define TSF_CONST const
+#else
+#define TSF_CONST
+#endif
+
+// Define this to use 16 fixed point samples instead of floating point
+//#define TSF_SAMPLES_SHORT
+
 // The load functions will return a pointer to a struct tsf which all functions
 // thereafter take as the first parameter.
 // On error the tsf_load* functions will return NULL most likely due to invalid
 // data (or if the file did not exist in tsf_load_filename).
 typedef struct tsf tsf;
 
+#ifndef TSF_CONST_FILE
 #ifndef TSF_NO_STDIO
 // Directly load a SoundFont from a .sf2 file path
 TSFDEF tsf* tsf_load_filename(const char* filename);
@@ -84,6 +95,7 @@ TSFDEF tsf* tsf_load_filename(const char* filename);
 
 // Load a SoundFont from a block of memory
 TSFDEF tsf* tsf_load_memory(const void* buffer, int size);
+#endif
 
 // Stream structure for the generic loading
 struct tsf_stream
@@ -94,24 +106,20 @@ struct tsf_stream
 	// Function pointer will be called to read 'size' bytes into ptr (returns number of read bytes)
 	int (*read)(void* data, void* ptr, unsigned int size);
 
-	// Function pointer will be called to skip ahead over 'count' bytes
-	int (*tell)(void* data);
-
 	// Function pointer will be called to skip ahead over 'count' bytes (returns 1 on success, 0 on error)
 	int (*skip)(void* data, unsigned int count);
-
-	// Function pointer will be called to seek to absolute position
-	int (*seek)(void* data, unsigned int pos);
-
-	// Function pointer will be called to skip ahead over 'count' bytes
-	int (*close)(void* data);
-	
-	// Function pointer will be called to skip ahead over 'count' bytes
-	int (*size)(void* data);
 };
 
+#ifndef TSF_CONST_FILE
 // Generic SoundFont loading method using the stream structure above
 TSFDEF tsf* tsf_load(struct tsf_stream* stream);
+#endif
+
+// Copy a tsf instance from an existing one, use tsf_close to close it as well.
+// All copied tsf instances and their original instance are linked, and share the underlying soundfont.
+// This allows loading a soundfont only once, but using it for multiple independent playbacks.
+// (This function isn't thread-safe without locking.)
+TSFDEF tsf* tsf_copy(tsf* f);
 
 // Free the memory related to this tsf instance
 TSFDEF void tsf_close(tsf* f);
@@ -136,17 +144,34 @@ enum TSFOutputMode
 {
 	// Two channels with single left/right samples one after another
 	TSF_STEREO_INTERLEAVED,
-	// Two channels with all samples for the left channel first then right
+        // Two channels with all samples for the left channel first then right
 	TSF_STEREO_UNWEAVED,
 	// A single channel (stereo instruments are mixed into center)
 	TSF_MONO
 };
 
 // Thread safety:
+//
+// 1. Rendering / voices:
+//
 // Your audio output which calls the tsf_render* functions will most likely
 // run on a different thread than where the playback tsf_note* functions
 // are called. In which case some sort of concurrency control like a
 // mutex needs to be used so they are not called at the same time.
+// Alternatively, you can pre-allocate a maximum number of voices that can
+// play simultaneously by calling tsf_set_max_voices after loading.
+// That way memory re-allocation will not happen during tsf_note_on and
+// TSF should become mostly thread safe.
+// There is a theoretical chance that ending notes would negatively influence
+// a voice that is rendering at the time but it is hard to say.
+// Also be aware, this has not been tested much.
+//
+// 2. Channels:
+//
+// Calls to tsf_channel_set_... functions may allocate new channels
+// if no channel with that number was previously used. Make sure to
+// create all channels at the beginning as required if you call tsf_render*
+// from a different thread.
 
 // Setup the parameters for the voice render methods
 //   outputmode: if mono or stereo and how stereo channel data is ordered
@@ -154,15 +179,27 @@ enum TSFOutputMode
 //   global_gain_db: volume gain in decibels (>0 means higher, <0 means lower)
 TSFDEF void tsf_set_output(tsf* f, enum TSFOutputMode outputmode, int samplerate, float global_gain_db CPP_DEFAULT0);
 
+// Set the global gain as a volume factor
+//   global_gain: the desired volume where 1.0 is 100%
+TSFDEF void tsf_set_volume(tsf* f, float global_gain);
+
+// Set the maximum number of voices to play simultaneously
+// Depending on the soundfond, one note can cause many new voices to be started,
+// so don't keep this number too low or otherwise sounds may not play.
+//   max_voices: maximum number to pre-allocate and set the limit to
+//   (tsf_set_max_voices returns 0 if allocation failed, otherwise 1)
+TSFDEF int tsf_set_max_voices(tsf* f, int max_voices);
+
 // Start playing a note
 //   preset_index: preset index >= 0 and < tsf_get_presetcount()
 //   key: note value between 0 and 127 (60 being middle C)
 //   vel: velocity as a float between 0.0 (equal to note off) and 1.0 (full)
 //   bank: instrument bank number (alternative to preset_index)
 //   preset_number: preset number (alternative to preset_index)
-//   (bank_note_on returns 0 if preset does not exist, otherwise 1)
-TSFDEF void tsf_note_on(tsf* f, int preset_index, int key, float vel);
-TSFDEF int  tsf_bank_note_on(tsf* f, int bank, int preset_number, int key, float vel);
+//   (tsf_note_on returns 0 if the allocation of a new voice failed, otherwise 1)
+//   (tsf_bank_note_on returns 0 if preset does not exist or allocation failed, otherwise 1)
+TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel);
+TSFDEF int tsf_bank_note_on(tsf* f, int bank, int preset_number, int key, float vel);
 
 // Stop playing a note
 //   (bank_note_off returns 0 if preset does not exist, otherwise 1)
@@ -181,7 +218,12 @@ TSFDEF int tsf_active_voice_count(tsf* f);
 //   buffer: target buffer of size samples * output_channels * sizeof(type)
 //   samples: number of samples to render
 //   flag_mixing: if 0 clear the buffer first, otherwise mix into existing data
+#ifndef TSF_SAMPLES_SHORT
 TSFDEF void tsf_render_short(tsf* f, short* buffer, int samples, int flag_mixing CPP_DEFAULT0);
+#else
+// The short render needs space for a long (32b) for all samples, so pass in a buffer of 2x the expected size.  Only the first `samples` samples will be valid on return
+TSFDEF void tsf_render_short_2x_buffer(tsf* f, short* buffer_2x, int samples, int flag_mixing CPP_DEFAULT0);
+#endif
 TSFDEF void tsf_render_float(tsf* f, float* buffer, int samples, int flag_mixing CPP_DEFAULT0);
 
 // Higher level channel based functions, set up channel parameters
@@ -195,28 +237,33 @@ TSFDEF void tsf_render_float(tsf* f, float* buffer, int samples, int flag_mixing
 //   pitch_wheel: pitch wheel position 0 to 16383 (default 8192 unpitched)
 //   pitch_range: range of the pitch wheel in semitones (default 2.0, total +/- 2 semitones)
 //   tuning: tuning of all playing voices in semitones (default 0.0, standard (A440) tuning)
-//   (set_preset_number and set_bank_preset return 0 if preset does not exist, otherwise 1)
-TSFDEF void tsf_channel_set_presetindex(tsf* f, int channel, int preset_index);
-TSFDEF int  tsf_channel_set_presetnumber(tsf* f, int channel, int preset_number, int flag_mididrums CPP_DEFAULT0);
-TSFDEF void tsf_channel_set_bank(tsf* f, int channel, int bank);
-TSFDEF int  tsf_channel_set_bank_preset(tsf* f, int channel, int bank, int preset_number);
-TSFDEF void tsf_channel_set_pan(tsf* f, int channel, float pan);
-TSFDEF void tsf_channel_set_volume(tsf* f, int channel, float volume);
-TSFDEF void tsf_channel_set_pitchwheel(tsf* f, int channel, int pitch_wheel);
-TSFDEF void tsf_channel_set_pitchrange(tsf* f, int channel, float pitch_range);
-TSFDEF void tsf_channel_set_tuning(tsf* f, int channel, float tuning);
+//   flag_sustain: 0 to end notes that were held sustained and disable holding sustain otherwise enable it
+//   (tsf_set_preset_number and set_bank_preset return 0 if preset does not exist, otherwise 1)
+//   (tsf_channel_set_... return 0 if a new channel needed allocation and that failed, otherwise 1)
+TSFDEF int tsf_channel_set_presetindex(tsf* f, int channel, int preset_index);
+TSFDEF int tsf_channel_set_presetnumber(tsf* f, int channel, int preset_number, int flag_mididrums CPP_DEFAULT0);
+TSFDEF int tsf_channel_set_bank(tsf* f, int channel, int bank);
+TSFDEF int tsf_channel_set_bank_preset(tsf* f, int channel, int bank, int preset_number);
+TSFDEF int tsf_channel_set_pan(tsf* f, int channel, float pan);
+TSFDEF int tsf_channel_set_volume(tsf* f, int channel, float volume);
+TSFDEF int tsf_channel_set_pitchwheel(tsf* f, int channel, int pitch_wheel);
+TSFDEF int tsf_channel_set_pitchrange(tsf* f, int channel, float pitch_range);
+TSFDEF int tsf_channel_set_tuning(tsf* f, int channel, float tuning);
+TSFDEF int tsf_channel_set_sustain(tsf* f, int channel, int flag_sustain);
 
 // Start or stop playing notes on a channel (needs channel preset to be set)
 //   channel: channel number
 //   key: note value between 0 and 127 (60 being middle C)
 //   vel: velocity as a float between 0.0 (equal to note off) and 1.0 (full)
-TSFDEF void tsf_channel_note_on(tsf* f, int channel, int key, float vel);
+//   (tsf_channel_note_on returns 0 on allocation failure of new voice, otherwise 1)
+TSFDEF int tsf_channel_note_on(tsf* f, int channel, int key, float vel);
 TSFDEF void tsf_channel_note_off(tsf* f, int channel, int key);
 TSFDEF void tsf_channel_note_off_all(tsf* f, int channel); //end with sustain and release
 TSFDEF void tsf_channel_sounds_off_all(tsf* f, int channel); //end immediately
 
 // Apply a MIDI control change to the channel (not all controllers are supported!)
-TSFDEF void tsf_channel_midi_control(tsf* f, int channel, int controller, int control_value);
+//    (tsf_channel_midi_control returns 0 on allocation failure of new channel, otherwise 1)
+TSFDEF int tsf_channel_midi_control(tsf* f, int channel, int controller, int control_value);
 
 // Get current values set on the channels
 TSFDEF int tsf_channel_get_preset_index(tsf* f, int channel);
@@ -237,7 +284,16 @@ TSFDEF float tsf_channel_get_tuning(tsf* f, int channel);
 // ---------------------------------------------------------------------------------------------------------
 #endif //TSF_INCLUDE_TSF_INL
 
-#ifdef TSF_IMPLEMENTATION
+#if defined(TSF_IMPLEMENTATION) || defined(TSF_HEADER)
+
+#ifdef TSF_SAMPLES_SHORT
+#if defined(ARDUINO_ARCH_RP2040) && defined(PICO_RP2350)
+#elif defined(PICO_RP2350) || defined(CONFIG_IDF_TARGET_ESP32) || defined(CONFIG_IDF_TARGET_ESP32S3) || defined(CONFIG_IDF_TARGET_ESP32H4) || defined(CONFIG_IDF_TARGET_ESP32P4) // per https://developer.espressif.com/blog/2025/10/cores_with_fpu/
+#define TSF_RENDER_EFFECTSAMPLEBLOCK 64 // FPU
+#else
+#define TSF_RENDER_EFFECTSAMPLEBLOCK 256 // No FPU, can't run the analog oscillators too often
+#endif
+#endif
 
 // The lower this block size is the more accurate the effects are.
 // Increasing the value significantly lowers the CPU usage of the voice rendering.
@@ -246,8 +302,17 @@ TSFDEF float tsf_channel_get_tuning(tsf* f, int channel);
 #define TSF_RENDER_EFFECTSAMPLEBLOCK 64
 #endif
 
+// When using tsf_render_short, to do the conversion a buffer of a fixed size is
+// allocated on the stack. On low memory platforms this could be made smaller.
+// Increasing this above 512 should not have a significant impact on performance.
+// The value should be a multiple of TSF_RENDER_EFFECTSAMPLEBLOCK.
+#ifndef TSF_RENDER_SHORTBUFFERBLOCK
+#define TSF_RENDER_SHORTBUFFERBLOCK 512
+#endif
+
 // Grace release time for quick voice off (avoid clicking noise)
 #define TSF_FASTRELEASETIME 0.01f
+
 #if !defined(TSF_MALLOC) || !defined(TSF_FREE) || !defined(TSF_REALLOC)
 #  include <stdlib.h>
 #  define TSF_MALLOC  malloc
@@ -269,9 +334,15 @@ TSFDEF float tsf_channel_get_tuning(tsf* f, int channel);
 #    define sqrtf (float)sqrt // powf, expf and sqrtf
 #  endif
 #  define TSF_POW     pow
+#ifndef TSF_POWF
 #  define TSF_POWF    powf
+#endif
+#ifndef TSF_EXPF
 #  define TSF_EXPF    expf
+#endif
+#ifndef TSF_LOG
 #  define TSF_LOG     log
+#endif
 #  define TSF_TAN     tan
 #  define TSF_LOG10   log10
 #  define TSF_SQRTF   sqrtf
@@ -283,7 +354,7 @@ TSFDEF float tsf_channel_get_tuning(tsf* f, int channel);
 
 #define TSF_TRUE 1
 #define TSF_FALSE 0
-#define TSF_BOOL char
+#define TSF_BOOL unsigned char
 #define TSF_PI 3.14159265358979323846264338327950288
 #define TSF_NULL 0
 
@@ -299,184 +370,53 @@ typedef signed short tsf_s16;
 typedef unsigned int tsf_u32;
 typedef char tsf_char20[20];
 
-#define TSF_FourCCEquals(value1, value2) (value1[0] == value2[0] && value1[1] == value2[1] && value1[2] == value2[2] && value1[3] == value2[3])
+#ifdef TSF_SAMPLES_SHORT
+#include <stdint.h>
+typedef int64_t fixed32p32;
+typedef int32_t fixed30p2;
+typedef int32_t fixed24p8;
+typedef int32_t fixed16p16;
+typedef int32_t fixed8p24;
+#endif
 
-// Samples cache, number and sample count
-#define TSF_BUFFS 16
-#define TSF_BUFFSIZE 512
+
+#define TSF_FourCCEquals(value1, value2) (value1[0] == value2[0] && value1[1] == value2[1] && value1[2] == value2[2] && value1[3] == value2[3])
 
 struct tsf
 {
-	struct tsf_preset* presets;
+	TSF_CONST struct tsf_preset* presets;
+#ifndef TSF_SAMPLES_SHORT
+	TSF_CONST float* fontSamples;
+#else
+	TSF_CONST short* shortSamples;
+#endif
+        int samplesNum;
 	struct tsf_voice* voices;
-
-	unsigned int fontSamplesOffset;
-	unsigned int fontSampleCount;
 	struct tsf_channels* channels;
-	float* outputSamples;
 
 	int presetNum;
 	int voiceNum;
-	int outputSampleSize;
+	int maxVoiceNum;
 	unsigned int voicePlayIndex;
 
 	enum TSFOutputMode outputmode;
+#ifndef TSF_SAMPLES_SHORT
 	float outSampleRate;
+#else
+        int outSampleRate;
+#endif
 	float globalGainDB;
-
-	struct tsf_hydra *hydra;
-
-	// Cached sample read 
-	short *buffer[TSF_BUFFS];
-	int offset[TSF_BUFFS];
-	int timestamp[TSF_BUFFS];
-	int epoch;
+	int* refCount;
 };
 
-struct tsf_stream_cached_data {
-	int buffs;
-	int buffsize;
-	struct tsf_stream *stream;
-	unsigned int size, pos;
-	unsigned char **buffer;
-	unsigned int *offset;
-	unsigned int *timestamp;
-	unsigned int epoch;
-	unsigned int hit;
-	unsigned int miss;
-};
-
-static int tsf_stream_cached_read(void* v, void* ptr, unsigned int size)
-{
-	struct tsf_stream_cached_data *d = (struct tsf_stream_cached_data*)v;
-	unsigned char *p = (unsigned char *)ptr;
-
-	while (size) {
-		if (d->pos >= d->size) return 0; // EOF
-		for (int i=0; i < d->buffs; i++) {
-			if ((d->offset[i] <= d->pos) && ((d->offset[i] + d->buffsize) > d->pos) ) {
-				d->timestamp[i] = d->epoch++;
-				// Handle case of epoch rollover by just setting low, random epochs
-				if (d->epoch==0) {
-					for (int i=0; i<d->buffs; i++) d->timestamp[i] = d->epoch++;
-				}
-				unsigned int startOffset = d->pos - d->offset[i];
-				unsigned int len = d->buffsize - (d->pos % d->buffsize);
-				if (len > size) len = size;
-				TSF_MEMCPY(p, &d->buffer[i][startOffset], len);
-				size -= len;
-				d->pos += len;
-				p += len;
-				d->hit++;
-				if (size == 0) return 1;
-				i = -1; // Restart the for() at block 0 after postincrement
-			}
-		}
-		
-		int repl = 0;
-		for (int i=1; i < d->buffs; i++) {
-			if (d->timestamp[i] < d->timestamp[repl]) repl = i;
-		}
-		int readOff = d->pos - (d->pos % d->buffsize);
-		d->stream->seek(d->stream->data, readOff);
-		d->stream->read(d->stream->data, d->buffer[repl], d->buffsize);
-		d->timestamp[repl] = d->epoch++;
-		d->offset[repl] = readOff;
-		d->miss++;
-		d->hit--; // Avoid counting this as a hit on next loop that returns data
-		// Don't actually do anything yet, we'll retry the search on next loop where it will notice new data
-	}
-	return 1;
-}
-
-static int tsf_stream_cached_tell(void* v)
-{
-	struct tsf_stream_cached_data *d = (struct tsf_stream_cached_data*)v;
-	return d->pos;
-}
-
-static int tsf_stream_cached_size(void* v)
-{
-	struct tsf_stream_cached_data *d = (struct tsf_stream_cached_data*)v;
-	return d->size;
-}
-
-static int tsf_stream_cached_skip(void* v, unsigned int count)
-{
-	struct tsf_stream_cached_data *d = (struct tsf_stream_cached_data*)v;
-	if ((d->pos + count) < d->size) {
-		d->pos += count;
-		return 1;
-	}
-	return 0;
-}
-
-static int tsf_stream_cached_seek(void* v, unsigned int pos)
-{
-	struct tsf_stream_cached_data *d = (struct tsf_stream_cached_data*)v;
-	if (pos < d->size) {
-		d->pos = pos;
-		return 1;
-	}
-	return 0;
-}
-
-static int tsf_stream_cached_close(void* v)
-{
-	struct tsf_stream_cached_data *d = (struct tsf_stream_cached_data*)v;
-	free(d->timestamp);
-	free(d->offset);
-	for (int i = d->buffs - 1; i >=0; i--) free(d->buffer[i]);
-	free(d->buffer);
-	int ret = d->stream->close(d->stream->data);
-	free(d);
-	return ret;
-}
-
-/* Wraps an existing stream with a caching layer.  First create the stream you need, then
-   call this to create a new stream.  Use this new stream only, and when done close() will
-   close both this stream as well as the wrapped one. */
-TSFDEF struct tsf_stream *tsf_stream_wrap_cached(struct tsf_stream *stream, int buffs, int buffsize, struct tsf_stream *dest) 
-{
-	struct tsf_stream_cached_data *s = (struct tsf_stream_cached_data*)TSF_MALLOC(sizeof(*s));
-	s->buffs  = buffs;
-	s->buffsize = buffsize;
-	s->stream = stream;
-	s->size = stream->size(stream->data);
-	s->pos = stream->tell(stream->data);
-	s->buffer = (unsigned char **)TSF_MALLOC(sizeof(*s->buffer) * buffs);
-	s->offset = (unsigned int *)TSF_MALLOC(sizeof(s->offset) * buffs);
-	s->timestamp = (unsigned int *)TSF_MALLOC(sizeof(s->timestamp) * buffs);
-	s->epoch = 0;
-	s->hit = 0;
-	s->miss = 0;
-	for (int i=0; i<buffs; i++) {
-		s->buffer[i] = (unsigned char *)TSF_MALLOC(buffsize);
-		s->offset[i] = 0xfffffff;
-		s->timestamp[i] = 0;
-	}
-	dest->data = (void*)s;
-	dest->read = &tsf_stream_cached_read;
-	dest->tell = &tsf_stream_cached_tell;
-	dest->skip = &tsf_stream_cached_skip;
-	dest->seek = &tsf_stream_cached_seek;
-	dest->size = &tsf_stream_cached_size;
-	dest->close = &tsf_stream_cached_close;
-	return dest;
-}
-
-
+#ifndef TSF_CONST_FILE
 #ifndef TSF_NO_STDIO
 static int tsf_stream_stdio_read(FILE* f, void* ptr, unsigned int size) { return (int)fread(ptr, 1, size, f); }
-static int tsf_stream_stdio_tell(FILE* f) { return ftell(f); }
-static int tsf_stream_stdio_size(FILE* f) { int p = ftell(f); fseek(f, 0, SEEK_END); int e = ftell(f); fseek(f, p, SEEK_SET); return e; }
 static int tsf_stream_stdio_skip(FILE* f, unsigned int count) { return !fseek(f, count, SEEK_CUR); }
-static int tsf_stream_stdio_seek(FILE* f, unsigned int count) { return !fseek(f, count, SEEK_SET); }
-static int tsf_stream_stdio_close(FILE* f) { return !fclose(f); }
 TSFDEF tsf* tsf_load_filename(const char* filename)
 {
 	tsf* res;
-	struct tsf_stream stream = { TSF_NULL, (int(*)(void*,void*,unsigned int))&tsf_stream_stdio_read, (int(*)(void*))&tsf_stream_stdio_tell, (int(*)(void*,unsigned int))&tsf_stream_stdio_skip, (int(*)(void*,unsigned int))&tsf_stream_stdio_seek, (int(*)(void*))&tsf_stream_stdio_close, (int(*)(void*))&tsf_stream_stdio_size };
+	struct tsf_stream stream = { TSF_NULL, (int(*)(void*,void*,unsigned int))&tsf_stream_stdio_read, (int(*)(void*,unsigned int))&tsf_stream_stdio_skip };
 	#if __STDC_WANT_SECURE_LIB__
 	FILE* f = TSF_NULL; fopen_s(&f, filename, "rb");
 	#else
@@ -489,28 +429,24 @@ TSFDEF tsf* tsf_load_filename(const char* filename)
 	}
 	stream.data = f;
 	res = tsf_load(&stream);
-	//fclose(f);
+	fclose(f);
 	return res;
 }
 #endif
 
 struct tsf_stream_memory { const char* buffer; unsigned int total, pos; };
 static int tsf_stream_memory_read(struct tsf_stream_memory* m, void* ptr, unsigned int size) { if (size > m->total - m->pos) size = m->total - m->pos; TSF_MEMCPY(ptr, m->buffer+m->pos, size); m->pos += size; return size; }
-static int tsf_stream_memory_tell(struct tsf_stream_memory* m) { return m->pos; }
-static int tsf_stream_memory_size(struct tsf_stream_memory* m) { return m->total; }
-static int tsf_stream_memory_skip(struct tsf_stream_memory* m, unsigned int count) { if (m->pos + count > m->total) count = m->total - m->pos; m->pos += count; return 1; }
-static int tsf_stream_memory_seek(struct tsf_stream_memory* m, unsigned int pos) { if (pos > m->total) return 0; else m->pos = pos; return 1; }
-static int tsf_stream_memory_close(struct tsf_stream_memory* m) { TSF_FREE(m); return 1; }
+static int tsf_stream_memory_skip(struct tsf_stream_memory* m, unsigned int count) { if (m->pos + count > m->total) return 0; m->pos += count; return 1; }
 TSFDEF tsf* tsf_load_memory(const void* buffer, int size)
 {
-	struct tsf_stream stream = { TSF_NULL, (int(*)(void*,void*,unsigned int))&tsf_stream_memory_read, (int(*)(void*))&tsf_stream_memory_tell, (int(*)(void*,unsigned int))&tsf_stream_memory_skip, (int(*)(void*,unsigned int))&tsf_stream_memory_seek, (int(*)(void*))&tsf_stream_memory_close, (int(*)(void*))&tsf_stream_memory_size };
-	struct tsf_stream_memory* f = (struct tsf_stream_memory*)TSF_MALLOC(sizeof(struct tsf_stream_memory));
-	f->pos = 0;
-	f->buffer = (const char*)buffer;
-	f->total = size;
-	stream.data = f;
+	struct tsf_stream stream = { TSF_NULL, (int(*)(void*,void*,unsigned int))&tsf_stream_memory_read, (int(*)(void*,unsigned int))&tsf_stream_memory_skip };
+	struct tsf_stream_memory f = { 0, 0, 0 };
+	f.buffer = (const char*)buffer;
+	f.total = size;
+	stream.data = &f;
 	return tsf_load(&stream);
 }
+#endif
 
 enum { TSF_LOOPMODE_NONE, TSF_LOOPMODE_CONTINUOUS, TSF_LOOPMODE_SUSTAIN };
 
@@ -518,8 +454,9 @@ enum { TSF_SEGMENT_NONE, TSF_SEGMENT_DELAY, TSF_SEGMENT_ATTACK, TSF_SEGMENT_HOLD
 
 struct tsf_hydra
 {
-	struct tsf_stream *stream;
-	int phdrOffset, pbagOffset, pmodOffset, pgenOffset, instOffset, ibagOffset, imodOffset, igenOffset, shdrOffset;
+	struct tsf_hydra_phdr *phdrs; struct tsf_hydra_pbag *pbags; struct tsf_hydra_pmod *pmods;
+	struct tsf_hydra_pgen *pgens; struct tsf_hydra_inst *insts; struct tsf_hydra_ibag *ibags;
+	struct tsf_hydra_imod *imods; struct tsf_hydra_igen *igens; struct tsf_hydra_shdr *shdrs;
 	int phdrNum, pbagNum, pmodNum, pgenNum, instNum, ibagNum, imodNum, igenNum, shdrNum;
 };
 
@@ -534,65 +471,45 @@ struct tsf_hydra_imod { tsf_u16 modSrcOper, modDestOper; tsf_s16 modAmount; tsf_
 struct tsf_hydra_igen { tsf_u16 genOper; union tsf_hydra_genamount genAmount; };
 struct tsf_hydra_shdr { tsf_char20 sampleName; tsf_u32 start, end, startLoop, endLoop, sampleRate; tsf_u8 originalPitch; tsf_s8 pitchCorrection; tsf_u16 sampleLink, sampleType; };
 
+#ifndef TSF_CONST_FILE
 #define TSFR(FIELD) stream->read(stream->data, &i->FIELD, sizeof(i->FIELD));
 static void tsf_hydra_read_phdr(struct tsf_hydra_phdr* i, struct tsf_stream* stream) { TSFR(presetName) TSFR(preset) TSFR(bank) TSFR(presetBagNdx) TSFR(library) TSFR(genre) TSFR(morphology) }
 static void tsf_hydra_read_pbag(struct tsf_hydra_pbag* i, struct tsf_stream* stream) { TSFR(genNdx) TSFR(modNdx) }
-//static void tsf_hydra_read_pmod(struct tsf_hydra_pmod* i, struct tsf_stream* stream) { TSFR(modSrcOper) TSFR(modDestOper) TSFR(modAmount) TSFR(modAmtSrcOper) TSFR(modTransOper) }
+static void tsf_hydra_read_pmod(struct tsf_hydra_pmod* i, struct tsf_stream* stream) { TSFR(modSrcOper) TSFR(modDestOper) TSFR(modAmount) TSFR(modAmtSrcOper) TSFR(modTransOper) }
 static void tsf_hydra_read_pgen(struct tsf_hydra_pgen* i, struct tsf_stream* stream) { TSFR(genOper) TSFR(genAmount) }
 static void tsf_hydra_read_inst(struct tsf_hydra_inst* i, struct tsf_stream* stream) { TSFR(instName) TSFR(instBagNdx) }
 static void tsf_hydra_read_ibag(struct tsf_hydra_ibag* i, struct tsf_stream* stream) { TSFR(instGenNdx) TSFR(instModNdx) }
-//static void tsf_hydra_read_imod(struct tsf_hydra_imod* i, struct tsf_stream* stream) { TSFR(modSrcOper) TSFR(modDestOper) TSFR(modAmount) TSFR(modAmtSrcOper) TSFR(modTransOper) }
+static void tsf_hydra_read_imod(struct tsf_hydra_imod* i, struct tsf_stream* stream) { TSFR(modSrcOper) TSFR(modDestOper) TSFR(modAmount) TSFR(modAmtSrcOper) TSFR(modTransOper) }
 static void tsf_hydra_read_igen(struct tsf_hydra_igen* i, struct tsf_stream* stream) { TSFR(genOper) TSFR(genAmount) }
 static void tsf_hydra_read_shdr(struct tsf_hydra_shdr* i, struct tsf_stream* stream) { TSFR(sampleName) TSFR(start) TSFR(end) TSFR(startLoop) TSFR(endLoop) TSFR(sampleRate) TSFR(originalPitch) TSFR(pitchCorrection) TSFR(sampleLink) TSFR(sampleType) }
 #undef TSFR
-enum
-{
-	phdrSizeInFile = 38, pbagSizeInFile =  4, pmodSizeInFile = 10,
-	pgenSizeInFile =  4, instSizeInFile = 22, ibagSizeInFile =  4,
-	imodSizeInFile = 10, igenSizeInFile =  4, shdrSizeInFile = 46
-};
-
-#define TGET(TYPE) \
-static struct tsf_hydra_##TYPE *get_##TYPE(struct tsf_hydra *t, int idx, struct tsf_hydra_##TYPE *data) \
-{ \
-	t->stream->seek(t->stream->data, t->TYPE##Offset + TYPE##SizeInFile * idx); \
-	tsf_hydra_read_##TYPE(data, t->stream); \
-	return data; \
-}
-
-TGET(phdr)
-TGET(pbag)
-//TGET(pmod)
-TGET(pgen)
-TGET(inst)
-TGET(ibag)
-//TGET(imod)
-TGET(igen)
-TGET(shdr)
-#undef TGET
-
-typedef int64_t fixed32p32;
-typedef int32_t fixed30p2;
-typedef int32_t fixed24p8;
-typedef int32_t fixed16p16;
-typedef int32_t fixed8p24;
-
-
+#endif
 
 struct tsf_riffchunk { tsf_fourcc id; tsf_u32 size; };
 struct tsf_envelope { float delay, attack, hold, decay, sustain, release, keynumToHold, keynumToDecay; };
-struct tsf_voice_envelope { float level, slope; int samplesUntilNextSegment; short segment, midiVelocity; struct tsf_envelope parameters; TSF_BOOL segmentIsExponential, isAmpEnv; };
+struct tsf_voice_envelope { unsigned char segment, segmentIsExponential : 1, isAmpEnv : 1; short midiVelocity; float level, slope; int samplesUntilNextSegment; struct tsf_envelope parameters; };
+#ifndef TSF_SAMPLES_SHORT
 struct tsf_voice_lowpass { double QInv, a0, a1, b1, b2, z1, z2; TSF_BOOL active; };
 struct tsf_voice_lfo { int samplesUntil; float level, delta; };
+#else
+struct tsf_voice_lfo { int samplesUntil; fixed16p16 levelF16P16, deltaF16P16; };
+#endif
 
 struct tsf_region
 {
 	int loop_mode;
 	unsigned int sample_rate;
+#ifdef TSF_SAMPLES_SHORT // In flash, ESP8266 only can read 32b w/o help
+        unsigned int lokey, hikey, lovel, hivel;
+#else
 	unsigned char lokey, hikey, lovel, hivel;
+#endif
 	unsigned int group, offset, end, loop_start, loop_end;
 	int transpose, tune, pitch_keycenter, pitch_keytrack;
 	float attenuation, pan;
+#ifdef TSF_SAMPLES_SHORT
+        fixed16p16 attenuationF16P16, panF16P16;
+#endif
 	struct tsf_envelope ampenv, modenv;
 	int initialFilterQ, initialFilterFc;
 	int modEnvToPitch, modEnvToFilterFc, modLfoToFilterFc, modLfoToVolume;
@@ -605,52 +522,130 @@ struct tsf_region
 struct tsf_preset
 {
 	tsf_char20 presetName;
+#ifdef TSF_SAMPLES_SHORT // In flash, ESP8266 only can read 32b w/o help
+        tsf_u32 preset, bank;
+#else
 	tsf_u16 preset, bank;
-	struct tsf_region* regions;
+#endif
+	TSF_CONST struct tsf_region* regions;
 	int regionNum;
 };
 
 struct tsf_voice
 {
-	int playingPreset, playingKey, playingChannel;
-	struct tsf_region* region;
-	double pitchRatio;
+	int playingPreset, playingKey, playingChannel, heldSustain;
+	TSF_CONST struct tsf_region* region;
+#ifndef TSF_SAMPLES_SHORT
+	double pitchInputTimecents, pitchOutputFactor;
 	double sourceSamplePosition;
-	fixed32p32 sourceSamplePositionF32P32, loopStartF32P32, loopEndF32P32, loopSizeF32P32, pitchRatioF32P32;
-	float  noteGain, panFactorLeft, panFactorRight;
-	int playIndex, loopStart, loopEnd;
+#else
+	float pitchInputTimecents, pitchOutputFactor;
+        fixed24p8 sourceSamplePositionF24P8;
+#endif
+	float  noteGainDB;
+#ifndef TSF_SAMPLES_SHORT
+        float panFactorLeft, panFactorRight;
+#else
+        fixed16p16 panFactorLeftF16P16, panFactorRightF16P16;
+#endif
+	unsigned int playIndex, loopStart, loopEnd;
 	struct tsf_voice_envelope ampenv, modenv;
-	struct tsf_voice_lowpass lowpass;
+#ifndef TSF_SAMPLES_SHORT
+        struct tsf_voice_lowpass lowpass;
+#endif
 	struct tsf_voice_lfo modlfo, viblfo;
 };
 
 struct tsf_channel
 {
-	unsigned short presetIndex, bank, pitchWheel, midiPan, midiVolume, midiExpression, midiRPN, midiData;
-	float panOffset, gainDB, pitchRange, tuning;
+	unsigned short presetIndex, bank, pitchWheel, midiPan, midiVolume, midiExpression, midiRPN, midiData : 14, sustain : 1;
+#ifndef TSF_SAMPLES_SHORT
+        float panOffset, gainDB, pitchRange, tuning;
+#else
+        fixed16p16 panOffsetF16P16;
+        float gainDB, pitchRange, tuning;
+#endif
 };
 
 struct tsf_channels
 {
 	void (*setupVoice)(tsf* f, struct tsf_voice* voice);
-	struct tsf_channel* channels;
 	int channelNum, activeChannel;
+	struct tsf_channel channels[1];
 };
 
-// Math properties of tsf_timecents2Secs* (tc2s):
-//    # tc2s(a + b) = tc2s(a) * tc2s(b)
-//    # tc2s(a - b) = tc2s(a) / tc2s(b)
-//    # 1 / tc2s(a) = tc2s(-a)
-//    # The same applies to tsf_cents2Hertz and tsf_decibelsToGain
-// Path properties of tsf_decibelsToGain (db2g) and tsf_gainToDecibels (g2db)
-//    # db2g(g2db(a)) = a
-//    # g2db(db2g(a)) = a
+#ifdef __cplusplus
+#  undef CPP_DEFAULT0
+}
+#endif
+
+#endif // IMPL || HEADER
+
+#ifdef TSF_IMPLEMENTATION
+#undef TSF_IMPLEMENTATION
+
+#ifdef __cplusplus
+extern "C" {
+#  define CPP_DEFAULT0 = 0
+#else
+#  define CPP_DEFAULT0
+#endif
+
+#ifndef TSF_SAMPLES_SHORT
 static double tsf_timecents2Secsd(double timecents) { return TSF_POW(2.0, timecents / 1200.0); }
+#else
+static float tsf_timecents2Secsd(float timecents) { return TSF_POWF(2.0f, timecents / 1200.0f); }
+#endif
 static float tsf_timecents2Secsf(float timecents) { return TSF_POWF(2.0f, timecents / 1200.0f); }
 static float tsf_cents2Hertz(float cents) { return 8.176f * TSF_POWF(2.0f, cents / 1200.0f); }
 static float tsf_decibelsToGain(float db) { return (db > -100.f ? TSF_POWF(10.0f, db * 0.05f) : 0); }
 static float tsf_gainToDecibels(float gain) { return (gain <= .00001f ? -100.f : (float)(20.0 * TSF_LOG10(gain))); }
+#ifdef TSF_SAMPLES_SHORT
+static const size_t tsf_db2gain_sz = 57;
+static const fixed16p16 tsf_db2gain_in [] PROGMEM = {-6553600, -5898240, -5242880, -4587520, -3932160, -3276800, -2621440, -1966080, -1310720, -1245184, -1179648, -1114112, -1048576, -983040, -917504, -851968, -786432, -720896, -655360, -589824, -524288, -458752, -393216, -327680, -262144, -196608, -131072, -65536, 0, 65536, 131072, 196608, 262144, 327680, 393216, 458752, 524288, 589824, 655360, 720896, 786432, 851968, 917504, 983040, 1048576, 1114112, 1179648, 1245184, 1310720, 1376256, 1441792, 1507328, 1572864, 1638400, 1966080, 2293760, 2621440, };
+static const fixed16p16 tsf_db2gain_inv [] PROGMEM = {6553, 6553, 6553, 6553, 6553, 6553, 6553, 6553, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 13107, 13107, 13107, 0, };
+static const fixed16p16 tsf_db2gain_out [] PROGMEM = {0, 2, 6, 20, 65, 207, 655, 2072, 6553, 7353, 8250, 9257, 10386, 11654, 13076, 14671, 16461, 18470, 20724, 23253, 26090, 29273, 32845, 36853, 41350, 46395, 52057, 58409, 65536, 73532, 82504, 92572, 103867, 116541, 130761, 146716, 164618, 184705, 207243, 232530, 260903, 292738, 328458, 368536, 413504, 463959, 520570, 584090, 655360, 735325, 825049, 925720, 1038675, 1165413, 2072430, 3685360, 6553600, };
+static const size_t tsf_gain2db_sz = 85;
+static const fixed16p16 tsf_gain2db_in [] PROGMEM = {0, 1, 1, 2, 3, 5, 8, 12, 19, 28, 43, 64, 96, 144, 217, 326, 489, 734, 1102, 1652, 2479, 3719, 5579, 8368, 9205, 10125, 11138, 12251, 13477, 14824, 16307, 17937, 19732, 21704, 23875, 26263, 28889, 31778, 34956, 38451, 42296, 46527, 51179, 56297, 61927, 68120, 74931, 82425, 90667, 99734, 109707, 120678, 132747, 146021, 160623, 176686, 194354, 213790, 235169, 258686, 284554, 313010, 344311, 378742, 416616, 458278, 504106, 554516, 609968, 762460, 953075, 1191344, 1489179, 1861475, 2326844, 2908555, 3635693, 4544617, 5680771, 7100964, 8876205, 11095256, 13869070, 17336338, 21670422, };
+static const fixed16p16 tsf_gain2db_inv [] PROGMEM = {-2147483648, -2147483648, -2147483648, -2147483648, -2147483648, 1638400000, 1092266624, 655360064, 436906656, 297890880, 204800000, 131072008, 89775328, 59041452, 39479512, 26319680, 17522994, 11681996, 7801906, 5197145, 3463847, 2309232, 1539849, 5132029, 4667808, 4239064, 3857329, 3504598, 3187549, 2897258, 2634082, 2393572, 2177276, 1978743, 1798462, 1635537, 1486751, 1351536, 1228646, 1117027, 1015275, 923171, 839236, 762845, 693575, 630517, 573168, 521078, 473697, 430647, 391493, 355884, 323554, 294133, 267384, 243085, 220987, 200895, 182632, 166031, 150935, 137216, 124740, 113401, 103090, 93719, 85200, 77453, 28165, 22532, 18025, 14420, 11536, 9229, 7383, 5906, 4725, 3780, 3024, 2419, 1935, 1548, 1238, 990, 0, };
+static const fixed16p16 tsf_gain2db_out [] PROGMEM = {-6553600, -6159034, -5928227, -5764468, -5533661, -5302855, -5093532, -4877512, -4636805, -4399493, -4168687, -3943660, -3708994, -3480758, -3249094, -3018287, -2787481, -2556421, -2325445, -2094864, -1864058, -1633201, -1402362, -1171578, -1117319, -1063087, -1008799, -954564, -900295, -846054, -791802, -737554, -683283, -629044, -574788, -520521, -466273, -412021, -357767, -303512, -249261, -194998, -140748, -86496, -32238, 22013, 76266, 130522, 184775, 239030, 293284, 347538, 401794, 456047, 510301, 564557, 618811, 673065, 727319, 781573, 835827, 890082, 944335, 998590, 1052844, 1107098, 1161353, 1215607, 1269861, 1396883, 1523904, 1650927, 1777948, 1904970, 2031992, 2159014, 2286036, 2413058, 2540080, 2667102, 2794124, 2921145, 3048167, 3175189, 3302211, };
+static const size_t tsf_sqrtf_sz = 8;
+static const fixed16p16 tsf_sqrtf_in [] PROGMEM = {0, 1310, 3276, 6553, 13107, 19660, 26214, 32768, };
+static const fixed16p16 tsf_sqrtf_inv [] PROGMEM = {3276800, 2184533, 1310720, 655360, 655359, 655360, 655360, 0, };
+static const fixed16p16 tsf_sqrtf_out [] PROGMEM = {0, 9268, 14654, 20724, 29308, 35895, 41448, 46340, };
 
+
+static fixed16p16 tsf_interpolate_16p16(fixed16p16 db, const fixed16p16 *inx,  const fixed16p16 *outfcn, const fixed16p16 *delbainv, const int elements) {
+    if (db < inx[0]) {
+        return outfcn[0];
+    }
+    if (db >= inx[elements - 1]) {
+        return outfcn[elements - 1];
+    }
+    int i;
+    for (i = 0; i < inx[elements - 2]; i++) {
+        if (inx[i + 1] > db) {
+            break;
+        }
+    }
+    fixed32p32 x_a = db - inx[i];
+    fixed16p16 fb_fa = outfcn[i + 1] - outfcn[i];
+    fixed32p32 out = x_a * fb_fa;
+    out >>= 16;
+    out *= delbainv[i];
+    out >>= 16;
+    out += outfcn[i];
+
+  return out;
+}
+
+static inline fixed16p16 tsf_decibelsToGainF16P16(fixed16p16 db) { return tsf_interpolate_16p16(db, tsf_db2gain_in, tsf_db2gain_out, tsf_db2gain_inv, tsf_db2gain_sz); }
+static inline fixed16p16 tsf_gainToDecibelsF16P16(fixed16p16 gain) { return tsf_interpolate_16p16(gain, tsf_gain2db_in, tsf_gain2db_out, tsf_gain2db_inv, tsf_gain2db_sz); }
+// Valid from 0...0.5 only since that's the max PAN will use it
+static inline fixed16p16 tsf_sqrtF16P16(fixed16p16 v) { return tsf_interpolate_16p16(v, tsf_sqrtf_in, tsf_sqrtf_out, tsf_sqrtf_inv, tsf_sqrtf_sz); }
+#endif
+
+#ifndef TSF_CONST_FILE
 static TSF_BOOL tsf_riffchunk_read(struct tsf_riffchunk* parent, struct tsf_riffchunk* chunk, struct tsf_stream* stream)
 {
 	TSF_BOOL IsRiff, IsList;
@@ -717,7 +712,7 @@ static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, unio
 		GEN_FLOAT_MAX1000    = 0xB0, //min 0, max 1000
 		GEN_FLOAT_MAX1440    = 0xC0, //min 0, max 1440
 
-		_GEN_MAX = 59,
+		_GEN_MAX = 59
 	};
 	#define _TSFREGIONOFFSET(TYPE, FIELD) (unsigned char)(((TYPE*)&((struct tsf_region*)0)->FIELD) - (TYPE*)0)
 	#define _TSFREGIONENVOFFSET(TYPE, ENV, FIELD) (unsigned char)(((TYPE*)&((&(((struct tsf_region*)0)->ENV))->FIELD)) - (TYPE*)0)
@@ -820,7 +815,7 @@ static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, unio
 						case GEN_FLOAT_LIMIT12K8K: vfactor =   1.0f; vmin = -12000.0f; vmax = 8000.0f; break;
 						case GEN_FLOAT_LIMIT1200:  vfactor =   1.0f; vmin =  -1200.0f; vmax = 1200.0f; break;
 						case GEN_FLOAT_LIMITPAN:   vfactor = 0.001f; vmin =     -0.5f; vmax =    0.5f; break;
-						case GEN_FLOAT_LIMITATTN:  vfactor =   0.1f; vmin =      0.0f; vmax =  144.0f; break;
+						case GEN_FLOAT_LIMITATTN:  vfactor =  0.01f; vmin =      0.0f; vmax =   14.4f; break;
 						case GEN_FLOAT_MAX1000:    vfactor =   1.0f; vmin =      0.0f; vmax = 1000.0f; break;
 						case GEN_FLOAT_MAX1440:    vfactor =   1.0f; vmin =      0.0f; vmax = 1440.0f; break;
 						default: continue;
@@ -856,7 +851,9 @@ static void tsf_region_operator(struct tsf_region* region, tsf_u16 genOper, unio
 		}
 	}
 }
+#endif
 
+#ifndef TSF_CONST_FILE
 static void tsf_region_envtosecs(struct tsf_envelope* p, TSF_BOOL sustainIsGain)
 {
 	// EG times need to be converted from timecents to seconds.
@@ -870,126 +867,107 @@ static void tsf_region_envtosecs(struct tsf_envelope* p, TSF_BOOL sustainIsGain)
 	// to keep the values in timecents so we can calculate it during startNote
 	if (!p->keynumToHold)  p->hold  = (p->hold  < -11950.0f ? 0.0f : tsf_timecents2Secsf(p->hold));
 	if (!p->keynumToDecay) p->decay = (p->decay < -11950.0f ? 0.0f : tsf_timecents2Secsf(p->decay));
-	
+
 	if (p->sustain < 0.0f) p->sustain = 0.0f;
 	else if (sustainIsGain) p->sustain = tsf_decibelsToGain(-p->sustain / 10.0f);
 	else p->sustain = 1.0f - (p->sustain / 1000.0f);
 }
 
-static void tsf_load_preset(const tsf* res, struct tsf_hydra *hydra, int presetToLoad)
+static int tsf_load_presets(tsf* res, struct tsf_hydra *hydra, unsigned int fontSampleCount)
 {
 	enum { GenInstrument = 41, GenKeyRange = 43, GenVelRange = 44, GenSampleID = 53 };
 	// Read each preset.
-	struct tsf_hydra_phdr phdr;
-	int phdrIdx, phdrMaxIdx;
-	for (phdrIdx = presetToLoad, get_phdr(hydra, phdrIdx, &phdr), phdrMaxIdx = presetToLoad + 1 /*hydra->phdrNum - 1*/; phdrIdx != phdrMaxIdx; phdrIdx++, get_phdr(hydra, phdrIdx, &phdr))
+	struct tsf_hydra_phdr *pphdr, *pphdrMax;
+	res->presetNum = hydra->phdrNum - 1;
+	res->presets = (struct tsf_preset*)TSF_MALLOC(res->presetNum * sizeof(struct tsf_preset));
+	if (!res->presets) return 0;
+	else { int i; for (i = 0; i != res->presetNum; i++) res->presets[i].regions = TSF_NULL; }
+	for (pphdr = hydra->phdrs, pphdrMax = pphdr + hydra->phdrNum - 1; pphdr != pphdrMax; pphdr++)
 	{
 		int sortedIndex = 0, region_index = 0;
-		struct tsf_hydra_phdr otherPhdr;
-		int otherPhdrIdx;
+		struct tsf_hydra_phdr *otherphdr;
 		struct tsf_preset* preset;
+		struct tsf_hydra_pbag *ppbag, *ppbagEnd;
 		struct tsf_region globalRegion;
-		for (otherPhdrIdx = 0, get_phdr(hydra, otherPhdrIdx, &otherPhdr); otherPhdrIdx != phdrMaxIdx; otherPhdrIdx++, get_phdr(hydra, otherPhdrIdx, &otherPhdr))
+		for (otherphdr = hydra->phdrs; otherphdr != pphdrMax; otherphdr++)
 		{
-			if (otherPhdrIdx == phdrIdx || otherPhdr.bank > phdr.bank) continue;
-			else if (otherPhdr.bank < phdr.bank) sortedIndex++;
-			else if (otherPhdr.preset > phdr.preset) continue;
-			else if (otherPhdr.preset < phdr.preset) sortedIndex++;
-			else if (otherPhdrIdx < phdrIdx) sortedIndex++;
+			if (otherphdr == pphdr || otherphdr->bank > pphdr->bank) continue;
+			else if (otherphdr->bank < pphdr->bank) sortedIndex++;
+			else if (otherphdr->preset > pphdr->preset) continue;
+			else if (otherphdr->preset < pphdr->preset) sortedIndex++;
+			else if (otherphdr < pphdr) sortedIndex++;
 		}
 
 		preset = &res->presets[sortedIndex];
-		TSF_MEMCPY(preset->presetName, phdr.presetName, sizeof(preset->presetName));
+		TSF_MEMCPY(preset->presetName, pphdr->presetName, sizeof(preset->presetName));
 		preset->presetName[sizeof(preset->presetName)-1] = '\0'; //should be zero terminated in source file but make sure
-		preset->bank = phdr.bank;
-		preset->preset = phdr.preset;
+		preset->bank = pphdr->bank;
+		preset->preset = pphdr->preset;
 		preset->regionNum = 0;
 
-		struct tsf_hydra_phdr phdrNext;
-		get_phdr(hydra, phdrIdx + 1, &phdrNext);
-
 		//count regions covered by this preset
-		struct tsf_hydra_pbag pbag;
-		int pbagIdx, pbagEndIdx;
-		for (pbagIdx = phdr.presetBagNdx, get_pbag(hydra, pbagIdx, &pbag), pbagEndIdx = phdrNext.presetBagNdx; pbagIdx != pbagEndIdx; pbagIdx++, get_pbag(hydra, pbagIdx, &pbag))
+		for (ppbag = hydra->pbags + pphdr->presetBagNdx, ppbagEnd = hydra->pbags + pphdr[1].presetBagNdx; ppbag != ppbagEnd; ppbag++)
 		{
-			struct tsf_hydra_pbag pbagNext;
 			unsigned char plokey = 0, phikey = 127, plovel = 0, phivel = 127;
-			get_pbag(hydra, pbagIdx + 1, &pbagNext);
-			struct tsf_hydra_pgen pgen;
-			int pgenIdx, pgenEndIdx;
-			for (pgenIdx = pbag.genNdx, get_pgen(hydra, pgenIdx, &pgen), pgenEndIdx = pbagNext.genNdx; pgenIdx != pgenEndIdx; pgenIdx++, get_pgen(hydra, pgenIdx, &pgen))
+			struct tsf_hydra_pgen *ppgen, *ppgenEnd; struct tsf_hydra_inst *pinst; struct tsf_hydra_ibag *pibag, *pibagEnd; struct tsf_hydra_igen *pigen, *pigenEnd;
+			for (ppgen = hydra->pgens + ppbag->genNdx, ppgenEnd = hydra->pgens + ppbag[1].genNdx; ppgen != ppgenEnd; ppgen++)
 			{
-				if (pgen.genOper == GenKeyRange) { plokey = pgen.genAmount.range.lo; phikey = pgen.genAmount.range.hi; continue; }
-				if (pgen.genOper == GenVelRange) { plovel = pgen.genAmount.range.lo; phivel = pgen.genAmount.range.hi; continue; }
-				if (pgen.genOper != GenInstrument) continue;
-				if (pgen.genAmount.wordAmount >= hydra->instNum) continue;
-				struct tsf_hydra_inst inst, instNext;
-				get_inst(hydra, pgen.genAmount.wordAmount, &inst);
-				get_inst(hydra, pgen.genAmount.wordAmount+1, &instNext);
-				struct tsf_hydra_ibag ibag;
-				int ibagIdx, ibagEndIdx;
-				for (ibagIdx = inst.instBagNdx, get_ibag(hydra, ibagIdx, &ibag), ibagEndIdx = instNext.instBagNdx; ibagIdx != ibagEndIdx; ibagIdx++, get_ibag(hydra, ibagIdx, &ibag) )
+				if (ppgen->genOper == GenKeyRange) { plokey = ppgen->genAmount.range.lo; phikey = ppgen->genAmount.range.hi; continue; }
+				if (ppgen->genOper == GenVelRange) { plovel = ppgen->genAmount.range.lo; phivel = ppgen->genAmount.range.hi; continue; }
+				if (ppgen->genOper != GenInstrument) continue;
+				if (ppgen->genAmount.wordAmount >= hydra->instNum) continue;
+				pinst = hydra->insts + ppgen->genAmount.wordAmount;
+				for (pibag = hydra->ibags + pinst->instBagNdx, pibagEnd = hydra->ibags + pinst[1].instBagNdx; pibag != pibagEnd; pibag++)
 				{
-					struct tsf_hydra_ibag ibagNext;
-					get_ibag(hydra, ibagIdx + 1, &ibagNext);
-					struct tsf_hydra_igen igen;
-					int igenIdx, igenEndIdx;
 					unsigned char ilokey = 0, ihikey = 127, ilovel = 0, ihivel = 127;
-					for (igenIdx = ibag.instGenNdx, get_igen(hydra, igenIdx, &igen), igenEndIdx = ibagNext.instGenNdx; igenIdx != igenEndIdx; igenIdx++, get_igen(hydra, igenIdx, &igen))
+					for (pigen = hydra->igens + pibag->instGenNdx, pigenEnd = hydra->igens + pibag[1].instGenNdx; pigen != pigenEnd; pigen++)
 					{
-						if (igen.genOper == GenKeyRange) { ilokey = igen.genAmount.range.lo; ihikey = igen.genAmount.range.hi; continue; }
-						if (igen.genOper == GenVelRange) { ilovel = igen.genAmount.range.lo; ihivel = igen.genAmount.range.hi; continue; }
-						if (igen.genOper == GenSampleID && ihikey >= plokey && ilokey <= phikey && ihivel >= plovel && ilovel <= phivel) preset->regionNum++;
+						if (pigen->genOper == GenKeyRange) { ilokey = pigen->genAmount.range.lo; ihikey = pigen->genAmount.range.hi; continue; }
+						if (pigen->genOper == GenVelRange) { ilovel = pigen->genAmount.range.lo; ihivel = pigen->genAmount.range.hi; continue; }
+						if (pigen->genOper == GenSampleID && ihikey >= plokey && ilokey <= phikey && ihivel >= plovel && ilovel <= phivel) preset->regionNum++;
 					}
 				}
 			}
 		}
 
 		preset->regions = (struct tsf_region*)TSF_MALLOC(preset->regionNum * sizeof(struct tsf_region));
+		if (!preset->regions)
+		{
+			int i; for (i = 0; i != res->presetNum; i++) TSF_FREE(res->presets[i].regions);
+			TSF_FREE(res->presets);
+			return 0;
+		}
 		tsf_region_clear(&globalRegion, TSF_TRUE);
 
 		// Zones.
-		for (pbagIdx = phdr.presetBagNdx, get_pbag(hydra, pbagIdx, &pbag), pbagEndIdx = phdrNext.presetBagNdx; pbagIdx != pbagEndIdx; pbagIdx++, get_pbag(hydra, pbagIdx, &pbag))
+		for (ppbag = hydra->pbags + pphdr->presetBagNdx, ppbagEnd = hydra->pbags + pphdr[1].presetBagNdx; ppbag != ppbagEnd; ppbag++)
 		{
+			struct tsf_hydra_pgen *ppgen, *ppgenEnd; struct tsf_hydra_inst *pinst; struct tsf_hydra_ibag *pibag, *pibagEnd; struct tsf_hydra_igen *pigen, *pigenEnd;
 			struct tsf_region presetRegion = globalRegion;
 			int hadGenInstrument = 0;
-			struct tsf_hydra_pbag pbagNext;
-			get_pbag(hydra, pbagIdx + 1, &pbagNext);
-			struct tsf_hydra_pgen pgen;
-			int pgenIdx, pgenEndIdx;
 
 			// Generators.
-			for (pgenIdx = pbag.genNdx, get_pgen(hydra, pgenIdx, &pgen), pgenEndIdx = pbagNext.genNdx; pgenIdx != pgenEndIdx; pgenIdx++, get_pgen(hydra, pgenIdx, &pgen))
+			for (ppgen = hydra->pgens + ppbag->genNdx, ppgenEnd = hydra->pgens + ppbag[1].genNdx; ppgen != ppgenEnd; ppgen++)
 			{
 				// Instrument.
-				if (pgen.genOper == GenInstrument)
+				if (ppgen->genOper == GenInstrument)
 				{
 					struct tsf_region instRegion;
-					tsf_u16 whichInst = pgen.genAmount.wordAmount;
+					tsf_u16 whichInst = ppgen->genAmount.wordAmount;
 					if (whichInst >= hydra->instNum) continue;
 
 					tsf_region_clear(&instRegion, TSF_FALSE);
-					struct tsf_hydra_inst inst, instNext;
-					get_inst(hydra, whichInst, &inst);
-					get_inst(hydra, whichInst + 1, &instNext);
-					struct tsf_hydra_ibag ibag;
-					int ibagIdx, ibagEndIdx;
-					for (ibagIdx = inst.instBagNdx, get_ibag(hydra, ibagIdx, &ibag), ibagEndIdx = instNext.instBagNdx; ibagIdx != ibagEndIdx; ibagIdx++, get_ibag(hydra, ibagIdx, &ibag))
+					pinst = &hydra->insts[whichInst];
+					for (pibag = hydra->ibags + pinst->instBagNdx, pibagEnd = hydra->ibags + pinst[1].instBagNdx; pibag != pibagEnd; pibag++)
 					{
 						// Generators.
 						struct tsf_region zoneRegion = instRegion;
 						int hadSampleID = 0;
-						struct tsf_hydra_ibag ibagNext;
-						get_ibag(hydra, ibagIdx + 1, &ibagNext);
-						struct tsf_hydra_igen igen;
-						int igenIdx, igenEndIdx;
-						for (igenIdx = ibag.instGenNdx, get_igen(hydra, igenIdx, &igen), igenEndIdx = ibagNext.instGenNdx; igenIdx != igenEndIdx; igenIdx++, get_igen(hydra, igenIdx, &igen))
+						for (pigen = hydra->igens + pibag->instGenNdx, pigenEnd = hydra->igens + pibag[1].instGenNdx; pigen != pigenEnd; pigen++)
 						{
-							if (igen.genOper == GenSampleID)
+							if (pigen->genOper == GenSampleID)
 							{
-								struct tsf_hydra_shdr shdr;
-								get_shdr(hydra, igen.genAmount.wordAmount, &shdr);
+								struct tsf_hydra_shdr* pshdr;
 
 								//preset region key and vel ranges are a filter for the zone regions
 								if (zoneRegion.hikey < presetRegion.lokey || zoneRegion.lokey > presetRegion.hikey) continue;
@@ -1011,28 +989,28 @@ static void tsf_load_preset(const tsf* res, struct tsf_hydra *hydra, int presetT
 								zoneRegion.delayVibLFO = (zoneRegion.delayVibLFO < -11950.0f ? 0.0f : tsf_timecents2Secsf(zoneRegion.delayVibLFO));
 
 								// Fixup sample positions
-
-								get_shdr(hydra, igen.genAmount.wordAmount, &shdr);
-								zoneRegion.offset += shdr.start;
-								zoneRegion.end += shdr.end;
-								zoneRegion.loop_start += shdr.startLoop;
-								zoneRegion.loop_end += shdr.endLoop;
-								if (shdr.endLoop > 0) zoneRegion.loop_end -= 1;
-								if (zoneRegion.pitch_keycenter == -1) zoneRegion.pitch_keycenter = shdr.originalPitch;
-								zoneRegion.tune += shdr.pitchCorrection;
-								zoneRegion.sample_rate = shdr.sampleRate;
-								if (zoneRegion.end && zoneRegion.end < res->fontSampleCount) zoneRegion.end++;
-								else zoneRegion.end = res->fontSampleCount;
+								pshdr = &hydra->shdrs[pigen->genAmount.wordAmount];
+								zoneRegion.offset += pshdr->start;
+								zoneRegion.end += pshdr->end;
+								zoneRegion.loop_start += pshdr->startLoop;
+								zoneRegion.loop_end += pshdr->endLoop;
+								if (pshdr->endLoop > 0) zoneRegion.loop_end -= 1;
+								if (zoneRegion.loop_end > fontSampleCount) zoneRegion.loop_end = fontSampleCount;
+								if (zoneRegion.pitch_keycenter == -1) zoneRegion.pitch_keycenter = pshdr->originalPitch;
+								zoneRegion.tune += pshdr->pitchCorrection;
+								zoneRegion.sample_rate = pshdr->sampleRate;
+								if (zoneRegion.end && zoneRegion.end < fontSampleCount) zoneRegion.end++;
+								else zoneRegion.end = fontSampleCount;
 
 								preset->regions[region_index] = zoneRegion;
 								region_index++;
 								hadSampleID = 1;
 							}
-							else tsf_region_operator(&zoneRegion, igen.genOper, &igen.genAmount, TSF_NULL);
+							else tsf_region_operator(&zoneRegion, pigen->genOper, &pigen->genAmount, TSF_NULL);
 						}
 
 						// Handle instrument's global zone.
-						if (ibagIdx == inst.instBagNdx && !hadSampleID)
+						if (pibag == hydra->ibags + pinst->instBagNdx && !hadSampleID)
 							instRegion = zoneRegion;
 
 						// Modulators (TODO)
@@ -1040,26 +1018,166 @@ static void tsf_load_preset(const tsf* res, struct tsf_hydra *hydra, int presetT
 					}
 					hadGenInstrument = 1;
 				}
-				else tsf_region_operator(&presetRegion, pgen.genOper, &pgen.genAmount, TSF_NULL);
+				else tsf_region_operator(&presetRegion, ppgen->genOper, &ppgen->genAmount, TSF_NULL);
 			}
 
 			// Modulators (TODO)
 			//if (pbag->modNdx < pbag[1].modNdx) addUnsupportedOpcode("any modulator");
 
 			// Handle preset's global zone.
-			if (pbagIdx == phdr.presetBagNdx && !hadGenInstrument)
+			if (ppbag == hydra->pbags + pphdr->presetBagNdx && !hadGenInstrument)
 				globalRegion = presetRegion;
 		}
 	}
+	return 1;
+}
+#endif
+
+#ifdef STB_VORBIS_INCLUDE_STB_VORBIS_H
+static int tsf_decode_ogg(const tsf_u8 *pSmpl, const tsf_u8 *pSmplEnd, float** pRes, tsf_u32* pResNum, tsf_u32* pResMax, tsf_u32 resInitial)
+{
+	float *res = *pRes, *oldres; tsf_u32 resNum = *pResNum; tsf_u32 resMax = *pResMax; stb_vorbis *v;
+
+	// Use whatever stb_vorbis API that is available (either pull or push)
+	#if !defined(STB_VORBIS_NO_PULLDATA_API) && !defined(STB_VORBIS_NO_FROMMEMORY)
+	v = stb_vorbis_open_memory(pSmpl, (int)(pSmplEnd - pSmpl), TSF_NULL, TSF_NULL);
+	#else
+	{ int use, err; v = stb_vorbis_open_pushdata(pSmpl, (int)(pSmplEnd - pSmpl), &use, &err, TSF_NULL); pSmpl += use; }
+	#endif
+	if (v == TSF_NULL) return 0;
+
+	for (;;)
+	{
+		float** outputs; int n_samples;
+
+		// Decode one frame of vorbis samples with whatever stb_vorbis API that is available
+		#if !defined(STB_VORBIS_NO_PULLDATA_API) && !defined(STB_VORBIS_NO_FROMMEMORY)
+		n_samples = stb_vorbis_get_frame_float(v, TSF_NULL, &outputs);
+		if (!n_samples) break;
+		#else
+		if (pSmpl >= pSmplEnd) break;
+		{ int use = stb_vorbis_decode_frame_pushdata(v, pSmpl, (int)(pSmplEnd - pSmpl), TSF_NULL, &outputs, &n_samples); pSmpl += use; }
+		if (!n_samples) continue;
+		#endif
+
+		// Expand our output buffer if necessary then copy over the decoded frame samples
+		resNum += n_samples;
+		if (resNum > resMax)
+		{
+			do { resMax += (resMax ? (resMax < 1048576 ? resMax : 1048576) : resInitial); } while (resNum > resMax);
+			oldres = res;
+			res = (float*)TSF_REALLOC(res, resMax * sizeof(float));
+			if (!res) { TSF_FREE(oldres); stb_vorbis_close(v); return 0; }
+		}
+		TSF_MEMCPY(res + resNum - n_samples, outputs[0], n_samples * sizeof(float));
+	}
+	stb_vorbis_close(v);
+	*pRes = res; *pResNum = resNum; *pResMax = resMax;
+	return 1;
 }
 
-static void tsf_load_samples(int *fontSamplesOffset, unsigned int* fontSampleCount, struct tsf_riffchunk *chunkSmpl, struct tsf_stream* stream)
+static int tsf_decode_sf3_samples(const void* rawBuffer, float** pFloatBuffer, unsigned int* pSmplCount, struct tsf_hydra *hydra)
 {
-	// Read sample data into float format buffer.
-	unsigned int samplesLeft;
-	samplesLeft = *fontSampleCount = chunkSmpl->size / sizeof(short);
-	*fontSamplesOffset = stream->tell(stream->data);
-	stream->skip(stream->data, samplesLeft * sizeof(short));
+	const tsf_u8* smplBuffer = (const tsf_u8*)rawBuffer;
+	tsf_u32 smplLength = *pSmplCount, resNum = 0, resMax = 0, resInitial = (smplLength > 0x100000 ? (smplLength & ~0xFFFFF) : 65536);
+	float *res = TSF_NULL, *oldres;
+	int i, shdrLast = hydra->shdrNum - 1, is_sf3 = 0;
+	for (i = 0; i <= shdrLast; i++)
+	{
+		struct tsf_hydra_shdr *shdr = &hydra->shdrs[i];
+		if (shdr->sampleType & 0x30) // compression flags (sometimes Vorbis flag)
+		{
+			const tsf_u8 *pSmpl = smplBuffer + shdr->start, *pSmplEnd = smplBuffer + shdr->end;
+			if (pSmpl + 4 > pSmplEnd || !TSF_FourCCEquals(pSmpl, "OggS"))
+			{
+				shdr->start = shdr->end = shdr->startLoop = shdr->endLoop = 0;
+				continue;
+			}
+
+			// Fix up sample indices in shdr (end index is set after decoding)
+			shdr->start = resNum;
+			shdr->startLoop += resNum;
+			shdr->endLoop += resNum;
+			if (!tsf_decode_ogg(pSmpl, pSmplEnd, &res, &resNum, &resMax, resInitial)) { TSF_FREE(res); return 0; }
+			shdr->end = resNum;
+			is_sf3 = 1;
+		}
+		else // raw PCM sample
+		{
+			float *out; short *in = (short*)smplBuffer + resNum, *inEnd; tsf_u32 oldResNum = resNum;
+			if (is_sf3) // Fix up sample indices in shdr
+			{
+				tsf_u32 fix_offset = resNum - shdr->start;
+				in -= fix_offset;
+				shdr->start = resNum;
+				shdr->end += fix_offset;
+				shdr->startLoop += fix_offset;
+				shdr->endLoop += fix_offset;
+			}
+			inEnd = in + ((shdr->end >= shdr->endLoop ? shdr->end : shdr->endLoop) - resNum);
+			if (i == shdrLast || (tsf_u8*)inEnd > (smplBuffer + smplLength)) inEnd = (short*)(smplBuffer + smplLength);
+			if (inEnd <= in) continue;
+
+			// expand our output buffer if necessary then convert the PCM data from short to float
+			resNum += (tsf_u32)(inEnd - in);
+			if (resNum > resMax)
+			{
+				do { resMax += (resMax ? (resMax < 1048576 ? resMax : 1048576) : resInitial); } while (resNum > resMax);
+				oldres = res;
+				res = (float*)TSF_REALLOC(res, resMax * sizeof(float));
+				if (!res) { TSF_FREE(oldres); return 0; }
+			}
+
+			// Convert the samples from short to float
+			for (out = res + oldResNum; in < inEnd;)
+				*(out++) = (float)(*(in++) / 32767.0);
+		}
+	}
+
+	// Trim the sample buffer down then return success (unless out of memory)
+	if (!(*pFloatBuffer = (float*)TSF_REALLOC(res, resNum * sizeof(float)))) *pFloatBuffer = res;
+	*pSmplCount = resNum;
+	return (res ? 1 : 0);
+}
+#endif
+
+#ifndef TSF_CONST_FILE
+static int tsf_load_samples(void** pRawBuffer, TSF_CONST float** pFloatBuffer, TSF_CONST short ** pShortBuffer, unsigned int* pSmplCount, struct tsf_riffchunk *chunkSmpl, struct tsf_stream* stream)
+{
+	#ifdef STB_VORBIS_INCLUDE_STB_VORBIS_H
+	// With OGG Vorbis support we cannot pre-allocate the memory for tsf_decode_sf3_samples
+	tsf_u32 resNum, resMax; float* oldres;
+	*pSmplCount = chunkSmpl->size;
+	*pRawBuffer = (void*)TSF_MALLOC(*pSmplCount);
+	if (!*pRawBuffer || !stream->read(stream->data, *pRawBuffer, chunkSmpl->size)) return 0;
+	if (chunkSmpl->id[3] != 'o') return 1;
+
+	// Decode custom .sfo 'smpo' format where all samples are in a single ogg stream
+	resNum = resMax = 0;
+	if (!tsf_decode_ogg((tsf_u8*)*pRawBuffer, (tsf_u8*)*pRawBuffer + chunkSmpl->size, pFloatBuffer, &resNum, &resMax, 65536)) return 0;
+	oldres = *pFloatBuffer;
+	if (!(*pFloatBuffer = (float*)TSF_REALLOC(*pFloatBuffer, resNum * sizeof(float)))) *pFloatBuffer = oldres;
+	*pSmplCount = resNum;
+	return (*pFloatBuffer ? 1 : 0);
+	#else
+	// Inline convert the samples from short to float
+	float *res, *out; const short *in;
+	(void)pRawBuffer;
+	*pSmplCount = chunkSmpl->size / (unsigned int)sizeof(short);
+	*pFloatBuffer = (float*)TSF_MALLOC(*pSmplCount * sizeof(float));
+	if (!*pFloatBuffer || !stream->read(stream->data, *pFloatBuffer, chunkSmpl->size)) return 0;
+	*pShortBuffer = (short*)TSF_MALLOC(*pSmplCount * sizeof(short));
+        memcpy(*pShortBuffer, *pFloatBuffer, chunkSmpl->size);
+	for (res = *pFloatBuffer, out = res + *pSmplCount, in = (short*)res + *pSmplCount; out != res;)
+		*(--out) = (float)(*(--in) / 32767.0);
+	return 1;
+	#endif
+}
+#endif
+
+static int tsf_voice_envelope_release_samples(struct tsf_voice_envelope* e, float outSampleRate)
+{
+	return (int)((e->parameters.release <= 0 ? TSF_FASTRELEASETIME : e->parameters.release) * outSampleRate);
 }
 
 static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short active_segment, float outSampleRate)
@@ -1072,8 +1190,8 @@ static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short a
 			{
 				e->segment = TSF_SEGMENT_DELAY;
 				e->segmentIsExponential = TSF_FALSE;
-				e->level = 0.0;
-				e->slope = 0.0;
+				e->level = 0.0f;
+				e->slope = 0.0f;
 				return;
 			}
 			/* fall through */
@@ -1144,7 +1262,7 @@ static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short a
 			return;
 		case TSF_SEGMENT_SUSTAIN:
 			e->segment = TSF_SEGMENT_RELEASE;
-			e->samplesUntilNextSegment = (int)((e->parameters.release <= 0 ? TSF_FASTRELEASETIME : e->parameters.release) * outSampleRate);
+			e->samplesUntilNextSegment = tsf_voice_envelope_release_samples(e, outSampleRate);
 			if (e->isAmpEnv)
 			{
 				// I don't truly understand this; just following what LinuxSampler does.
@@ -1167,7 +1285,7 @@ static void tsf_voice_envelope_nextsegment(struct tsf_voice_envelope* e, short a
 	}
 }
 
-static void tsf_voice_envelope_setup(struct tsf_voice_envelope* e, struct tsf_envelope* new_parameters, int midiNoteNumber, short midiVelocity, TSF_BOOL isAmpEnv, float outSampleRate)
+static void tsf_voice_envelope_setup(struct tsf_voice_envelope* e, const struct tsf_envelope* new_parameters, int midiNoteNumber, short midiVelocity, TSF_BOOL isAmpEnv, float outSampleRate)
 {
 	e->parameters = *new_parameters;
 	if (e->parameters.keynumToHold)
@@ -1195,7 +1313,7 @@ static void tsf_voice_envelope_process(struct tsf_voice_envelope* e, int numSamp
 	if ((e->samplesUntilNextSegment -= numSamples) <= 0)
 		tsf_voice_envelope_nextsegment(e, e->segment, outSampleRate);
 }
-
+#ifndef TSF_SAMPLES_SHORT
 static void tsf_voice_lowpass_setup(struct tsf_voice_lowpass* e, float Fc)
 {
 	// Lowpass filter from http://www.earlevel.com/main/2012/11/26/biquad-c-source-code/
@@ -1211,20 +1329,31 @@ static float tsf_voice_lowpass_process(struct tsf_voice_lowpass* e, double In)
 {
 	double Out = In * e->a0 + e->z1; e->z1 = In * e->a1 + e->z2 - e->b1 * Out; e->z2 = In * e->a0 - e->b2 * Out; return (float)Out;
 }
-
+#endif
 static void tsf_voice_lfo_setup(struct tsf_voice_lfo* e, float delay, int freqCents, float outSampleRate)
 {
 	e->samplesUntil = (int)(delay * outSampleRate);
+#ifndef TSF_SAMPLES_SHORT
 	e->delta = (4.0f * tsf_cents2Hertz((float)freqCents) / outSampleRate);
 	e->level = 0;
+#else
+        e->deltaF16P16 = (4.0f * 65536.0f * tsf_cents2Hertz((float)freqCents) / outSampleRate);
+        e->levelF16P16 = 0;
+#endif
 }
 
 static void tsf_voice_lfo_process(struct tsf_voice_lfo* e, int blockSamples)
 {
 	if (e->samplesUntil > blockSamples) { e->samplesUntil -= blockSamples; return; }
+#ifndef TSF_SAMPLES_SHORT
 	e->level += e->delta * blockSamples;
 	if      (e->level >  1.0f) { e->delta = -e->delta; e->level =  2.0f - e->level; }
 	else if (e->level < -1.0f) { e->delta = -e->delta; e->level = -2.0f - e->level; }
+#else
+        e->levelF16P16 += e->deltaF16P16 * blockSamples;
+        if      (e->levelF16P16 >  1 << 16) { e->deltaF16P16 = -e->deltaF16P16; e->levelF16P16 =  (2 << 16) - e->levelF16P16; }
+        else if (e->levelF16P16 < -(1 << 16)) { e->deltaF16P16 = -e->deltaF16P16; e->levelF16P16 = -(2 << 16) - e->levelF16P16; }
+#endif
 }
 
 static void tsf_voice_kill(struct tsf_voice* v)
@@ -1232,70 +1361,63 @@ static void tsf_voice_kill(struct tsf_voice* v)
 	v->playingPreset = -1;
 }
 
-static void tsf_voice_end(struct tsf_voice* v, float outSampleRate)
+static void tsf_voice_end(tsf* f, struct tsf_voice* v)
 {
-	tsf_voice_envelope_nextsegment(&v->ampenv, TSF_SEGMENT_SUSTAIN, outSampleRate);
-	tsf_voice_envelope_nextsegment(&v->modenv, TSF_SEGMENT_SUSTAIN, outSampleRate);
-	if (v->region->loop_mode == TSF_LOOPMODE_SUSTAIN)
+#ifndef TSF_SAMPLES_SHORT
+	// if maxVoiceNum is set, assume that voice rendering and note queuing are on separate threads
+	// so to minimize the chance that voice rendering would advance the segment at the same time
+	// we just do it twice here and hope that it sticks
+	int repeats = (f->maxVoiceNum ? 2 : 1);
+	while (repeats--)
+#endif
 	{
-		// Continue playing, but stop looping.
-		v->loopEnd = v->loopStart;
-		v->loopSizeF32P32 = 0;
+		tsf_voice_envelope_nextsegment(&v->ampenv, TSF_SEGMENT_SUSTAIN, f->outSampleRate);
+		tsf_voice_envelope_nextsegment(&v->modenv, TSF_SEGMENT_SUSTAIN, f->outSampleRate);
+		if (v->region->loop_mode == TSF_LOOPMODE_SUSTAIN)
+		{
+			// Continue playing, but stop looping.
+			v->loopEnd = v->loopStart;
+		}
 	}
 }
 
-static void tsf_voice_endquick(struct tsf_voice* v, float outSampleRate)
+static void tsf_voice_endquick(tsf* f, struct tsf_voice* v)
 {
-	v->ampenv.parameters.release = 0.0f; tsf_voice_envelope_nextsegment(&v->ampenv, TSF_SEGMENT_SUSTAIN, outSampleRate);
-	v->modenv.parameters.release = 0.0f; tsf_voice_envelope_nextsegment(&v->modenv, TSF_SEGMENT_SUSTAIN, outSampleRate);
+#ifndef TSF_SAMPLES_SHORT
+	// if maxVoiceNum is set, assume that voice rendering and note queuing are on separate threads
+	// so to minimize the chance that voice rendering would advance the segment at the same time
+	// we just do it twice here and hope that it sticks
+	int repeats = (f->maxVoiceNum ? 2 : 1);
+	while (repeats--)
+#endif
+	{
+		v->ampenv.parameters.release = 0.0f; tsf_voice_envelope_nextsegment(&v->ampenv, TSF_SEGMENT_SUSTAIN, f->outSampleRate);
+		v->modenv.parameters.release = 0.0f; tsf_voice_envelope_nextsegment(&v->modenv, TSF_SEGMENT_SUSTAIN, f->outSampleRate);
+	}
 }
 
 static void tsf_voice_calcpitchratio(struct tsf_voice* v, float pitchShift, float outSampleRate)
 {
+#ifndef TSF_SAMPLES_SHORT
 	double note = v->playingKey + v->region->transpose + v->region->tune / 100.0;
-	double adjustedPitch = (note - v->region->pitch_keycenter) * v->region->pitch_keytrack;
-	if (pitchShift) adjustedPitch += adjustedPitch * 100.0f;
-	v->pitchRatio = v->region->sample_rate * tsf_timecents2Secsd(adjustedPitch) / outSampleRate;
+	double adjustedPitch = v->region->pitch_keycenter + (note - v->region->pitch_keycenter) * (v->region->pitch_keytrack / 100.0);
+	if (pitchShift) adjustedPitch += pitchShift;
+	v->pitchInputTimecents = adjustedPitch * 100.0;
+	v->pitchOutputFactor = v->region->sample_rate / (tsf_timecents2Secsd(v->region->pitch_keycenter * 100.0) * outSampleRate);
+#else
+        float note = v->playingKey + v->region->transpose + v->region->tune / 100.0f;
+        float adjustedPitch = v->region->pitch_keycenter + (note - v->region->pitch_keycenter) * (v->region->pitch_keytrack / 100.0f);
+	if (pitchShift) adjustedPitch += pitchShift;
+	v->pitchInputTimecents = adjustedPitch * 100.0f;
+	v->pitchOutputFactor = v->region->sample_rate / (tsf_timecents2Secsd(v->region->pitch_keycenter * 100.0f) * outSampleRate);
+#endif
 }
 
-short tsf_read_short_cached(tsf *f, int pos)
-{
-	static int hits = 0;
-	static int misses = 0;
-//	static int call =0;
-//	call++;
-//	if ((call % 88000) ==0) printf("Hit: %d, Miss: %d, Ratio: %f\n", hits, misses, (double)hits/(double)(misses+hits));
-
-	for (int i=0; i<TSF_BUFFS; i++) {
-		if ((f->offset[i] <= pos) && ((f->offset[i] + TSF_BUFFSIZE) > pos) ) {
-			f->timestamp[i] = f->epoch++;
-			if (f->epoch==0) {
-				for (int i=0; i<TSF_BUFFS; i++) f->timestamp[i] = f->epoch++;
-			}
-			hits++;
-      return f->buffer[i][pos - f->offset[i]];
-		}
-	}
-	int repl = 0;
-	for (int i=1; i<TSF_BUFFS; i++) {
-		if (f->timestamp[i] < f->timestamp[repl]) repl = i;
-	}
-	int readOff = pos - (pos % TSF_BUFFSIZE);
-// for (int i=0; i<TSF_BUFFSIZE; i++) { f->buffer[repl][i] = i; }
-	f->hydra->stream->seek(f->hydra->stream->data, readOff * sizeof(short));
-	f->hydra->stream->read(f->hydra->stream->data, f->buffer[repl], TSF_BUFFSIZE * sizeof(short));
-//static uint32_t *bp = NULL; if (!bp) bp = (uint32_t*)malloc(512);
-//printf("off=%08x, buff=%p, len=%08x\n", readOff * sizeof(short), bp, TSF_BUFFSIZE); spi_flash_read(0x0000, bp, 512/4-4) ;
-	f->timestamp[repl] = f->epoch++;
-	f->offset[repl] = readOff;
-	misses++;
-//	fprintf(stderr, "buffer[%d][%d-%d = %d]\n", repl, pos, readOff, pos - readOff);
-	return f->buffer[repl][pos - readOff];
-}
-
+#ifndef TSF_SAMPLES_SHORT
 static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, int numSamples)
 {
-	struct tsf_region* region = v->region;
+	TSF_CONST struct tsf_region* region = v->region;
+        TSF_CONST float* input = f->fontSamples;
 	float* outL = outputBuffer;
 	float* outR = (f->outputmode == TSF_STEREO_UNWEAVED ? outL + numSamples : TSF_NULL);
 
@@ -1323,10 +1445,10 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 	else tmpInitialFilterFc = 0, tmpModLfoToFilterFc = 0, tmpModEnvToFilterFc = 0;
 
 	if (dynamicPitchRatio) pitchRatio = 0, tmpModLfoToPitch = (float)region->modLfoToPitch, tmpVibLfoToPitch = (float)region->vibLfoToPitch, tmpModEnvToPitch = (float)region->modEnvToPitch;
-	else pitchRatio = v->pitchRatio, tmpModLfoToPitch = 0, tmpVibLfoToPitch = 0, tmpModEnvToPitch = 0;
+	else pitchRatio = tsf_timecents2Secsd(v->pitchInputTimecents) * v->pitchOutputFactor, tmpModLfoToPitch = 0, tmpVibLfoToPitch = 0, tmpModEnvToPitch = 0;
 
 	if (dynamicGain) tmpModLfoToVolume = (float)region->modLfoToVolume * 0.1f;
-	else noteGain = v->noteGain, tmpModLfoToVolume = 0;
+	else noteGain = tsf_decibelsToGain(v->noteGainDB), tmpModLfoToVolume = 0;
 
 	while (numSamples)
 	{
@@ -1343,10 +1465,10 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 		}
 
 		if (dynamicPitchRatio)
-			pitchRatio = v->pitchRatio * tsf_timecents2Secsd(v->modlfo.level * tmpModLfoToPitch + v->viblfo.level * tmpVibLfoToPitch + v->modenv.level * tmpModEnvToPitch);
+			pitchRatio = tsf_timecents2Secsd(v->pitchInputTimecents + (v->modlfo.level * tmpModLfoToPitch + v->viblfo.level * tmpVibLfoToPitch + v->modenv.level * tmpModEnvToPitch)) * v->pitchOutputFactor;
 
 		if (dynamicGain)
-			noteGain = v->noteGain * tsf_decibelsToGain(v->modlfo.level * tmpModLfoToVolume);
+			noteGain = tsf_decibelsToGain(v->noteGainDB + (v->modlfo.level * tmpModLfoToVolume));
 
 		gainMono = noteGain * v->ampenv.level;
 
@@ -1365,11 +1487,9 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 				while (blockSamples-- && tmpSourceSamplePosition < tmpSampleEndDbl)
 				{
 					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
-					float inputPos, inputNextPos;
-					inputPos = (float)(tsf_read_short_cached(f, pos) / 32767.0);
-					inputNextPos = (float)(tsf_read_short_cached(f, nextPos) / 32767.0);
+
 					// Simple linear interpolation.
-					float alpha = (float)(tmpSourceSamplePosition - pos), val = (inputPos * (1.0f - alpha) + inputNextPos * alpha);
+					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
 
 					// Low-pass filter.
 					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
@@ -1388,12 +1508,9 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 				while (blockSamples-- && tmpSourceSamplePosition < tmpSampleEndDbl)
 				{
 					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
-					float inputPos, inputNextPos;
-					inputPos = (float)(tsf_read_short_cached(f, pos) / 32767.0);
-					inputNextPos = (float)(tsf_read_short_cached(f, nextPos) / 32767.0);
 
 					// Simple linear interpolation.
-					float alpha = (float)(tmpSourceSamplePosition - pos), val = (inputPos * (1.0f - alpha) + inputNextPos * alpha);
+					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
 
 					// Low-pass filter.
 					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
@@ -1411,12 +1528,9 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 				while (blockSamples-- && tmpSourceSamplePosition < tmpSampleEndDbl)
 				{
 					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
-					float inputPos, inputNextPos;
-					inputPos = (float)(tsf_read_short_cached(f, pos) / 32767.0);
-					inputNextPos = (float)(tsf_read_short_cached(f, nextPos) / 32767.0);
 
 					// Simple linear interpolation.
-					float alpha = (float)(tmpSourceSamplePosition - pos), val = (inputPos * (1.0f - alpha) + inputNextPos * alpha);
+					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
 
 					// Low-pass filter.
 					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
@@ -1440,110 +1554,204 @@ static void tsf_voice_render(tsf* f, struct tsf_voice* v, float* outputBuffer, i
 	v->sourceSamplePosition = tmpSourceSamplePosition;
 	if (tmpLowpass.active || dynamicLowpass) v->lowpass = tmpLowpass;
 }
-
-
-//void DumpF32P32(char *name, long long x) {
-//  printf("%s = %08x.%08x\n", name, (int32_t)((x>>32)&0xffffffff), (int32_t)(x&0xffffffff));
-//}
-static void tsf_voice_render_fast(tsf* f, struct tsf_voice* v, short* outputBuffer, int numSamples)
+#else
+static void tsf_voice_render_short(tsf* f, struct tsf_voice* v, int32_t* outputBuffer, int numSamples)
 {
-  struct tsf_region* region = v->region;
-  short* outL = outputBuffer;
-  short* outR = (f->outputmode == TSF_STEREO_UNWEAVED ? outL + numSamples : TSF_NULL);
-
-  // Cache some values, to give them at least some chance of ending up in registers.
-  TSF_BOOL updateModEnv = (region->modEnvToPitch || region->modEnvToFilterFc);
-  TSF_BOOL updateModLFO = (v->modlfo.delta && (region->modLfoToPitch || region->modLfoToFilterFc || region->modLfoToVolume));
-  TSF_BOOL updateVibLFO = (v->viblfo.delta && (region->vibLfoToPitch));
-  TSF_BOOL isLooping    = (v->loopSizeF32P32 > 0);
-  fixed32p32 tmpSampleEndF32P32 = (fixed32p32)(region->end) << 32;
-  fixed32p32 tmpSourceSamplePositionF32P32 = v->sourceSamplePositionF32P32;
-
-  TSF_BOOL dynamicPitchRatio = (region->modLfoToPitch || region->modEnvToPitch || region->vibLfoToPitch);
-  fixed32p32 pitchRatioF32P32, tmpPitchRatioF32P32;
-  float tmpModLfoToPitch, tmpVibLfoToPitch, tmpModEnvToPitch;
-
-  TSF_BOOL dynamicGain = (region->modLfoToVolume != 0);
-  float noteGain, tmpNoteGain, tmpModLfoToVolume;
-
-  if (dynamicPitchRatio) tmpPitchRatioF32P32 = v->pitchRatioF32P32, pitchRatioF32P32 = 0, tmpModLfoToPitch = (float)region->modLfoToPitch, tmpVibLfoToPitch = (float)region->vibLfoToPitch, tmpModEnvToPitch = (float)region->modEnvToPitch;
-  else pitchRatioF32P32 = v->pitchRatioF32P32, tmpModLfoToPitch = 0, tmpVibLfoToPitch = 0, tmpModEnvToPitch = 0;
-
-  if (dynamicGain) noteGain = 0, tmpNoteGain = v->noteGain, tmpModLfoToVolume = (float)region->modLfoToVolume * 0.1f;
-  else noteGain = v->noteGain, tmpModLfoToVolume = 0;
-
-  while (numSamples)
-  {
-    float gainMono;
-    int blockSamples = (numSamples > TSF_RENDER_EFFECTSAMPLEBLOCK ? TSF_RENDER_EFFECTSAMPLEBLOCK : numSamples);
-    numSamples -= blockSamples;
-
-    if (dynamicPitchRatio) {
-      if (v->modlfo.level || v->viblfo.level || v->modenv.level)
-        pitchRatioF32P32 = tmpPitchRatioF32P32 * tsf_timecents2Secsd(v->modlfo.level * tmpModLfoToPitch + v->viblfo.level * tmpVibLfoToPitch + v->modenv.level * tmpModEnvToPitch);
-      else
-        pitchRatioF32P32 = tmpPitchRatioF32P32; // If all levels are 0, just bypass conversion function
+#ifdef ESP8266
+    static unsigned int smps = 0;
+    if (++smps > 20000) {
+        yield();
+        smps = 0;
     }
+#endif
+	TSF_CONST struct tsf_region* region = v->region;
+        TSF_CONST short* input = f->shortSamples;
+	int32_t* outL = outputBuffer;
+	//short* outR = (f->outputmode == TSF_STEREO_UNWEAVED ? outL + numSamples : TSF_NULL);
 
-    if (dynamicGain) {
-      if (v->modlfo.level) noteGain = tmpNoteGain * tsf_decibelsToGain(v->modlfo.level * tmpModLfoToVolume);
-      else                 noteGain = tmpNoteGain; // If level is 0, just bypass conversion function
-    }
+	// Cache some values, to give them at least some chance of ending up in registers.
+	TSF_BOOL updateModEnv = (region->modEnvToPitch || region->modEnvToFilterFc);
+	TSF_BOOL updateModLFO = (v->modlfo.deltaF16P16 && (region->modLfoToPitch || region->modLfoToFilterFc || region->modLfoToVolume));
+	TSF_BOOL updateVibLFO = (v->viblfo.deltaF16P16 && (region->vibLfoToPitch));
+	TSF_BOOL isLooping    = (v->loopStart < v->loopEnd);
+        fixed24p8 tmpLoopStartF24P8 = v->loopStart << 8;
+//        fixed24p8 tmpLoopEndF24P8 = v->loopEnd << 8;
+//	unsigned int tmpLoopStart = v->loopStart, tmpLoopEnd = v->loopEnd;
+        fixed24p8 tmpSampleEndF24P8 = region->end << 8;
+        fixed24p8 tmpLoopEndF24P8 = (v->loopEnd + 1) << 8;
+//	double tmpSampleEndDbl = (double)region->end, tmpLoopEndDbl = (double)tmpLoopEnd + 1.0;
+        fixed24p8 tmpSourceSamplePositionF24P8 = v->sourceSamplePositionF24P8;
+//	double tmpSourceSamplePosition = v->sourceSamplePosition;
+	//struct tsf_voice_lowpass tmpLowpass = v->lowpass;
 
-    gainMono = noteGain * v->ampenv.level;
-    short gainMonoFP = gainMono * 32767;
-    
-    // Update EG.
-    tsf_voice_envelope_process(&v->ampenv, blockSamples, f->outSampleRate);
-    if (updateModEnv) tsf_voice_envelope_process(&v->modenv, blockSamples, f->outSampleRate);
+//	TSF_BOOL dynamicLowpass = (region->modLfoToFilterFc || region->modEnvToFilterFc);
+	float tmpSampleRate = f->outSampleRate; //, tmpInitialFilterFc, tmpModLfoToFilterFc, tmpModEnvToFilterFc;
 
-    // Update LFOs.
-    if (updateModLFO) tsf_voice_lfo_process(&v->modlfo, blockSamples);
-    if (updateVibLFO) tsf_voice_lfo_process(&v->viblfo, blockSamples);
+	TSF_BOOL dynamicPitchRatio = (region->modLfoToPitch || region->modEnvToPitch || region->vibLfoToPitch);
 
-    while (blockSamples--)
-    {
-      unsigned int pos = (unsigned int)(tmpSourceSamplePositionF32P32>>32);
-      if (pos == 0xffffffff) pos = 0;
-      short val = tsf_read_short_cached(f, pos);
-      int32_t val32 = (int)val * (int)gainMonoFP;
+        fixed16p16 pitchRatioF16P16;
+//	double pitchRatio;
+	float tmpModLfoToPitchD16, tmpVibLfoToPitchD16, tmpModEnvToPitchD16;
 
-      *outL++ += val32>>16;
-      if (f->outputmode != TSF_MONO) *outR++ += val32>>16;
+	TSF_BOOL dynamicGain = (region->modLfoToVolume != 0);
+	float noteGain = 0, tmpModLfoToVolumeD16;
 
-      // Next sample.
-      tmpSourceSamplePositionF32P32 += pitchRatioF32P32;
+//	if (dynamicLowpass) tmpInitialFilterFc = (float)region->initialFilterFc, tmpModLfoToFilterFc = (float)region->modLfoToFilterFc, tmpModEnvToFilterFc = (float)region->modEnvToFilterFc;
+//	else tmpInitialFilterFc = 0, tmpModLfoToFilterFc = 0, tmpModEnvToFilterFc = 0;
 
-      if (tmpSourceSamplePositionF32P32 >= v->loopEndF32P32)
-      {
-        if (isLooping)
-          tmpSourceSamplePositionF32P32 -= v->loopSizeF32P32;
-        else if (tmpSourceSamplePositionF32P32 >= tmpSampleEndF32P32)
-          break;
-      }
-    }
+	if (dynamicPitchRatio) pitchRatioF16P16 = 0, tmpModLfoToPitchD16 = (float)region->modLfoToPitch * (1.0f / 65536.0f), tmpVibLfoToPitchD16 = (float)region->vibLfoToPitch * (1.0f / 65536.0f), tmpModEnvToPitchD16 = (float)region->modEnvToPitch * (1.0f / 65536.0f);
+	else pitchRatioF16P16 = 65536.0f * tsf_timecents2Secsd(v->pitchInputTimecents) * v->pitchOutputFactor, tmpModLfoToPitchD16 = 0, tmpVibLfoToPitchD16 = 0, tmpModEnvToPitchD16 = 0;
 
-    if (tmpSourceSamplePositionF32P32 >= tmpSampleEndF32P32 || v->ampenv.segment == TSF_SEGMENT_DONE)
-    {
-      tsf_voice_kill(v);
-      return;
-    }
-  }
+	if (dynamicGain) tmpModLfoToVolumeD16 = (float)region->modLfoToVolume * 0.1f * (1.0f / 65536.0f);
+	else noteGain = tsf_decibelsToGain(v->noteGainDB), tmpModLfoToVolumeD16 = 0;
 
-  v->sourceSamplePositionF32P32 = tmpSourceSamplePositionF32P32;
+	while (numSamples)
+	{
+//		float gainMono, gainLeft, gainRight;
+                fixed16p16 gainMonoF16P16, gainLeftF16P16, gainRightF16P16;
+		int blockSamples = (numSamples > TSF_RENDER_EFFECTSAMPLEBLOCK ? TSF_RENDER_EFFECTSAMPLEBLOCK : numSamples);
+		numSamples -= blockSamples;
+
+//		if (dynamicLowpass)
+//		{
+//			float fres = tmpInitialFilterFc + v->modlfo.level * tmpModLfoToFilterFc + v->modenv.level * tmpModEnvToFilterFc;
+//			float lowpassFc = (fres <= 13500 ? tsf_cents2Hertz(fres) / tmpSampleRate : 1.0f);
+//			tmpLowpass.active = (lowpassFc < 0.499f);
+//			if (tmpLowpass.active) tsf_voice_lowpass_setup(&tmpLowpass, lowpassFc);
+//		}
+
+		if (dynamicPitchRatio)
+			pitchRatioF16P16 = 65536.0f * tsf_timecents2Secsd(v->pitchInputTimecents + (v->modlfo.levelF16P16 * tmpModLfoToPitchD16 + v->viblfo.levelF16P16 * tmpVibLfoToPitchD16 + v->modenv.level * tmpModEnvToPitchD16)) * v->pitchOutputFactor;
+
+		if (dynamicGain)
+			noteGain = tsf_decibelsToGain(v->noteGainDB + (v->modlfo.levelF16P16 * tmpModLfoToVolumeD16));
+
+//		gainMono = noteGain * v->ampenv.level;
+                gainMonoF16P16 = (noteGain * v->ampenv.level) * 65536.0f;
+
+		// Update EG.
+		tsf_voice_envelope_process(&v->ampenv, blockSamples, tmpSampleRate);
+		if (updateModEnv) tsf_voice_envelope_process(&v->modenv, blockSamples, tmpSampleRate);
+
+		// Update LFOs.
+		if (updateModLFO) tsf_voice_lfo_process(&v->modlfo, blockSamples);
+		if (updateVibLFO) tsf_voice_lfo_process(&v->viblfo, blockSamples);
+
+		switch (f->outputmode)
+		{
+			case TSF_STEREO_INTERLEAVED:
+//				gainLeft = gainMono * v->panFactorLeft, gainRight = gainMono * v->panFactorRight;
+                                gainLeftF16P16 = (gainMonoF16P16 * v->panFactorLeftF16P16) >> 16;
+                                gainRightF16P16 = (gainMonoF16P16 * v->panFactorRightF16P16) >> 16;
+				while (blockSamples-- && tmpSourceSamplePositionF24P8 < tmpSampleEndF24P8)
+				{
+					fixed24p8 pos = (unsigned int)tmpSourceSamplePositionF24P8;
+//                                        fixed24p8 nextPos = (pos >= tmpLoopEndF24P8 && isLooping ? tmpLoopStartF24P8 : pos + (1 << 8));
+
+//					// Simple linear interpolation.
+//					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
+#ifdef ESP8266
+                                        fixed16p16 val = pgm_read_word(&input[pos >> 8]);
+#else
+                                        fixed16p16 val = input[pos >> 8];
+#endif
+
+					// Low-pass filter.
+					//if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
+
+                                        // Do saturating adds for each channel
+                                        fixed16p16 smp;
+
+                                        // No clipping because it eats 20% of the performance on the M0+ Pico!
+
+                                        smp = *outL;
+                                        smp += (val * gainLeftF16P16) >> 16;
+//                                        if (smp > 32767) smp = 32767;
+//                                        else if (smp < -32768) smp = -32768;
+                                        *outL++ = smp;
+
+                                        smp = *outL;
+                                        smp += (val * gainRightF16P16) >> 16;
+//                                        if (smp > 32767) smp = 32767;
+//                                        else if (smp < -32768) smp = -32768;
+                                        *outL++ = smp;
+
+//					*outL++ += val * gainLeft;
+//					*outL++ += val * gainRight;
+
+					// Next sample.
+					tmpSourceSamplePositionF24P8 += pitchRatioF16P16 >> 8;
+					if (tmpSourceSamplePositionF24P8 >= tmpLoopEndF24P8 && isLooping) tmpSourceSamplePositionF24P8 -= (tmpLoopEndF24P8 - tmpLoopStartF24P8 + 1);
+				}
+				break;
+
+			case TSF_STEREO_UNWEAVED:
+#if 0
+				gainLeft = gainMono * v->panFactorLeft, gainRight = gainMono * v->panFactorRight;
+				while (blockSamples-- && tmpSourceSamplePosition < tmpSampleEndDbl)
+				{
+					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
+
+					// Simple linear interpolation.
+					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
+
+					// Low-pass filter.
+					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
+
+					*outL++ += val * gainLeft;
+					*outR++ += val * gainRight;
+
+					// Next sample.
+					tmpSourceSamplePosition += pitchRatio;
+					if (tmpSourceSamplePosition >= tmpLoopEndDbl && isLooping) tmpSourceSamplePosition -= (tmpLoopEnd - tmpLoopStart + 1.0);
+				}
+				break;
+#endif
+			case TSF_MONO:
+#if 0
+				while (blockSamples-- && tmpSourceSamplePosition < tmpSampleEndDbl)
+				{
+					unsigned int pos = (unsigned int)tmpSourceSamplePosition, nextPos = (pos >= tmpLoopEnd && isLooping ? tmpLoopStart : pos + 1);
+
+					// Simple linear interpolation.
+					float alpha = (float)(tmpSourceSamplePosition - pos), val = (input[pos] * (1.0f - alpha) + input[nextPos] * alpha);
+
+					// Low-pass filter.
+					if (tmpLowpass.active) val = tsf_voice_lowpass_process(&tmpLowpass, val);
+
+					*outL++ += val * gainMono;
+
+					// Next sample.
+					tmpSourceSamplePosition += pitchRatio;
+					if (tmpSourceSamplePosition >= tmpLoopEndDbl && isLooping) tmpSourceSamplePosition -= (tmpLoopEnd - tmpLoopStart + 1.0);
+				}
+#endif
+				break;
+		}
+
+		if (tmpSourceSamplePositionF24P8 >= tmpSampleEndF24P8 || v->ampenv.segment == TSF_SEGMENT_DONE)
+		{
+			tsf_voice_kill(v);
+			return;
+		}
+	}
+
+	v->sourceSamplePositionF24P8 = tmpSourceSamplePositionF24P8;
+	//if (tmpLowpass.active || dynamicLowpass) v->lowpass = tmpLowpass;
 }
+#endif
 
-
-
-
+#ifndef TSF_CONST_FILE
 TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 {
 	tsf* res = TSF_NULL;
 	struct tsf_riffchunk chunkHead;
 	struct tsf_riffchunk chunkList;
 	struct tsf_hydra hydra;
-	int fontSamplesOffset = 0;
-	unsigned int fontSampleCount = 0;
+	void* rawBuffer = TSF_NULL;
+	TSF_CONST float* floatBuffer = TSF_NULL;
+	TSF_CONST short* shortBuffer = TSF_NULL;
+	tsf_u32 smplCount = 0;
 
 	if (!tsf_riffchunk_read(TSF_NULL, &chunkHead, stream) || !TSF_FourCCEquals(chunkHead.id, "sfbk"))
 	{
@@ -1553,7 +1761,6 @@ TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 
 	// Read hydra and locate sample data.
 	TSF_MEMSET(&hydra, 0, sizeof(hydra));
-	hydra.stream = stream;
 	while (tsf_riffchunk_read(&chunkHead, &chunkList, stream))
 	{
 		struct tsf_riffchunk chunk;
@@ -1561,22 +1768,23 @@ TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 		{
 			while (tsf_riffchunk_read(&chunkList, &chunk, stream))
 			{
-				#define GetChunkOffset(chunkName) (TSF_FourCCEquals(chunk.id, #chunkName) && !(chunk.size % chunkName##SizeInFile)) \
+				#define HandleChunk(chunkName) (TSF_FourCCEquals(chunk.id, #chunkName) && !(chunk.size % chunkName##SizeInFile)) \
 					{ \
-						int num = chunk.size / chunkName##SizeInFile; \
+						int num = chunk.size / chunkName##SizeInFile, i; \
 						hydra.chunkName##Num = num; \
-						hydra.chunkName##Offset = stream->tell(stream->data); \
-						stream->skip(stream->data, num * chunkName##SizeInFile); \
+						hydra.chunkName##s = (struct tsf_hydra_##chunkName*)TSF_MALLOC(num * sizeof(struct tsf_hydra_##chunkName)); \
+						if (!hydra.chunkName##s) goto out_of_memory; \
+						for (i = 0; i < num; ++i) tsf_hydra_read_##chunkName(&hydra.chunkName##s[i], stream); \
 					}
-				if      GetChunkOffset(phdr)
-				else if GetChunkOffset(pbag)
-				else if GetChunkOffset(pmod)
-				else if GetChunkOffset(pgen)
-				else if GetChunkOffset(inst)
-				else if GetChunkOffset(ibag)
-				else if GetChunkOffset(imod)
-				else if GetChunkOffset(igen)
-				else if GetChunkOffset(shdr)
+				enum
+				{
+					phdrSizeInFile = 38, pbagSizeInFile =  4, pmodSizeInFile = 10,
+					pgenSizeInFile =  4, instSizeInFile = 22, ibagSizeInFile =  4,
+					imodSizeInFile = 10, igenSizeInFile =  4, shdrSizeInFile = 46
+				};
+				if      HandleChunk(phdr) else if HandleChunk(pbag) else if HandleChunk(pmod)
+				else if HandleChunk(pgen) else if HandleChunk(inst) else if HandleChunk(ibag)
+				else if HandleChunk(imod) else if HandleChunk(igen) else if HandleChunk(shdr)
 				else stream->skip(stream->data, chunk.size);
 				#undef HandleChunk
 			}
@@ -1585,64 +1793,101 @@ TSFDEF tsf* tsf_load(struct tsf_stream* stream)
 		{
 			while (tsf_riffchunk_read(&chunkList, &chunk, stream))
 			{
-				if (TSF_FourCCEquals(chunk.id, "smpl"))
+				if ((TSF_FourCCEquals(chunk.id, "smpl")
+						#ifdef STB_VORBIS_INCLUDE_STB_VORBIS_H
+						|| TSF_FourCCEquals(chunk.id, "smpo")
+						#endif
+					) && !rawBuffer && !floatBuffer && chunk.size >= sizeof(short))
 				{
-					tsf_load_samples(&fontSamplesOffset, &fontSampleCount, &chunk, stream);
+					if (!tsf_load_samples(&rawBuffer, &floatBuffer, &shortBuffer, &smplCount, &chunk, stream)) goto out_of_memory;
 				}
 				else stream->skip(stream->data, chunk.size);
 			}
 		}
 		else stream->skip(stream->data, chunkList.size);
 	}
-	if (!hydra.phdrNum || !hydra.pbagNum || !hydra.pmodNum || !hydra.pgenNum || !hydra.instNum || !hydra.ibagNum || !hydra.imodNum || !hydra.igenNum || !hydra.shdrNum)
+	if (!hydra.phdrs || !hydra.pbags || !hydra.pmods || !hydra.pgens || !hydra.insts || !hydra.ibags || !hydra.imods || !hydra.igens || !hydra.shdrs)
 	{
 		//if (e) *e = TSF_INVALID_INCOMPLETE;
 	}
-	else if (fontSamplesOffset == 0)
+	else if (!rawBuffer && !floatBuffer)
 	{
 		//if (e) *e = TSF_INVALID_NOSAMPLEDATA;
 	}
 	else
 	{
+		#ifdef STB_VORBIS_INCLUDE_STB_VORBIS_H
+		if (!floatBuffer && !tsf_decode_sf3_samples(rawBuffer, &floatBuffer, &smplCount, &hydra)) goto out_of_memory;
+		#endif
 		res = (tsf*)TSF_MALLOC(sizeof(tsf));
-		TSF_MEMSET(res, 0, sizeof(tsf));
-		res->presetNum = hydra.phdrNum - 1;
-		res->presets = (struct tsf_preset*)TSF_MALLOC(res->presetNum * sizeof(struct tsf_preset));
-		TSF_MEMSET(res->presets, 0, res->presetNum * sizeof(struct tsf_preset));
-		res->fontSamplesOffset = fontSamplesOffset;
- 		res->fontSampleCount = fontSampleCount; 
+		if (res) TSF_MEMSET(res, 0, sizeof(tsf));
+		if (!res || !tsf_load_presets(res, &hydra, smplCount)) goto out_of_memory;
 		res->outSampleRate = 44100.0f;
-		res->hydra = (struct tsf_hydra*)TSF_MALLOC(sizeof(struct tsf_hydra));
-		TSF_MEMCPY(res->hydra, &hydra, sizeof(*res->hydra));
-		res->hydra->stream = (struct tsf_stream*)TSF_MALLOC(sizeof(struct tsf_stream));
-		TSF_MEMCPY(res->hydra->stream, stream, sizeof(*res->hydra->stream));
-
-		// Cached sample
-		for (int i=0; i<TSF_BUFFS; i++) {
-			res->buffer[i] = (short*)TSF_MALLOC(TSF_BUFFSIZE * sizeof(short));
-			res->offset[i] = 0xfffffff;
-			res->timestamp[i] = -1;
-		}
-		res->epoch = 0;
+#ifndef TSF_SAMPLES_SHORT
+                res->fontSamples = floatBuffer;
+#else
+                res->shortSamples = shortBuffer;
+#endif
+                res->samplesNum = smplCount;
+		floatBuffer = TSF_NULL; // don't free below
 	}
+	if (0)
+	{
+		out_of_memory:
+		TSF_FREE(res);
+		res = TSF_NULL;
+		//if (e) *e = TSF_OUT_OF_MEMORY;
+	}
+	TSF_FREE(hydra.phdrs); TSF_FREE(hydra.pbags); TSF_FREE(hydra.pmods);
+	TSF_FREE(hydra.pgens); TSF_FREE(hydra.insts); TSF_FREE(hydra.ibags);
+	TSF_FREE(hydra.imods); TSF_FREE(hydra.igens); TSF_FREE(hydra.shdrs);
+	TSF_FREE(rawBuffer);   TSF_FREE(floatBuffer);
+	return res;
+}
+#endif
+
+TSFDEF tsf* tsf_copy(tsf* f)
+{
+	tsf* res;
+	if (!f) return TSF_NULL;
+	if (!f->refCount)
+	{
+		f->refCount = (int*)TSF_MALLOC(sizeof(int));
+		if (!f->refCount) return TSF_NULL;
+		*f->refCount = 1;
+	}
+	res = (tsf*)TSF_MALLOC(sizeof(tsf));
+	if (!res) return TSF_NULL;
+	TSF_MEMCPY(res, f, sizeof(tsf));
+	res->voices = TSF_NULL;
+	res->voiceNum = 0;
+	res->channels = TSF_NULL;
+	(*res->refCount)++;
 	return res;
 }
 
 TSFDEF void tsf_close(tsf* f)
 {
-	struct tsf_preset *preset, *presetEnd;
 	if (!f) return;
-	for (preset = f->presets, presetEnd = preset + f->presetNum; preset != presetEnd; preset++)
-		TSF_FREE(preset->regions);
-	TSF_FREE(f->presets);
+	if (!f->refCount || !--(*f->refCount))
+	{
+#ifndef TSF_CONST_FILE
+		struct tsf_preset *preset = f->presets, *presetEnd = preset + f->presetNum;
+		for (; preset != presetEnd; preset++) TSF_FREE(preset->regions);
+		TSF_FREE(f->presets);
+#ifndef TSF_SAMPLES_SHORT
+                TSF_FREE(f->fontSamples);
+#else
+                TSF_FREE(f->shortSamples);
+#endif
+#endif
+		TSF_FREE(f->refCount);
+	}
+	TSF_FREE(f->channels);
 	TSF_FREE(f->voices);
-	if (f->channels) { TSF_FREE(f->channels->channels); TSF_FREE(f->channels); }
-	TSF_FREE(f->outputSamples);
-	f->hydra->stream->close(f->hydra->stream->data);
-	TSF_FREE(f->hydra->stream);
-	TSF_FREE(f->hydra);
-	for (int i=0; i<TSF_BUFFS; i++) TSF_FREE(f->buffer[i]);
+#ifndef TSF_SAMPLES_SHORT
 	TSF_FREE(f);
+#endif
 }
 
 TSFDEF void tsf_reset(tsf* f)
@@ -1650,8 +1895,8 @@ TSFDEF void tsf_reset(tsf* f)
 	struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum;
 	for (; v != vEnd; v++)
 		if (v->playingPreset != -1 && (v->ampenv.segment < TSF_SEGMENT_RELEASE || v->ampenv.parameters.release))
-			tsf_voice_endquick(v, f->outSampleRate);
-	if (f->channels) { TSF_FREE(f->channels->channels); TSF_FREE(f->channels); f->channels = TSF_NULL; }
+			tsf_voice_endquick(f, v);
+	if (f->channels) { TSF_FREE(f->channels); f->channels = TSF_NULL; }
 }
 
 TSFDEF int tsf_get_presetindex(const tsf* f, int bank, int preset_number)
@@ -1659,7 +1904,7 @@ TSFDEF int tsf_get_presetindex(const tsf* f, int bank, int preset_number)
 	const struct tsf_preset *presets;
 	int i, iMax;
 	for (presets = f->presets, i = 0, iMax = f->presetNum; i < iMax; i++)
-		if (presets[i].preset == preset_number && presets[i].bank == bank)
+		if (presets[i].preset == (tsf_u32)preset_number && presets[i].bank == (tsf_u32)bank)
 			return i;
 	return -1;
 }
@@ -1671,7 +1916,6 @@ TSFDEF int tsf_get_presetcount(const tsf* f)
 
 TSFDEF const char* tsf_get_presetname(const tsf* f, int preset)
 {
-	if (f->presets[preset].regions == NULL && preset >= 0 && preset < f->presetNum) tsf_load_preset(f, f->hydra, preset);
 	return (preset < 0 || preset >= f->presetNum ? TSF_NULL : f->presets[preset].presetName);
 }
 
@@ -1687,52 +1931,94 @@ TSFDEF void tsf_set_output(tsf* f, enum TSFOutputMode outputmode, int samplerate
 	f->globalGainDB = global_gain_db;
 }
 
-TSFDEF void tsf_note_on(tsf* f, int preset_index, int key, float vel)
+TSFDEF void tsf_set_volume(tsf* f, float global_volume)
+{
+	f->globalGainDB = (global_volume == 1.0f ? 0 : -tsf_gainToDecibels(1.0f / global_volume));
+}
+
+TSFDEF int tsf_set_max_voices(tsf* f, int max_voices)
+{
+	int i = f->voiceNum;
+	int newVoiceNum = (f->voiceNum > max_voices ? f->voiceNum : max_voices);
+	struct tsf_voice *newVoices = (struct tsf_voice*)TSF_REALLOC(f->voices, newVoiceNum * sizeof(struct tsf_voice));
+	if (!newVoices) return 0;
+	f->voices = newVoices;
+	f->voiceNum = f->maxVoiceNum = newVoiceNum;
+	for (; i < max_voices; i++)
+		f->voices[i].playingPreset = -1;
+	return 1;
+}
+
+TSFDEF int tsf_note_on(tsf* f, int preset_index, int key, float vel)
 {
 	short midiVelocity = (short)(vel * 127);
-	int voicePlayIndex;
-	struct tsf_region *region, *regionEnd;
+	unsigned int voicePlayIndex;
+	TSF_CONST struct tsf_region *region, *regionEnd;
 
-	if (preset_index < 0 || preset_index >= f->presetNum) return;
-	if (vel <= 0.0f) { tsf_note_off(f, preset_index, key); return; }
-	if (f->presets[preset_index].regions == NULL) tsf_load_preset(f, f->hydra, preset_index);
+	if (preset_index < 0 || preset_index >= f->presetNum) return 1;
+	if (vel <= 0.0f) { tsf_note_off(f, preset_index, key); return 1; }
 
 	// Play all matching regions.
 	voicePlayIndex = f->voicePlayIndex++;
 	for (region = f->presets[preset_index].regions, regionEnd = region + f->presets[preset_index].regionNum; region != regionEnd; region++)
 	{
-		struct tsf_voice *voice, *v, *vEnd; TSF_BOOL doLoop; float lowpassFilterQDB, lowpassFc;
-		if (key < region->lokey || key > region->hikey || midiVelocity < region->lovel || midiVelocity > region->hivel) continue;
+		struct tsf_voice *voice, *v, *vEnd; TSF_BOOL doLoop;
+#ifndef TSF_SAMPLES_SHORT
+                float lowpassFilterQDB, lowpassFc;
+#endif
+		if (key < (int)region->lokey || key > (int)region->hikey || midiVelocity < (int)region->lovel || midiVelocity > (int)region->hivel) continue;
 
 		voice = TSF_NULL, v = f->voices, vEnd = v + f->voiceNum;
 		if (region->group)
 		{
 			for (; v != vEnd; v++)
-				if (v->playingPreset == preset_index && v->region->group == region->group) tsf_voice_endquick(v, f->outSampleRate);
+				if (v->playingPreset == preset_index && v->region->group == region->group) tsf_voice_endquick(f, v);
 				else if (v->playingPreset == -1 && !voice) voice = v;
 		}
 		else for (; v != vEnd; v++) if (v->playingPreset == -1) { voice = v; break; }
 
 		if (!voice)
 		{
-			f->voiceNum += 4;
-			struct tsf_voice *saveVoice = f->voices;
-			f->voices = (struct tsf_voice*)TSF_REALLOC(f->voices, f->voiceNum * sizeof(struct tsf_voice));
-			if (!f->voices) {
-				f->voices = saveVoice;
-				printf("OOM, no room for new voice.  Ignoring note_on\n");
-				return;
+			if (f->maxVoiceNum)
+			{
+				// Voices have been pre-allocated and limited to a maximum, try to kill a voice off in its release envelope
+				int bestKillReleaseSamplePos = -999999999;
+				for (v = f->voices; v != vEnd; v++)
+				{
+					if (v->ampenv.segment == TSF_SEGMENT_RELEASE)
+					{
+						// We're looking for the voice furthest into its release
+						int releaseSamplesDone = tsf_voice_envelope_release_samples(&v->ampenv, f->outSampleRate) - v->ampenv.samplesUntilNextSegment;
+						if (releaseSamplesDone > bestKillReleaseSamplePos)
+						{
+							bestKillReleaseSamplePos = releaseSamplesDone;
+							voice = v;
+						}
+					}
+				}
+				if (!voice)
+					continue;
+				tsf_voice_kill(voice);
 			}
-			voice = &f->voices[f->voiceNum - 4];
-			voice[1].playingPreset = voice[2].playingPreset = voice[3].playingPreset = -1;
-			voice[1].playIndex = voice[2].playIndex = voice[3].playIndex = -1;
+			else
+			{
+				// Allocate more voices so we don't need to kill one off.
+				struct tsf_voice* newVoices;
+				f->voiceNum += 4;
+				newVoices = (struct tsf_voice*)TSF_REALLOC(f->voices, f->voiceNum * sizeof(struct tsf_voice));
+				if (!newVoices) { f->voiceNum -= 4; return 0; }
+				f->voices = newVoices;
+				voice = &f->voices[f->voiceNum - 4];
+				voice[1].playingPreset = voice[2].playingPreset = voice[3].playingPreset = -1;
+			}
 		}
 
 		voice->region = region;
 		voice->playingPreset = preset_index;
 		voice->playingKey = key;
 		voice->playIndex = voicePlayIndex;
-		voice->noteGain = vel * tsf_decibelsToGain(f->globalGainDB - region->attenuation);
+		voice->heldSustain = 0;
+		voice->noteGainDB = f->globalGainDB - region->attenuation - tsf_gainToDecibels(1.0f / vel);
 
 		if (f->channels)
 		{
@@ -1742,12 +2028,21 @@ TSFDEF void tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		{
 			tsf_voice_calcpitchratio(voice, 0, f->outSampleRate);
 			// The SFZ spec is silent about the pan curve, but a 3dB pan law seems common. This sqrt() curve matches what Dimension LE does; Alchemy Free seems closer to sin(adjustedPan * pi/2).
-			voice->panFactorLeft  = TSF_SQRTF(0.5f - region->pan);
+#ifndef TSF_SAMPLES_SHORT
+                        voice->panFactorLeft  = TSF_SQRTF(0.5f - region->pan);
 			voice->panFactorRight = TSF_SQRTF(0.5f + region->pan);
+#else
+                        voice->panFactorLeftF16P16  = tsf_sqrtF16P16( (1<<15) - region->panF16P16);
+                        voice->panFactorRightF16P16 = tsf_sqrtF16P16( (1<<15) + region->panF16P16); 
+#endif
 		}
 
 		// Offset/end.
+#ifndef TSF_SAMPLES_SHORT
 		voice->sourceSamplePosition = region->offset;
+#else
+                voice->sourceSamplePositionF24P8 = region->offset << 8;
+#endif
 
 		// Loop.
 		doLoop = (region->loop_mode != TSF_LOOPMODE_NONE && region->loop_start < region->loop_end);
@@ -1758,106 +2053,31 @@ TSFDEF void tsf_note_on(tsf* f, int preset_index, int key, float vel)
 		tsf_voice_envelope_setup(&voice->ampenv, &region->ampenv, key, midiVelocity, TSF_TRUE, f->outSampleRate);
 		tsf_voice_envelope_setup(&voice->modenv, &region->modenv, key, midiVelocity, TSF_FALSE, f->outSampleRate);
 
+#ifndef TSF_SAMPLES_SHORT
 		// Setup lowpass filter.
 		lowpassFc = (region->initialFilterFc <= 13500 ? tsf_cents2Hertz((float)region->initialFilterFc) / f->outSampleRate : 1.0f);
 		lowpassFilterQDB = region->initialFilterQ / 10.0f;
 		voice->lowpass.QInv = 1.0 / TSF_POW(10.0, (lowpassFilterQDB / 20.0));
 		voice->lowpass.z1 = voice->lowpass.z2 = 0;
 		voice->lowpass.active = (lowpassFc < 0.499f);
-		if (voice->lowpass.active) tsf_voice_lowpass_setup(&voice->lowpass, lowpassFc);
-
+                if (voice->lowpass.active) tsf_voice_lowpass_setup(&voice->lowpass, lowpassFc);
+#endif
 		// Setup LFO filters.
 		tsf_voice_lfo_setup(&voice->modlfo, region->delayModLFO, region->freqModLFO, f->outSampleRate);
 		tsf_voice_lfo_setup(&voice->viblfo, region->delayVibLFO, region->freqVibLFO, f->outSampleRate);
 	}
-}
-
-/**
- * Returns the generated playing index that can be used to identify all voices related to this note.
- */
-TSFDEF int tsf_note_on_fast(tsf* f, int preset_index, int key, float vel)
-{
-	if (preset_index < 0 || preset_index >= f->presetNum) return -1;
-	if (!vel) { tsf_note_off(f, preset_index, key); return -1; }
-	if (f->presets[preset_index].regions == NULL) tsf_load_preset(f, f->hydra, preset_index);
-
-	short midiVelocity = (short)(vel * 127);
-	struct tsf_region *region, *regionEnd;
-
-	// Play all matching regions.
-	int voicePlayIndex = f->voicePlayIndex++;
-	for (region = f->presets[preset_index].regions, regionEnd = region + f->presets[preset_index].regionNum; region != regionEnd; region++)
-	{
-		if (key < region->lokey || key > region->hikey || midiVelocity < region->lovel || midiVelocity > region->hivel) continue;
-
-		struct tsf_voice *voice, *v, *vEnd; TSF_BOOL doLoop;
-		voice = TSF_NULL, v = f->voices, vEnd = v + f->voiceNum;
-		if (region->group)
-		{
-			for (; v != vEnd; v++)
-				if (v->playingPreset == preset_index && v->region->group == region->group) tsf_voice_endquick(v, f->outSampleRate);
-				else if (v->playingPreset == -1 && !voice) voice = v;
-		}
-		else for (; v != vEnd; v++) if (v->playingPreset == -1) { voice = v; break; }
-
-		if (!voice)
-		{
-			f->voiceNum += 4;
-			struct tsf_voice *saveVoice = f->voices;
-			f->voices = (struct tsf_voice*)TSF_REALLOC(f->voices, f->voiceNum * sizeof(struct tsf_voice));
-			if (!f->voices) {
-				f->voices = saveVoice;
-				printf("OOM, no room for new voice.  Ignoring note_on\n");
-				return -1;
-			}
-			voice = &f->voices[f->voiceNum - 4];
-			voice[1].playingPreset = voice[2].playingPreset = voice[3].playingPreset = -1;
-			voice[1].playIndex = voice[2].playIndex = voice[3].playIndex = -1;
-		}
-
-		voice->region = region;
-		voice->playingPreset = preset_index;
-		voice->playingKey = key;
-		voice->playIndex = voicePlayIndex;
-		voice->noteGain = vel * tsf_decibelsToGain(f->globalGainDB - region->attenuation);
-
-		if (f->channels)
-		{
-			f->channels->setupVoice(f, voice);
-		}
-		else
-		{
-			tsf_voice_calcpitchratio(voice, 0, f->outSampleRate);
-			voice->pitchRatioF32P32 = voice->pitchRatio * (1LL << 32);
-		}
-
-		// Offset/end.
-		voice->sourceSamplePositionF32P32 = ((int64_t)region->offset)<< 32;
-
-		// Loop.
-		doLoop = (region->loop_mode != TSF_LOOPMODE_NONE && region->loop_start < region->loop_end);
-		voice->loopStartF32P32 = doLoop ? ((int64_t)region->loop_start + 1) << 32 : 0;
-		voice->loopEndF32P32 = doLoop ? ((int64_t)region->loop_end + 1) << 32 : 0;
-		voice->loopSizeF32P32 = doLoop ? voice->loopEndF32P32 - voice->loopStartF32P32 + (1LL << 32) : 0;
-
-		// Setup envelopes.
-		tsf_voice_envelope_setup(&voice->ampenv, &region->ampenv, key, midiVelocity, TSF_TRUE, f->outSampleRate);
-		tsf_voice_envelope_setup(&voice->modenv, &region->modenv, key, midiVelocity, TSF_FALSE, f->outSampleRate);
-
-		// Setup LFO filters.
-		tsf_voice_lfo_setup(&voice->modlfo, region->delayModLFO, region->freqModLFO, f->outSampleRate);
-		tsf_voice_lfo_setup(&voice->viblfo, region->delayVibLFO, region->freqVibLFO, f->outSampleRate);
-	}
-
-	return voicePlayIndex;
+//#ifndef TSF_SAMPLES_SHORT
+	return 1;
+//#else
+//        return voicePlayIndex + 1;
+//#endif
 }
 
 TSFDEF int tsf_bank_note_on(tsf* f, int bank, int preset_number, int key, float vel)
 {
 	int preset_index = tsf_get_presetindex(f, bank, preset_number);
 	if (preset_index == -1) return 0;
-	tsf_note_on(f, preset_index, key, vel);
-	return 1;
+	return tsf_note_on(f, preset_index, key, vel);
 }
 
 TSFDEF void tsf_note_off(tsf* f, int preset_index, int key)
@@ -1876,22 +2096,29 @@ TSFDEF void tsf_note_off(tsf* f, int preset_index, int key)
 		//Stop all voices with matching preset, key and the smallest play index which was enumerated above
 		if (v != vMatchFirst && v != vMatchLast &&
 			(v->playIndex != vMatchFirst->playIndex || v->playingPreset != preset_index || v->playingKey != key || v->ampenv.segment >= TSF_SEGMENT_RELEASE)) continue;
-		tsf_voice_end(v, f->outSampleRate);
+		tsf_voice_end(f, v);
 	}
 }
 
+#if 0
+// Less than 0.5% speed difference seen w/fast
 /**
  * Stops all voices with the given playing index. If no key provided or if -1, fallbacks to tsf_note_off
  */
 TSFDEF void tsf_note_off_fast(tsf* f, int preset_index, int key, int playIndex = -1)
 {
-  if (playIndex < 0)
-    tsf_note_off(f, preset_index, key);
-  else
-    for (struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum; v != vEnd; v++)
-      if (v->playIndex == playIndex && v->playingPreset == preset_index && v->playingKey == key && v->ampenv.segment < TSF_SEGMENT_RELEASE)
-        tsf_voice_end(v, f->outSampleRate);
+  if (playIndex < 0) {
+      tsf_note_off(f, preset_index, key);
+  } else {
+      playIndex--;
+      for (struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum; v != vEnd; v++) {
+          if (v->playIndex == playIndex && v->playingPreset == preset_index && v->playingKey == key && v->ampenv.segment < TSF_SEGMENT_RELEASE) {
+            tsf_voice_end(f, v);
+          }
+      }
+  }
 }
+#endif
 
 TSFDEF int tsf_bank_note_off(tsf* f, int bank, int preset_number, int key)
 {
@@ -1905,7 +2132,7 @@ TSFDEF void tsf_note_off_all(tsf* f)
 {
 	struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum;
 	for (; v != vEnd; v++) if (v->playingPreset != -1 && v->ampenv.segment < TSF_SEGMENT_RELEASE)
-		tsf_voice_end(v, f->outSampleRate);
+		tsf_voice_end(f, v);
 }
 
 TSFDEF int tsf_active_voice_count(tsf* f)
@@ -1916,34 +2143,33 @@ TSFDEF int tsf_active_voice_count(tsf* f)
 	return count;
 }
 
+#ifndef TSF_SAMPLES_SHORT
 TSFDEF void tsf_render_short(tsf* f, short* buffer, int samples, int flag_mixing)
 {
-	float *floatSamples;
-	int channelSamples = (f->outputmode == TSF_MONO ? 1 : 2) * samples, floatBufferSize = channelSamples * sizeof(float);
-	short* bufferEnd = buffer + channelSamples;
-	if (floatBufferSize > f->outputSampleSize)
+	float outputSamples[TSF_RENDER_SHORTBUFFERBLOCK];
+	int channels = (f->outputmode == TSF_MONO ? 1 : 2), maxChannelSamples = TSF_RENDER_SHORTBUFFERBLOCK / channels;
+	while (samples > 0)
 	{
-		TSF_FREE(f->outputSamples);
-		f->outputSamples = (float*)TSF_MALLOC(floatBufferSize);
-		f->outputSampleSize = floatBufferSize;
+		int channelSamples = (samples > maxChannelSamples ? maxChannelSamples : samples);
+		short* bufferEnd = buffer + channelSamples * channels;
+		float *floatSamples = outputSamples;
+		tsf_render_float(f, floatSamples, channelSamples, TSF_FALSE);
+		samples -= channelSamples;
+
+		if (flag_mixing)
+			while (buffer != bufferEnd)
+			{
+				float v = *floatSamples++;
+				int vi = *buffer + (v < -1.00004566f ? (int)-32768 : (v > 1.00001514f ? (int)32767 : (int)(v * 32767.5f)));
+				*buffer++ = (vi < -32768 ? (short)-32768 : (vi > 32767 ? (short)32767 : (short)vi));
+			}
+		else
+			while (buffer != bufferEnd)
+			{
+				float v = *floatSamples++;
+				*buffer++ = (v < -1.00004566f ? (short)-32768 : (v > 1.00001514f ? (short)32767 : (short)(v * 32767.5f)));
+			}
 	}
-
-	tsf_render_float(f, f->outputSamples, samples, TSF_FALSE);
-
-	floatSamples = f->outputSamples;
-	if (flag_mixing) 
-		while (buffer != bufferEnd)
-		{
-			float v = *floatSamples++;
-			int vi = *buffer + (v < -1.00004566f ? (int)-32768 : (v > 1.00001514f ? (int)32767 : (int)(v * 32767.5f)));
-			*buffer++ = (vi < -32768 ? (short)-32768 : (vi > 32767 ? (short)32767 : (short)vi));
-		}
-	else
-		while (buffer != bufferEnd)
-		{
-			float v = *floatSamples++;
-			*buffer++ = (v < -1.00004566f ? (short)-32768 : (v > 1.00001514f ? (short)32767 : (short)(v * 32767.5f)));
-		}
 }
 
 TSFDEF void tsf_render_float(tsf* f, float* buffer, int samples, int flag_mixing)
@@ -1954,29 +2180,41 @@ TSFDEF void tsf_render_float(tsf* f, float* buffer, int samples, int flag_mixing
 		if (v->playingPreset != -1)
 			tsf_voice_render(f, v, buffer, samples);
 }
-
-TSFDEF void tsf_render_short_fast(tsf* f, short* buffer, int samples, int flag_mixing)
+#else
+TSFDEF void tsf_render_short_2x(tsf* f, short* buffer, int samples, int flag_mixing)
 {
-  struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum;
-  if (!flag_mixing) TSF_MEMSET(buffer, 0, (f->outputmode == TSF_MONO ? 1 : 2) * sizeof(short) * samples);
-  for (; v != vEnd; v++) {
-    if (v->playingPreset != -1)
-      tsf_voice_render_fast(f, v, buffer, samples);
-    yield();
-  }
+        struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum;
+        int32_t *buffer32 = (int32_t *)buffer;
+        if (!flag_mixing) TSF_MEMSET(buffer, 0, (f->outputmode == TSF_MONO ? 1 : 2) * sizeof(short) * samples * 2 /* We sum in 32bs then downsample here to 16b to minimized saturation calcs */);
+        for (; v != vEnd; v++)
+                if (v->playingPreset != -1)
+                        tsf_voice_render_short(f, v, buffer32, samples);
+        for (int i = 0; i < samples * 2; i++) {
+            int32_t t = buffer32[i];
+            if (t > 32767) buffer[i] = 32767;
+            else if (t < -32768) buffer[i] = -32768;
+            else buffer[i] = t;
+        }
 }
-
+#endif
 
 static void tsf_channel_setup_voice(tsf* f, struct tsf_voice* v)
 {
 	struct tsf_channel* c = &f->channels->channels[f->channels->activeChannel];
-	float newpan = v->region->pan + c->panOffset;
 	v->playingChannel = f->channels->activeChannel;
-	v->noteGain *= tsf_decibelsToGain(c->gainDB);
+	v->noteGainDB += c->gainDB;
 	tsf_voice_calcpitchratio(v, (c->pitchWheel == 8192 ? c->tuning : ((c->pitchWheel / 16383.0f * c->pitchRange * 2.0f) - c->pitchRange + c->tuning)), f->outSampleRate);
+#ifndef TSF_SAMPLES_SHORT
+	float newpan = v->region->pan + c->panOffset;
 	if      (newpan <= -0.5f) { v->panFactorLeft = 1.0f; v->panFactorRight = 0.0f; }
 	else if (newpan >=  0.5f) { v->panFactorLeft = 0.0f; v->panFactorRight = 1.0f; }
 	else { v->panFactorLeft = TSF_SQRTF(0.5f - newpan); v->panFactorRight = TSF_SQRTF(0.5f + newpan); }
+#else
+        fixed16p16 newpan = v->region->panF16P16 + c->panOffsetF16P16;
+        if      (newpan <= -(1 << 15)) { v->panFactorLeftF16P16 = 1 << 16; v->panFactorRightF16P16 = 0; }
+        else if (newpan >=  1 << 15) { v->panFactorLeftF16P16 = 0; v->panFactorRightF16P16 = 1 << 16; }
+        else { v->panFactorLeftF16P16 = tsf_sqrtF16P16( (1<<15) - newpan); v->panFactorRightF16P16 = tsf_sqrtF16P16( (1<<15) + newpan); }
+#endif
 }
 
 static struct tsf_channel* tsf_channel_init(tsf* f, int channel)
@@ -1985,15 +2223,20 @@ static struct tsf_channel* tsf_channel_init(tsf* f, int channel)
 	if (f->channels && channel < f->channels->channelNum) return &f->channels->channels[channel];
 	if (!f->channels)
 	{
-		f->channels = (struct tsf_channels*)TSF_MALLOC(sizeof(struct tsf_channels));
+		f->channels = (struct tsf_channels*)TSF_MALLOC(sizeof(struct tsf_channels) + sizeof(struct tsf_channel) * channel);
+		if (!f->channels) return TSF_NULL;
 		f->channels->setupVoice = &tsf_channel_setup_voice;
-		f->channels->channels = NULL;
 		f->channels->channelNum = 0;
 		f->channels->activeChannel = 0;
 	}
+	else
+	{
+		struct tsf_channels *newChannels = (struct tsf_channels*)TSF_REALLOC(f->channels, sizeof(struct tsf_channels) + sizeof(struct tsf_channel) * channel);
+		if (!newChannels) return TSF_NULL;
+		f->channels = newChannels;
+	}
 	i = f->channels->channelNum;
 	f->channels->channelNum = channel + 1;
-	f->channels->channels = (struct tsf_channel*)TSF_REALLOC(f->channels->channels, f->channels->channelNum * sizeof(struct tsf_channel));
 	for (; i <= channel; i++)
 	{
 		struct tsf_channel* c = &f->channels->channels[i];
@@ -2001,8 +2244,12 @@ static struct tsf_channel* tsf_channel_init(tsf* f, int channel)
 		c->pitchWheel = c->midiPan = 8192;
 		c->midiVolume = c->midiExpression = 16383;
 		c->midiRPN = 0xFFFF;
-		c->midiData = 0;
+		c->midiData = c->sustain = 0;
+#ifndef TSF_SAMPLES_SHORT
 		c->panOffset = 0.0f;
+#else
+                c->panOffsetF16P16 = 0;
+#endif
 		c->gainDB = 0.0f;
 		c->pitchRange = 2.0f;
 		c->tuning = 0.0f;
@@ -2015,19 +2262,23 @@ static void tsf_channel_applypitch(tsf* f, int channel, struct tsf_channel* c)
 	struct tsf_voice *v, *vEnd;
 	float pitchShift = (c->pitchWheel == 8192 ? c->tuning : ((c->pitchWheel / 16383.0f * c->pitchRange * 2.0f) - c->pitchRange + c->tuning));
 	for (v = f->voices, vEnd = v + f->voiceNum; v != vEnd; v++)
-		if (v->playingChannel == channel && v->playingPreset != -1)
+		if (v->playingPreset != -1 && v->playingChannel == channel)
 			tsf_voice_calcpitchratio(v, pitchShift, f->outSampleRate);
 }
 
-TSFDEF void tsf_channel_set_presetindex(tsf* f, int channel, int preset_index)
+TSFDEF int tsf_channel_set_presetindex(tsf* f, int channel, int preset_index)
 {
-	tsf_channel_init(f, channel)->presetIndex = (unsigned short)preset_index;
+	struct tsf_channel *c = tsf_channel_init(f, channel);
+	if (!c) return 0;
+	c->presetIndex = (unsigned short)preset_index;
+	return 1;
 }
 
 TSFDEF int tsf_channel_set_presetnumber(tsf* f, int channel, int preset_number, int flag_mididrums)
 {
-	struct tsf_channel *c = tsf_channel_init(f, channel);
 	int preset_index;
+	struct tsf_channel *c = tsf_channel_init(f, channel);
+	if (!c) return 0;
 	if (flag_mididrums)
 	{
 		preset_index = tsf_get_presetindex(f, 128 | (c->bank & 0x7FFF), preset_number);
@@ -2045,104 +2296,158 @@ TSFDEF int tsf_channel_set_presetnumber(tsf* f, int channel, int preset_number, 
 	return 0;
 }
 
-TSFDEF void tsf_channel_set_bank(tsf* f, int channel, int bank)
+TSFDEF int tsf_channel_set_bank(tsf* f, int channel, int bank)
 {
-	tsf_channel_init(f, channel)->bank = (unsigned short)bank;
+	struct tsf_channel *c = tsf_channel_init(f, channel);
+	if (!c) return 0;
+	c->bank = (unsigned short)bank;
+	return 1;
 }
 
 TSFDEF int tsf_channel_set_bank_preset(tsf* f, int channel, int bank, int preset_number)
 {
+	int preset_index;
 	struct tsf_channel *c = tsf_channel_init(f, channel);
-	int preset_index = tsf_get_presetindex(f, bank, preset_number);
+	if (!c) return 0;
+	preset_index = tsf_get_presetindex(f, bank, preset_number);
 	if (preset_index == -1) return 0;
 	c->presetIndex = (unsigned short)preset_index;
 	c->bank = (unsigned short)bank;
 	return 1;
 }
 
-TSFDEF void tsf_channel_set_pan(tsf* f, int channel, float pan)
+TSFDEF int tsf_channel_set_pan(tsf* f, int channel, float pan)
 {
 	struct tsf_voice *v, *vEnd;
+	struct tsf_channel *c = tsf_channel_init(f, channel);
+	if (!c) return 0;
 	for (v = f->voices, vEnd = v + f->voiceNum; v != vEnd; v++)
-		if (v->playingChannel == channel && v->playingPreset != -1)
+		if (v->playingPreset != -1 && v->playingChannel == channel)
 		{
+#ifndef TSF_SAMPLES_SHORT
 			float newpan = v->region->pan + pan - 0.5f;
 			if      (newpan <= -0.5f) { v->panFactorLeft = 1.0f; v->panFactorRight = 0.0f; }
 			else if (newpan >=  0.5f) { v->panFactorLeft = 0.0f; v->panFactorRight = 1.0f; }
 			else { v->panFactorLeft = TSF_SQRTF(0.5f - newpan); v->panFactorRight = TSF_SQRTF(0.5f + newpan); }
+#else
+                        fixed16p16 newpan = v->region->panF16P16 + (fixed16p16)(pan * 65536.0f) - (1 << 15);
+                        if      (newpan <= -(1 << 15)) { v->panFactorLeftF16P16 = 1 << 16; v->panFactorRightF16P16 = 0; }
+                        else if (newpan >=  1 << 15) { v->panFactorLeftF16P16 = 0; v->panFactorRightF16P16 = 1 << 16; }
+                        else { v->panFactorLeftF16P16 = tsf_sqrtF16P16( (1<<15) - newpan); v->panFactorRightF16P16 = tsf_sqrtF16P16( (1<<15) + newpan); }
+#endif
 		}
-	tsf_channel_init(f, channel)->panOffset = pan - 0.5f;
+#ifndef TSF_SAMPLES_SHORT
+	c->panOffset = pan - 0.5f;
+#else
+        c->panOffsetF16P16 = (fixed16p16)(pan * 65536.0) - (1 << 15);
+#endif
+	return 1;
 }
 
-TSFDEF void tsf_channel_set_volume(tsf* f, int channel, float volume)
+TSFDEF int tsf_channel_set_volume(tsf* f, int channel, float volume)
 {
-	struct tsf_channel *c = tsf_channel_init(f, channel);
-	float gainDB = tsf_gainToDecibels(volume), gainDBChange = gainDB - c->gainDB;
+	float gainDB = tsf_gainToDecibels(volume), gainDBChange;
 	struct tsf_voice *v, *vEnd;
-	if (gainDBChange == 0) return;
-	for (v = f->voices, vEnd = v + f->voiceNum; v != vEnd; v++)
-		if (v->playingChannel == channel && v->playingPreset != -1)
-			v->noteGain *= tsf_decibelsToGain(gainDBChange);
+	struct tsf_channel *c = tsf_channel_init(f, channel);
+	if (!c) return 0;
+	if (gainDB == c->gainDB) return 1;
+	for (v = f->voices, vEnd = v + f->voiceNum, gainDBChange = gainDB - c->gainDB; v != vEnd; v++)
+		if (v->playingPreset != -1 && v->playingChannel == channel)
+			v->noteGainDB += gainDBChange;
 	c->gainDB = gainDB;
+	return 1;
 }
 
-TSFDEF void tsf_channel_set_pitchwheel(tsf* f, int channel, int pitch_wheel)
+TSFDEF int tsf_channel_set_pitchwheel(tsf* f, int channel, int pitch_wheel)
 {
 	struct tsf_channel *c = tsf_channel_init(f, channel);
-	if (c->pitchWheel == pitch_wheel) return;
+	if (!c) return 0;
+	if (c->pitchWheel == pitch_wheel) return 1;
 	c->pitchWheel = (unsigned short)pitch_wheel;
 	tsf_channel_applypitch(f, channel, c);
+	return 1;
 }
 
-TSFDEF void tsf_channel_set_pitchrange(tsf* f, int channel, float pitch_range)
+TSFDEF int tsf_channel_set_pitchrange(tsf* f, int channel, float pitch_range)
 {
 	struct tsf_channel *c = tsf_channel_init(f, channel);
-	if (c->pitchRange == pitch_range) return;
+	if (!c) return 0;
+	if (c->pitchRange == pitch_range) return 1;
 	c->pitchRange = pitch_range;
 	if (c->pitchWheel != 8192) tsf_channel_applypitch(f, channel, c);
+	return 1;
 }
 
-TSFDEF void tsf_channel_set_tuning(tsf* f, int channel, float tuning)
+TSFDEF int tsf_channel_set_tuning(tsf* f, int channel, float tuning)
 {
 	struct tsf_channel *c = tsf_channel_init(f, channel);
-	if (c->tuning == tuning) return;
+	if (!c) return 0;
+	if (c->tuning == tuning) return 1;
 	c->tuning = tuning;
 	tsf_channel_applypitch(f, channel, c);
+	return 1;
 }
 
-TSFDEF void tsf_channel_note_on(tsf* f, int channel, int key, float vel)
+TSFDEF int tsf_channel_set_sustain(tsf* f, int channel, int flag_sustain)
 {
-	if (!f->channels || channel >= f->channels->channelNum) return;
+	struct tsf_channel *c = tsf_channel_init(f, channel);
+	if (!c) return 0;
+	if (!c->sustain == !flag_sustain) return 1;
+	c->sustain = (unsigned short)(flag_sustain != 0);
+	//Turning on sustain does no action now, just starts note_off behaving differently
+	if (flag_sustain) return 1;
+	//Turning off sustain, actually end voices that got a note_off and were set to heldSustain status
+	struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum;
+	for (; v != vEnd; v++)
+		if (v->playingPreset != -1 && v->playingChannel == channel && v->ampenv.segment < TSF_SEGMENT_RELEASE && v->heldSustain)
+			tsf_voice_end(f, v);
+	return 1;
+}
+
+TSFDEF int tsf_channel_note_on(tsf* f, int channel, int key, float vel)
+{
+	if (!f->channels || channel >= f->channels->channelNum) return 1;
 	f->channels->activeChannel = channel;
-	tsf_note_on(f, f->channels->channels[channel].presetIndex, key, vel);
+	if (!vel)
+	{
+		tsf_channel_note_off(f, channel, key);
+		return 1;
+	}
+	return tsf_note_on(f, f->channels->channels[channel].presetIndex, key, vel);
 }
 
 TSFDEF void tsf_channel_note_off(tsf* f, int channel, int key)
 {
+	unsigned sustain;
 	struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum, *vMatchFirst = TSF_NULL, *vMatchLast = TSF_NULL;
 	for (; v != vEnd; v++)
 	{
 		//Find the first and last entry in the voices list with matching channel, key and look up the smallest play index
-		if (v->playingPreset == -1 || v->playingChannel != channel || v->playingKey != key || v->ampenv.segment >= TSF_SEGMENT_RELEASE) continue;
+		if (v->playingPreset == -1 || v->playingChannel != channel || v->playingKey != key || v->ampenv.segment >= TSF_SEGMENT_RELEASE || v->heldSustain) continue;
 		else if (!vMatchFirst || v->playIndex < vMatchFirst->playIndex) vMatchFirst = vMatchLast = v;
 		else if (v->playIndex == vMatchFirst->playIndex) vMatchLast = v;
 	}
 	if (!vMatchFirst) return;
-	for (v = vMatchFirst; v <= vMatchLast; v++)
+	for (sustain = f->channels->channels[channel].sustain, v = vMatchFirst; v <= vMatchLast; v++)
 	{
 		//Stop all voices with matching channel, key and the smallest play index which was enumerated above
 		if (v != vMatchFirst && v != vMatchLast &&
 			(v->playIndex != vMatchFirst->playIndex || v->playingPreset == -1 || v->playingChannel != channel || v->playingKey != key || v->ampenv.segment >= TSF_SEGMENT_RELEASE)) continue;
-		tsf_voice_end(v, f->outSampleRate);
+		//Don't turn off if sustain is active, just mark as held by sustain so we don't forget it
+		if (sustain)
+			v->heldSustain = 1;
+		else
+			tsf_voice_end(f, v);
 	}
 }
 
 TSFDEF void tsf_channel_note_off_all(tsf* f, int channel)
 {
+	//Ignore sustain channel settings, note_off_all overrides
 	struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum;
 	for (; v != vEnd; v++)
 		if (v->playingPreset != -1 && v->playingChannel == channel && v->ampenv.segment < TSF_SEGMENT_RELEASE)
-			tsf_voice_end(v, f->outSampleRate);
+			tsf_voice_end(f, v);
 }
 
 TSFDEF void tsf_channel_sounds_off_all(tsf* f, int channel)
@@ -2150,12 +2455,13 @@ TSFDEF void tsf_channel_sounds_off_all(tsf* f, int channel)
 	struct tsf_voice *v = f->voices, *vEnd = v + f->voiceNum;
 	for (; v != vEnd; v++)
 		if (v->playingPreset != -1 && v->playingChannel == channel && (v->ampenv.segment < TSF_SEGMENT_RELEASE || v->ampenv.parameters.release))
-			tsf_voice_endquick(v, f->outSampleRate);
+			tsf_voice_endquick(f, v);
 }
 
-TSFDEF void tsf_channel_midi_control(tsf* f, int channel, int controller, int control_value)
+TSFDEF int tsf_channel_midi_control(tsf* f, int channel, int controller, int control_value)
 {
 	struct tsf_channel* c = tsf_channel_init(f, channel);
+	if (!c) return 0;
 	switch (controller)
 	{
 		case   7 /*VOLUME_MSB*/      : c->midiVolume     = (unsigned short)((c->midiVolume     & 0x7F  ) | (control_value << 7)); goto TCMC_SET_VOLUME;
@@ -2166,36 +2472,40 @@ TSFDEF void tsf_channel_midi_control(tsf* f, int channel, int controller, int co
 		case  42 /*PAN_LSB*/         : c->midiPan        = (unsigned short)((c->midiPan        & 0x3F80) |  control_value);       goto TCMC_SET_PAN;
 		case   6 /*DATA_ENTRY_MSB*/  : c->midiData       = (unsigned short)((c->midiData       & 0x7F)   | (control_value << 7)); goto TCMC_SET_DATA;
 		case  38 /*DATA_ENTRY_LSB*/  : c->midiData       = (unsigned short)((c->midiData       & 0x3F80) |  control_value);       goto TCMC_SET_DATA;
-		case   0 /*BANK_SELECT_MSB*/ : c->bank = (unsigned short)(0x8000 | control_value); return; //bank select MSB alone acts like LSB
-		case  32 /*BANK_SELECT_LSB*/ : c->bank = (unsigned short)((c->bank & 0x8000 ? ((c->bank & 0x7F) << 7) : 0) | control_value); return;
-		case 101 /*RPN_MSB*/         : c->midiRPN = (unsigned short)(((c->midiRPN == 0xFFFF ? 0 : c->midiRPN) & 0x7F  ) | (control_value << 7)); return;
-		case 100 /*RPN_LSB*/         : c->midiRPN = (unsigned short)(((c->midiRPN == 0xFFFF ? 0 : c->midiRPN) & 0x3F80) |  control_value); return;
-		case  98 /*NRPN_LSB*/        : c->midiRPN = 0xFFFF; return;
-		case  99 /*NRPN_MSB*/        : c->midiRPN = 0xFFFF; return;
-		case 120 /*ALL_SOUND_OFF*/   : tsf_channel_sounds_off_all(f, channel); return;
-		case 123 /*ALL_NOTES_OFF*/   : tsf_channel_note_off_all(f, channel);   return;
+		case   0 /*BANK_SELECT_MSB*/ : c->bank = (unsigned short)(0x8000 | control_value); return 1; //bank select MSB alone acts like LSB
+		case  32 /*BANK_SELECT_LSB*/ : c->bank = (unsigned short)((c->bank & 0x8000 ? ((c->bank & 0x7F) << 7) : 0) | control_value); return 1;
+		case 101 /*RPN_MSB*/         : c->midiRPN = (unsigned short)(((c->midiRPN == 0xFFFF ? 0 : c->midiRPN) & 0x7F  ) | (control_value << 7)); return 1;
+		case 100 /*RPN_LSB*/         : c->midiRPN = (unsigned short)(((c->midiRPN == 0xFFFF ? 0 : c->midiRPN) & 0x3F80) |  control_value); return 1;
+		case  98 /*NRPN_LSB*/        : c->midiRPN = 0xFFFF; return 1;
+		case  99 /*NRPN_MSB*/        : c->midiRPN = 0xFFFF; return 1;
+		case  64 /*SUSTAIN*/         : tsf_channel_set_sustain(f, channel, (int)(control_value >= 64)); return 1;
+		case 120 /*ALL_SOUND_OFF*/   : tsf_channel_sounds_off_all(f, channel); return 1;
+		case 123 /*ALL_NOTES_OFF*/   : tsf_channel_note_off_all(f, channel);   return 1;
 		case 121 /*ALL_CTRL_OFF*/    :
 			c->midiVolume = c->midiExpression = 16383;
 			c->midiPan = 8192;
 			c->bank = 0;
+			c->midiRPN = 0xFFFF;
+			c->midiData = 0;
 			tsf_channel_set_volume(f, channel, 1.0f);
 			tsf_channel_set_pan(f, channel, 0.5f);
 			tsf_channel_set_pitchrange(f, channel, 2.0f);
-			return;
+			tsf_channel_set_tuning(f, channel, 0);
+			return 1;
 	}
-	return;
+	return 1;
 TCMC_SET_VOLUME:
 	//Raising to the power of 3 seems to result in a decent sounding volume curve for MIDI
 	tsf_channel_set_volume(f, channel, TSF_POWF((c->midiVolume / 16383.0f) * (c->midiExpression / 16383.0f), 3.0f));
-	return;
+	return 1;
 TCMC_SET_PAN:
 	tsf_channel_set_pan(f, channel, c->midiPan / 16383.0f);
-	return;
+	return 1;
 TCMC_SET_DATA:
 	if      (c->midiRPN == 0) tsf_channel_set_pitchrange(f, channel, (c->midiData >> 7) + 0.01f * (c->midiData & 0x7F));
 	else if (c->midiRPN == 1) tsf_channel_set_tuning(f, channel, (int)c->tuning + ((float)c->midiData - 8192.0f) / 8192.0f); //fine tune
 	else if (c->midiRPN == 2 && controller == 6) tsf_channel_set_tuning(f, channel, ((float)control_value - 64.0f) + (c->tuning - (int)c->tuning)); //coarse tune
-	return;
+	return 1;
 }
 
 TSFDEF int tsf_channel_get_preset_index(tsf* f, int channel)
@@ -2212,12 +2522,12 @@ TSFDEF int tsf_channel_get_preset_number(tsf* f, int channel)
 {
 	return (f->channels && channel < f->channels->channelNum ? f->presets[f->channels->channels[channel].presetIndex].preset : 0);
 }
-
+#ifndef TSF_SAMPLES_SHORT
 TSFDEF float tsf_channel_get_pan(tsf* f, int channel)
 {
 	return (f->channels && channel < f->channels->channelNum ? f->channels->channels[channel].panOffset - 0.5f : 0.5f);
 }
-
+#endif
 TSFDEF float tsf_channel_get_volume(tsf* f, int channel)
 {
 	return (f->channels && channel < f->channels->channelNum ? tsf_decibelsToGain(f->channels->channels[channel].gainDB) : 1.0f);
@@ -2244,4 +2554,4 @@ TSFDEF float tsf_channel_get_tuning(tsf* f, int channel)
 
 #endif //TSF_IMPLEMENTATION
 
-#endif // ! ESP32
+#pragma GCC pop_options

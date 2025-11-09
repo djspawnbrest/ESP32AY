@@ -50,16 +50,16 @@ void sd_config_load(){
     eeInit(eepAddress);
     uint8_t sdConfigEepromFlag=255;
     eep.read(SD_FLAG_ADDRESS,&sdConfigEepromFlag,1);
-    printf("SD Config flag: %d\n", sdConfigEepromFlag);
+    // printf("SD Config flag: %d\n", sdConfigEepromFlag);
     if(sdConfigEepromFlag==255){ // Empty config, write default
-      printf("Write default sdConfig...\n");
+      // printf("Write default sdConfig...\n");
       eep.write(SD_START_ADDRESS,reinterpret_cast<uint8_t*>(&sdConfig),sizeof(sdConfig));
       eep.write(SD_FLAG_ADDRESS,64);
     }else if(sdConfigEepromFlag==64){ // Read config
-      printf("Load sdConfig from eeprom...\n");
+      // printf("Load sdConfig from eeprom...\n");
       eep.read(SD_START_ADDRESS,reinterpret_cast<uint8_t*>(&sdConfig),sizeof(sdConfig));
       if(sdConfig.version!=SDCONFIG_VERSION){
-        printf("SD Config version mismatch! Expected %d, got %d. Resetting...\n",SDCONFIG_VERSION,sdConfig.version);
+        // printf("SD Config version mismatch! Expected %d, got %d. Resetting...\n",SDCONFIG_VERSION,sdConfig.version);
         needReset=true;
       }
     }
@@ -73,7 +73,7 @@ void sd_config_load(){
           f.read(&sdConfig,sizeof(sdConfig));
           f.close();
           if(sdConfig.version!=SDCONFIG_VERSION){
-            printf("SD Config version mismatch! Expected %d, got %d. Resetting...\n",SDCONFIG_VERSION,sdConfig.version);
+            // printf("SD Config version mismatch! Expected %d, got %d. Resetting...\n",SDCONFIG_VERSION,sdConfig.version);
             needReset=true;
           }
         }else{
@@ -91,7 +91,7 @@ void sd_config_load(){
     sd_config_default();
     sd_config_save();
   }
-  printf("SD Config size: %d bytes, version: %d\n",sizeof(sdConfig),sdConfig.version);
+  // printf("SD Config size: %d bytes, version: %d\n",sizeof(sdConfig),sdConfig.version);
 }
 
 void lfs_config_load(){
@@ -100,16 +100,16 @@ void lfs_config_load(){
     eeInit(eepAddress);
     uint8_t lfsConfigEepromFlag=255;
     eep.read(LFS_FLAG_ADDRESS,&lfsConfigEepromFlag,1);
-    printf("LFS Config flag: %d\n", lfsConfigEepromFlag);
+    // printf("LFS Config flag: %d\n", lfsConfigEepromFlag);
     if(lfsConfigEepromFlag==255){ // Empty config, write default
-      printf("Write default lfsConfig...\n");
+      // printf("Write default lfsConfig...\n");
       eep.write(LFS_START_ADDRESS,reinterpret_cast<uint8_t*>(&lfsConfig),sizeof(lfsConfig));
       eep.write(LFS_FLAG_ADDRESS,64);
     }else if(lfsConfigEepromFlag==64){ // Read config
-      printf("Load lfsConfig from eeprom...\n");
+      // printf("Load lfsConfig from eeprom...\n");
       eep.read(LFS_START_ADDRESS,reinterpret_cast<uint8_t*>(&lfsConfig),sizeof(lfsConfig));
       if(lfsConfig.version!=LFSCONFIG_VERSION){
-        printf("LFS Config version mismatch! Expected %d, got %d. Resetting...\n",LFSCONFIG_VERSION,lfsConfig.version);
+        // printf("LFS Config version mismatch! Expected %d, got %d. Resetting...\n",LFSCONFIG_VERSION,lfsConfig.version);
         needReset=true;
       }
     }
@@ -120,7 +120,7 @@ void lfs_config_load(){
       if(f.size()==sizeof(lfsConfig)){
         f.readBytes((char*)&lfsConfig,sizeof(lfsConfig));
         if(lfsConfig.version!=LFSCONFIG_VERSION){
-          printf("LFS Config version mismatch! Expected %d, got %d. Resetting...\n",LFSCONFIG_VERSION,lfsConfig.version);
+          // printf("LFS Config version mismatch! Expected %d, got %d. Resetting...\n",LFSCONFIG_VERSION,lfsConfig.version);
           needReset=true;
         }
       }
@@ -139,7 +139,7 @@ void lfs_config_load(){
     lfs_config_default();
     lfs_config_save();
   }
-  printf("LFS Config size: %d bytes, version: %d\n",sizeof(lfsConfig),lfsConfig.version);
+  // printf("LFS Config size: %d bytes, version: %d\n",sizeof(lfsConfig),lfsConfig.version);
 }
 
 void startup_config_load(){
@@ -174,7 +174,7 @@ void sd_config_save(){
 
 void lfs_config_save(){
   if(foundRom){
-    printf("Save lfsConfig to eeprom...\n");
+    // printf("Save lfsConfig to eeprom...\n");
     eeInit(eepAddress);
     eep.write(LFS_START_ADDRESS,reinterpret_cast<uint8_t*>(&lfsConfig),sizeof(lfsConfig));
     eep.write(LFS_FLAG_ADDRESS,64);
@@ -970,9 +970,6 @@ void checkStartUpConfig(){
   pinMode(DN_BTN,INPUT);
   pinMode(UP_BTN,INPUT);
   pinMode(OK_BTN, INPUT);
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
-  // pinMode(OK_BTN,INPUT);
-#endif
   if(digitalRead(DN_BTN)==LOW){
     startUpConfig();
   }
@@ -992,6 +989,6 @@ void checkStartUpConfig(){
   }
   #if defined(CONFIG_IDF_TARGET_ESP32S3)
     // Mount SD card to USB
-    massStorage();
+    // massStorage();
   #endif
 }

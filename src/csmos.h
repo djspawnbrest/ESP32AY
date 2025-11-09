@@ -1,6 +1,4 @@
-// #include "defines.h"
-#include <JC_EEPROM.h>      // https://github.com/JChristensen/JC_EEPROM
-#include <Streaming.h>      // https://github.com/janelia-arduino/Streaming
+#include <ESP_EEPROM_24C.h>
 #include <Wire.h>
 
 #define LFS_FLAG_ADDRESS 2560
@@ -9,8 +7,8 @@
 #define SD_START_ADDRESS 256
 
 #define CHUNK_SIZE 32 // bytes to write at a time
-// Two 24LC256 EEPROMs on the bus
-JC_EEPROM eep(JC_EEPROM::kbits_32,1,CHUNK_SIZE,eepAddress); // device size, number of devices, page size
+
+ESP_EEPROM_24C eep(eepAddress);
 constexpr uint32_t totalKBytes {4};           // total kBytes of eeprom
 uint8_t eepStatus=1;                          // eeprom init status ()
 bool eepInit=false;
@@ -33,7 +31,7 @@ void eeErase(uint8_t chunk, uint32_t startAddr, uint32_t endAddr){
 void eeInit(uint8_t eepAddr){
   if(eepInit) return;
   eep.setAddress(eepAddr);
-  eepStatus=eep.begin(JC_EEPROM::twiClock400kHz);   // go fast!
+  eepStatus=eep.begin();
   if(!eepStatus) eepInit=true;
   printf("EEPROM status: %s\n", eepStatus?"failed!":"ok.");
 }

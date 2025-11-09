@@ -124,6 +124,7 @@ uint8_t modChannels=0;
 uint8_t modChannelsEQ=0;
 int bitrate=0;
 int channelMode=0;
+bool isVBR=false;
 
 SdFs sd_fat;
 FsFile sd_dir;
