@@ -1491,7 +1491,7 @@ void player_screen(){
       }
       if(PlayerCTRL.music_type==TYPE_TAP) setTapSpeed();
       if(PlayerCTRL.music_type==TYPE_TZX) setTzxSpeed();
-    }else if(PlayerCTRL.music_type!=TYPE_MP3||PlayerCTRL.music_type!=TYPE_WAV){
+    }else if(PlayerCTRL.music_type!=TYPE_MP3&&PlayerCTRL.music_type!=TYPE_WAV){
       switch(lfsConfig.ay_clock){
         case CLK_SPECTRUM: lfsConfig.ay_clock=CLK_PENTAGON;break;
         case CLK_PENTAGON: lfsConfig.ay_clock=CLK_MSX;break;
