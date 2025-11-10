@@ -64,6 +64,7 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 - Left button double click - change AY clock (in player mode) for PSG formats or change stereo panning for formats over DAC (mod,s3m etc.)
 - Right button double click - change play mode: all/shuffle/once (in player mode)
 - Right button hold and encoder click - remove file (only files, only in file browser).
+- Right button click - change file sortiong in file browser. (only in file browser).
 
 ### Playing modes:
 - Playing all tracks (in folder/playlist)
@@ -118,3 +119,6 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 
 ### UPD 08.10.2025
 - Add .mp3, .wav formats.
+
+### UPD 10.10.2025
+- Add file sorting in file broser on right button click!

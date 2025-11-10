@@ -11,6 +11,26 @@
 #define WILD_GREEN 0x0500
 #define WILD_RED 0xF800
 
+// ZX Spectrum BRIGHT colors (RGB565)
+#define ZX_BLACK_B   0x0000  // 0,0,0
+#define ZX_BLUE_B    0x001D  // 0,0,238 -> 0,0,29
+#define ZX_RED_B     0xE800  // 238,0,0 -> 29,0,0
+#define ZX_MAGENTA_B 0xE81D  // 238,0,238
+#define ZX_GREEN_B   0x0760  // 0,238,0 -> 0,59,0
+#define ZX_CYAN_B    0x077D  // 0,238,238
+#define ZX_YELLOW_B  0xEF60  // 238,238,0
+#define ZX_WHITE_B   0xEF7D  // 238,238,238
+
+// ZX Spectrum NORMAL colors (RGB565)
+#define ZX_BLACK_N   0x0000  // 0,0,0
+#define ZX_BLUE_N    0x0019  // 0,0,205 -> 0,0,25
+#define ZX_RED_N     0xC800  // 205,0,0 -> 25,0,0
+#define ZX_MAGENTA_N 0xC819  // 205,0,205
+#define ZX_GREEN_N   0x0660  // 0,205,0 -> 0,51,0
+#define ZX_CYAN_N    0x0679  // 0,205,205
+#define ZX_YELLOW_N  0xCE60  // 205,205,0
+#define ZX_WHITE_N   0xCE79  // 205,205,205
+
 #define VIEW_WDT	224
 #define VIEW_HGT	320
 
@@ -202,7 +222,7 @@ void voltage(){
     }else{
       precent=((volt-v_min)*100)/(v_max-v_min);
     }
-    img.setColorDepth(8);
+    img.setColorDepth(16);
     img.createSprite(40,9);
     img.fillScreen(0);
     img.drawBitmap(20,0,batSptites16x9,18,9,WILD_CYAN);
@@ -264,8 +284,8 @@ void scrTimeout(){
     keysEvent=false;
     lcdBlackout=false;
   }
-  if(lfsConfig.scr_timeout>0&&millis()-mlsScr>lfsConfig.scr_timeout*1000){
-    ledcWrite(pwmChannel,255); // blackout
+  if(lfsConfig.scr_timeout>0&&millis()-mlsScr>lfsConfig.scr_timeout*1000&&!lcdBlackout){
+    display_brightness(0);
     lcdBlackout=true;
   }
 }
@@ -288,38 +308,41 @@ void show_frame(){
 
 void introTFT(){
   int scrollPos=-112;
-  img.createSprite(240,32);
+  img.createSprite(112,32);
+  img.pushImage(0,0,112,32,introWild112x32);
   while(scrollPos<128){
-    img.fillScreen(0);
-    img.pushImage(scrollPos-1,0,112,32,introWild112x32);
-    img.pushSprite(0,78);
+    img.pushSprite(scrollPos,78);
+    if(scrollPos>0) tft.fillRect(scrollPos-1,78,1,32,0);
     scrollPos++;
   }
   img.deleteSprite();
+  
   scrollPos=210;
-  img.createSprite(99,210);
+  img.createSprite(99,88);
+  img.pushImage(0,0,99,88,introGromo99x88);
   while(scrollPos>0){
-    img.fillScreen(0);
-    img.pushImage(0,scrollPos-1,99,88,introGromo99x88);
-    img.pushSprite(76,110);
+    img.pushSprite(76,scrollPos+110);
+    tft.fillRect(76,scrollPos+110+88,99,1,0);
     scrollPos--;
   }
   img.deleteSprite();
+  
   scrollPos=240;
-  img.createSprite(240,32);
+  img.createSprite(136,32);
+  img.pushImage(0,0,136,32,introPlayer136x32);
   while(scrollPos>0){
-    img.fillScreen(0);
-    img.pushImage(scrollPos-1,0,136,32,introPlayer136x32);
-    img.pushSprite(0,210);
+    img.pushSprite(scrollPos,210);
+    tft.fillRect(scrollPos+136,210,1,32,0);
     scrollPos--;
   }
   img.deleteSprite();
+  
   scrollPos=-66;
-  img.createSprite(66,110+50);
+  img.createSprite(66,50);
+  img.pushImage(0,0,66,50,introNotes66x50);
   while(scrollPos<110){
-    img.fillScreen(0);
-    img.pushImage(0,scrollPos-1,66,50,introNotes66x50);
-    img.pushSprite(10,0);
+    img.pushSprite(10,scrollPos);
+    if(scrollPos>0) tft.fillRect(10,scrollPos-1,66,1,0);
     scrollPos++;
   }
   img.deleteSprite();
@@ -341,7 +364,7 @@ void showAlert(const char* message){
 void alert_screen(){
   if(PlayerCTRL.scr_mode_update[SCR_ALERT]){
     PlayerCTRL.scr_mode_update[SCR_ALERT]=false;
-    img.setColorDepth(8);
+    img.setColorDepth(16);
     img.createSprite(200,64);
     // img.fillScreen(0);
     img.setTextColor(TFT_WHITE);
@@ -365,7 +388,7 @@ void alert_screen(){
 }
 
 void sdEject(){
-  img.setColorDepth(8);
+  img.setColorDepth(16);
   img.createSprite(224,304);
   img.fillScreen(0);
   img.setTextWrap(false);
@@ -378,7 +401,7 @@ void sdEject(){
 }
 
 void noFilesFound(){
-  img.setColorDepth(8);
+  img.setColorDepth(16);
   img.createSprite(224,304);
   img.fillScreen(0);
   img.setTextWrap(false);

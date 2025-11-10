@@ -65,4 +65,6 @@ class ButtonT : public VirtButton {
     bool tickRaw() {
         return VirtButton::tickRaw(EB_read(PIN));
     }
+
+   private:
 };

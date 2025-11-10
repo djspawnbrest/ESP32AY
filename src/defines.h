@@ -3,8 +3,8 @@
 #include <Wire.h>
 
 #define FW_VERSION         "3.7"
-#define LFSCONFIG_VERSION 1  // Increment when lfsConfig structure changes
-#define SDCONFIG_VERSION  1  // Increment when sdConfig structure changes
+#define LFSCONFIG_VERSION 2  // Increment when lfsConfig structure changes
+#define SDCONFIG_VERSION  2  // Increment when sdConfig structure changes
 
 #define CLK_SPECTRUM  	1773400
 #define CLK_PENTAGON  	1750000
@@ -105,15 +105,16 @@ unsigned long loadingTime=0;
 #define S_UPD2 15 // player author
 #define S_UPD3 6  // player file
 #define S_UPD4 20 // date
+#define S_UPD5 20 // browser header
 // scroll end or start
 #define S_UPD_DIR 1000
-unsigned int sUpC[5]={S_UPD0,S_UPD1,S_UPD2,S_UPD3,S_UPD4};
-unsigned int sUp[5]={S_UPD0,S_UPD1,S_UPD2,S_UPD3,S_UPD4};
+unsigned int sUpC[6]={S_UPD0,S_UPD1,S_UPD2,S_UPD3,S_UPD4,S_UPD5};
+unsigned int sUp[6]={S_UPD0,S_UPD1,S_UPD2,S_UPD3,S_UPD4,S_UPD5};
 
 unsigned long mls=0;
-unsigned long mlsS[5]={0,0,0,0,0};
-int sPos[5]={0,0,0,0,0};
-bool scrollDir[5]={true,true,true,true,true};
+unsigned long mlsS[6]={0,0,0,0,0,0};
+int sPos[6]={0,0,0,0,0,0};
+bool scrollDir[6]={true,true,true,true,true,true};
 
 // bool update_list=true;
 bool scroll=false;
@@ -139,7 +140,7 @@ uint32_t music_data_size;
 
 char lfn[MAX_PATH]; //common array for all lfn operations
 char playFileName[MAX_PATH];
-char scrollbuf[MAX_PATH];
+char scrollbuf[MAX_PATH*2]; // doubled for header scroll (first half for files, second for header)
 char playedFileName[MAX_PATH];
 byte fileInfoBuf[128]; // 31 bytes per frame max, 50*31=1550 per sec, 155 per 0.1 sec
 char tme[200];
@@ -152,6 +153,7 @@ volatile uint32_t frame_max=TIMER_RATE*1000/48880; // Pentagon int
 
 struct{
   uint8_t version;              // Config version for validation
+  uint8_t browser_sort;         // Browser sort mode
   bool isBrowserPlaylist;       // browser mode
   bool isPlayAYL;               // player mode
   int16_t dir_cur;              // Browser cursor pointer
@@ -368,6 +370,16 @@ enum{
 };
 
 const char* ay_layout_names[]={"ABC","ACB","BAC","BCA","CAB","CBA"};
+
+enum{
+  SORT_NAME=0,
+  SORT_TYPE,
+  SORT_SIZE,
+  SORT_DATE,
+  SORT_ALL
+};
+
+const char* const sort_names[]={"NAM","EXT","SZE","DAT"};
 
 void browser_reset_directory();
 int browser_check_ext(const char* name);

@@ -18,26 +18,33 @@ class Encoder : public VirtEncoder {
         e1 = encB;
         EB_mode(e0, mode);
         EB_mode(e1, mode);
-        initEnc(EB_read(e0), EB_read(e1));
+        initEnc(readEnc());
     }
 
     // функция обработки для вызова в прерывании энкодера
     int8_t tickISR() {
-        return VirtEncoder::tickISR(EB_read(e0), EB_read(e1));
+        return VirtEncoder::tickISR(readEnc());
     }
 
     // функция обработки, вызывать в loop
     int8_t tick() {
-        return ef.read(EB_EISR) ? VirtEncoder::tick() : VirtEncoder::tick(EB_read(e0), EB_read(e1));
+        if (ef.read(EB_EISR)) return VirtEncoder::tick();
+        else return VirtEncoder::tick(readEnc());
     }
 
     // обработка без сброса события поворота
     int8_t tickRaw() {
-        return ef.read(EB_EISR) ? VirtEncoder::tickRaw() : VirtEncoder::tickRaw(EB_read(e0), EB_read(e1));
+        if (ef.read(EB_EISR)) return VirtEncoder::tickRaw();
+        else return VirtEncoder::tickRaw(readEnc());
     }
 
    private:
     uint8_t e0, e1;
+
+    // прочитать значение энкодера
+    int8_t readEnc() {
+        return EB_read(e0) | (EB_read(e1) << 1);
+    }
 };
 
 // ============= TEMPLATE PIN =============
@@ -53,21 +60,30 @@ class EncoderT : public VirtEncoder {
     void init(uint8_t mode = INPUT) {
         EB_mode(ENCA, mode);
         EB_mode(ENCB, mode);
-        initEnc(EB_read(ENCA), EB_read(ENCB));
+        initEnc(readEnc());
     }
 
     // функция обработки для вызова в прерывании энкодера
     int8_t tickISR() {
-        return VirtEncoder::tickISR(EB_read(ENCA), EB_read(ENCB));
+        return VirtEncoder::tickISR(readEnc());
     }
 
     // функция обработки, вызывать в loop
     int8_t tick() {
-        return ef.read(EB_EISR) ? VirtEncoder::tick() : VirtEncoder::tick(EB_read(ENCA), EB_read(ENCB));
+        if (ef.read(EB_EISR)) return VirtEncoder::tick();
+        else return VirtEncoder::tick(readEnc());
     }
 
     // обработка без сброса события поворота
     int8_t tickRaw() {
-        return ef.read(EB_EISR) ? VirtEncoder::tickRaw() : VirtEncoder::tickRaw(EB_read(ENCA), EB_read(ENCB));
+        if (ef.read(EB_EISR)) return VirtEncoder::tickRaw();
+        else return VirtEncoder::tickRaw(readEnc());
     }
+
+    // прочитать значение энкодера
+    int8_t readEnc() {
+        return EB_read(ENCA) | (EB_read(ENCB) << 1);
+    }
+
+   private:
 };

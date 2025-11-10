@@ -40,6 +40,7 @@ void lfs_config_default(){
 void sd_config_default(){
   memset(&sdConfig,0,sizeof(sdConfig));
   sdConfig.version=SDCONFIG_VERSION;
+  sdConfig.browser_sort=SORT_NAME;
   sdConfig.volume=32;
   browser_reset_directory();
 }
@@ -209,24 +210,83 @@ void config_about_screen(){
   if(PlayerCTRL.scr_mode_update[SCR_ABOUT]){
     PlayerCTRL.scr_mode_update[SCR_ABOUT]=false;
     img.setColorDepth(8);
-    img.createSprite(224,304);
-    img.fillScreen(0);
-    img.setTextColor(TFT_WHITE);
+    img.createSprite(224,16);
+    img.setTextWrap(false);
     img.setTextSize(2);
     img.setFreeFont(&WildFont);
+    int screenY=8;
+    // Header
+    img.fillScreen(0);
     spr_println(img,0,1,PSTR("About"),2,ALIGN_CENTER,WILD_CYAN);
-    //print message
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Empty lines
+    img.fillScreen(0);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // img.pushSprite(8,screenY);
+    // screenY+=16;
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Version
+    img.fillScreen(0);
     sprintf(buf,"ZxPOD Player v.%s",FW_VERSION);
-    spr_println(img,0,7,buf,2,ALIGN_CENTER,TFT_RED);
-    spr_println(img,0,8,PSTR("by"),2,ALIGN_CENTER,TFT_CYAN);
-    spr_println(img,0,9,PSTR("       ,"),2,ALIGN_LEFT,WILD_GREEN);
-    spr_println(img,0,9,PSTR("  Spawn"),2,ALIGN_LEFT,TFT_YELLOW);
-    spr_println(img,0,9,PSTR("Andy Karpov  "),2,ALIGN_RIGHT,TFT_YELLOW);
-    spr_println(img,0,10,PSTR("10'25"),2,ALIGN_CENTER,WILD_RED);
-    spr_println(img,0,11,PSTR("powered with"),2,ALIGN_CENTER,TFT_CYAN);
-    spr_println(img,0,12,PSTR("libayfly, z80emu,"),2,ALIGN_CENTER,WILD_GREEN);
-    spr_println(img,0,13,PSTR("ESP8266Audio"),2,ALIGN_CENTER,WILD_GREEN);
-    img.pushSprite(8,8);
+    spr_println(img,0,1,buf,2,ALIGN_CENTER,TFT_RED);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // By
+    img.fillScreen(0);
+    spr_println(img,0,1,PSTR("by"),2,ALIGN_CENTER,TFT_CYAN);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Authors (3 overlays)
+    img.fillScreen(0);
+    spr_println(img,0,1,PSTR("       ,"),2,ALIGN_LEFT,WILD_GREEN);
+    spr_println(img,0,1,PSTR("  Spawn"),2,ALIGN_LEFT,TFT_YELLOW);
+    spr_println(img,0,1,PSTR("Andy Karpov  "),2,ALIGN_RIGHT,TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Date
+    img.fillScreen(0);
+    spr_println(img,0,1,PSTR("11'25"),2,ALIGN_CENTER,WILD_RED);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Powered with
+    img.fillScreen(0);
+    spr_println(img,0,1,PSTR("powered with:"),2,ALIGN_CENTER,TFT_CYAN);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Libraries
+    img.fillScreen(0);
+    spr_println(img,0,1,PSTR("libayfly, z80emu,"),2,ALIGN_CENTER,ZX_RED_B);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.fillScreen(0);
+    spr_println(img,0,1,PSTR("ESP8266Audio, SdFat,"),2,ALIGN_CENTER,ZX_YELLOW_B);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.fillScreen(0);
+    spr_println(img,0,1,PSTR("libxmize, TFT_eSPI,"),2,ALIGN_CENTER,ZX_GREEN_B);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.fillScreen(0);
+    spr_println(img,0,1,PSTR("EncButton, GyverFIFO,"),2,ALIGN_CENTER,ZX_CYAN_B);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.fillScreen(0);
+    spr_println(img,0,1,PSTR("ArduinoFFT."),2,ALIGN_CENTER,ZX_RED_B);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Fill remaining space to 304px (19 lines total)
+    img.fillScreen(0);
+    while(screenY<8+304){
+      img.pushSprite(8,screenY);
+      screenY+=16;
+    }
     img.deleteSprite();
   }
   //survey keypad
@@ -254,34 +314,79 @@ void time_date_screen(){
     PlayerCTRL.scr_mode_update[SCR_DATETIME]=false;
     int8_t ccur=lfsConfig.cfg_datetime_cur;
     img.setColorDepth(8);
-    img.createSprite(224,304);
-    img.fillScreen(0);
-    img.setTextColor(TFT_WHITE);
+    img.createSprite(224,16);
+    img.setTextWrap(false);
     img.setTextSize(2);
     img.setFreeFont(&WildFont);
+    int screenY=8;
+    // Header
+    img.fillScreen(0);
     spr_println(img,0,1,PSTR("Date&Time"),2,ALIGN_CENTER,WILD_CYAN);
-    //print message
-    spr_printmenu_item(img,2,2,PSTR("Show clock:"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,lfsConfig.showClock?PSTR("Yes"):PSTR("No"),TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Menu items
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Show clock:"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,lfsConfig.showClock?PSTR("Yes"):PSTR("No"),TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s%04d%s",(cfgDateTimeSet&&ccur==1)?"<":"",(cfgDateTimeSet&&ccur==1)?year_set:year,(cfgDateTimeSet&&ccur==1)?">":"");
-    spr_printmenu_item(img,3,2,PSTR("Year:"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Year:"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s%s%s",(cfgDateTimeSet&&ccur==2)?"<":"",monthsOfTheYear[(cfgDateTimeSet&&ccur==2)?month_set:month],(cfgDateTimeSet&&ccur==2)?">":"");
-    spr_printmenu_item(img,4,2,PSTR("Month:"),WILD_CYAN_D2,ccur==2?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Month:"),WILD_CYAN_D2,ccur==2?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==3)?"<":"",(cfgDateTimeSet&&ccur==3)?day_set:day,(cfgDateTimeSet&&ccur==3)?">":"");
-    spr_printmenu_item(img,5,2,PSTR("Date:"),WILD_CYAN_D2,ccur==3?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Date:"),WILD_CYAN_D2,ccur==3?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==4)?"<":"",(cfgDateTimeSet&&ccur==4)?hour_set:hour,(cfgDateTimeSet&&ccur==4)?">":"");
-    spr_printmenu_item(img,6,2,PSTR("Hour:"),WILD_CYAN_D2,ccur==4?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Hour:"),WILD_CYAN_D2,ccur==4?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==5)?"<":"",(cfgDateTimeSet&&ccur==5)?minute_set:minute,(cfgDateTimeSet&&ccur==5)?">":"");
-    spr_printmenu_item(img,7,2,PSTR("Minute:"),WILD_CYAN_D2,ccur==5?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Minute:"),WILD_CYAN_D2,ccur==5?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s%02d%s",(cfgDateTimeSet&&ccur==6)?"<":"",(cfgDateTimeSet&&ccur==6)?second_set:second,(cfgDateTimeSet&&ccur==6)?">":"");
-    spr_printmenu_item(img,8,2,PSTR("Second:"),WILD_CYAN_D2,ccur==6?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
-    //formatted date and time
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Second:"),WILD_CYAN_D2,ccur==6?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Empty lines
+    img.fillScreen(0);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Formatted date and time
     sprintf(buf, "%02d %s %04d",now.day(),monthsOfTheYear[now.month()],now.year());
-    spr_println(img,0,11,buf,2,ALIGN_CENTER,TFT_YELLOW);
+    img.fillScreen(0);
+    spr_println(img,0,1,buf,2,ALIGN_CENTER,TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s",daysOfTheWeek[now.dayOfTheWeek()]);
-    spr_println(img,0,12,buf,2,ALIGN_CENTER,TFT_YELLOW);
+    img.fillScreen(0);
+    spr_println(img,0,1,buf,2,ALIGN_CENTER,TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%02d:%02d:%02d",now.hour(),now.minute(),now.second());
-    spr_println(img,0,13,buf,2,ALIGN_CENTER,TFT_YELLOW);
-    img.pushSprite(8,8);
+    img.fillScreen(0);
+    spr_println(img,0,1,buf,2,ALIGN_CENTER,TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Fill remaining space to 304px (19 lines total, 13 used, 6 remaining)
+    img.fillScreen(0);
+    while(screenY<8+304){
+      img.pushSprite(8,screenY);
+      screenY+=16;
+    }
     img.deleteSprite();
   }
   //survey keypad
@@ -412,19 +517,58 @@ void config_reset_default_screen(){
   if(PlayerCTRL.scr_mode_update[SCR_RESET_CONFIG]){
     PlayerCTRL.scr_mode_update[SCR_RESET_CONFIG]=false;
     img.setColorDepth(8);
-    img.createSprite(224,304);
-    img.fillScreen(0);
-    img.setTextColor(TFT_WHITE);
+    img.createSprite(224,16);
+    img.setTextWrap(false);
     img.setTextSize(2);
     img.setFreeFont(&WildFont);
+    int screenY=8;
+    // Header
+    img.fillScreen(0);
     spr_println(img,0,1,PSTR("Config reset"),2,ALIGN_CENTER,WILD_CYAN);
-    //print message
-    spr_println(img,0,8,msg,2,ALIGN_CENTER,TFT_RED);
-    spr_println(img,0,9,msg2,2,ALIGN_CENTER,TFT_YELLOW);
-    //print buttons
-    spr_draw_buttons(img,17,2,PlayerCTRL.msg_cur,btns[YES],btns[NO],2);
-    img.pushSprite(8,8);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Empty lines (6 lines)
+    img.fillScreen(0);
+    for(int i=0;i<6;i++){
+      img.pushSprite(8,screenY);
+      screenY+=16;
+    }
+    // Message 1
+    img.fillScreen(0);
+    spr_println(img,0,1,msg,2,ALIGN_CENTER,TFT_RED);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Message 2
+    img.fillScreen(0);
+    spr_println(img,0,1,msg2,2,ALIGN_CENTER,TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Empty lines (3 lines before buttons)
+    img.fillScreen(0);
+    for(int i=0;i<3;i++){
+      img.pushSprite(8,screenY);
+      screenY+=16;
+    }
+    // Buttons (need 40px height: row=2, size=2, cY=32, button from 12 to 36)
     img.deleteSprite();
+    img.createSprite(224,40);
+    img.fillScreen(0);
+    img.setTextSize(2);
+    img.setFreeFont(&WildFont);
+    spr_draw_buttons(img,2,2,PlayerCTRL.msg_cur,btns[YES],btns[NO],2);
+    img.pushSprite(8,screenY);
+    screenY+=40;
+    img.deleteSprite();
+    // Fill remaining space (stop before bottom frame at 312px)
+    if(screenY<312){
+      img.createSprite(224,16);
+      img.fillScreen(0);
+      while(screenY<=312-16){
+        img.pushSprite(8,screenY);
+        screenY+=16;
+      }
+      img.deleteSprite();
+    }
   }
   //survey keypad
   if(enc.left()&&lcdBlackout==false){
@@ -470,16 +614,30 @@ void config_screen(){
     PlayerCTRL.scr_mode_update[SCR_CONFIG]=false;
     int8_t ccur=lfsConfig.cfg_cur;
     img.setColorDepth(8);
-    img.createSprite(224,288); //224,304 without voltage debug
-    img.fillScreen(0);
-    img.setTextColor(TFT_WHITE);
-    img.setTextSize(1);
+    img.createSprite(224,16);
+    img.setTextWrap(false);
+    img.setTextSize(2);
     img.setFreeFont(&WildFont);
+    int screenY=8;
+    // Header
+    img.fillScreen(0);
     spr_println(img,0,1,PSTR("Settings"),2,ALIGN_CENTER,WILD_CYAN);
-    spr_printmenu_item(img,2,2,PSTR("Player source"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,player_sources[lfsConfig.playerSource],TFT_YELLOW);
-    spr_printmenu_item(img,3,2,PSTR("ZX INT"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,zx_int[lfsConfig.zx_int],TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Menu items - draw line by line
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Player source"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,player_sources[lfsConfig.playerSource],TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("ZX INT"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,zx_int[lfsConfig.zx_int],TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s%s%s",(cfgSet&&ccur==2)?"<":"",ay_layout_names[lfsConfig.ay_layout],(cfgSet&&ccur==2)?">":"");
-    spr_printmenu_item(img,4,2,PSTR("Stereo"),(cfgSet&&ccur==2)?WILD_RED:WILD_CYAN_D2,ccur==2?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==2)?WILD_RED:TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Stereo"),(cfgSet&&ccur==2)?WILD_RED:WILD_CYAN_D2,ccur==2?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==2)?WILD_RED:TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     switch(lfsConfig.ay_clock){
       case CLK_SPECTRUM: sprintf(buf,"%sZX 1.77MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
       case CLK_PENTAGON: sprintf(buf,"%sPEN 1.75MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
@@ -487,40 +645,85 @@ void config_screen(){
       case CLK_CPC: sprintf(buf,"%sCPC 1.0MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
       case CLK_ATARIST: sprintf(buf,"%sST 2.0MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
     }
-    spr_printmenu_item(img,5,2,PSTR("AY Clock"),(cfgSet&&ccur==3)?WILD_RED:WILD_CYAN_D2,ccur==3?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==3)?WILD_RED:TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("AY Clock"),(cfgSet&&ccur==3)?WILD_RED:WILD_CYAN_D2,ccur==3?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==3)?WILD_RED:TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s%s%s",(cfgSet&&ccur==4)?"<":"",play_modes[lfsConfig.play_mode],(cfgSet&&ccur==4)?">":"");
-    spr_printmenu_item(img,6,2,PSTR("Play mode"),(cfgSet&&ccur==4)?WILD_RED:WILD_CYAN_D2,ccur==4?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==4)?WILD_RED:TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Play mode"),(cfgSet&&ccur==4)?WILD_RED:WILD_CYAN_D2,ccur==4?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==4)?WILD_RED:TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s%2u%%%s",(cfgSet&&ccur==5)?"<":"",lfsConfig.scr_bright,(cfgSet&&ccur==5)?">":"");
-    spr_printmenu_item(img,7,2,PSTR("Scr.brightness"),(cfgSet&&ccur==5)?WILD_RED:WILD_CYAN_D2,ccur==5?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==5)?WILD_RED:TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Scr.brightness"),(cfgSet&&ccur==5)?WILD_RED:WILD_CYAN_D2,ccur==5?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==5)?WILD_RED:TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     if(!lfsConfig.scr_timeout){
       sprintf(buf,"%sOff%s",(cfgSet&&ccur==6)?"<":"",(cfgSet&&ccur==6)?">":"");
     }else{
       sprintf(buf,"%s%2us%s",(cfgSet&&ccur==6)?"<":"",lfsConfig.scr_timeout,(cfgSet&&ccur==6)?">":"");
     }
-    spr_printmenu_item(img,8,2,PSTR("Scr.timeout"),(cfgSet&&ccur==6)?WILD_RED:WILD_CYAN_D2,ccur==6?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==6)?WILD_RED:TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Scr.timeout"),(cfgSet&&ccur==6)?WILD_RED:WILD_CYAN_D2,ccur==6?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==6)?WILD_RED:TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s%d%%%s",(cfgSet&&ccur==7)?"<":"",(int)roundf(lfsConfig.dacGain*100),(cfgSet&&ccur==7)?">":"");
-    spr_printmenu_item(img,9,2,PSTR("DAC Gain"),(cfgSet&&ccur==7)?WILD_RED:WILD_CYAN_D2,ccur==7?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==7)?WILD_RED:TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("DAC Gain"),(cfgSet&&ccur==7)?WILD_RED:WILD_CYAN_D2,ccur==7?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==7)?WILD_RED:TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     switch(lfsConfig.modStereoSeparation){
       case MOD_FULLSTEREO: sprintf(buf,"%sFull Stereo%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
       case MOD_HALFSTEREO: sprintf(buf,"%sHalf Stereo%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
       case MOD_MONO: sprintf(buf,"%sMono%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
     }
-    spr_printmenu_item(img,10,2,PSTR("DAC Pan."),(cfgSet&&ccur==8)?WILD_RED:WILD_CYAN_D2,ccur==8?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==8)?WILD_RED:TFT_YELLOW);
-    spr_printmenu_item(img,11,2,PSTR("Skip tape"),WILD_CYAN_D2,ccur==9?TFT_RED:TFT_BLACK,lfsConfig.skipTapeFormats?PSTR("Yes"):PSTR("No"),TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("DAC Pan."),(cfgSet&&ccur==8)?WILD_RED:WILD_CYAN_D2,ccur==8?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==8)?WILD_RED:TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Skip tape"),WILD_CYAN_D2,ccur==9?TFT_RED:TFT_BLACK,lfsConfig.skipTapeFormats?PSTR("Yes"):PSTR("No"),TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     switch(lfsConfig.tapeSpeed){
       case TAPE_NORMAL: sprintf(buf,"%s3.5MHz(1x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
       case TAPE_TURBO1: sprintf(buf,"%s7MHz(2x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
       case TAPE_TURBO2: sprintf(buf,"%s14MHz(4x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
     }
-    spr_printmenu_item(img,12,2,PSTR("Tape speed"),(cfgSet&&ccur==10)?WILD_RED:WILD_CYAN_D2,ccur==10?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==10)?WILD_RED:TFT_YELLOW);
-    spr_printmenu_item(img,13,2,PSTR("Enc direction"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK,enc_reverse[lfsConfig.encReverse],TFT_YELLOW);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Tape speed"),(cfgSet&&ccur==10)?WILD_RED:WILD_CYAN_D2,ccur==10?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==10)?WILD_RED:TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Enc direction"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK,enc_reverse[lfsConfig.encReverse],TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
     sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==12)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==12)?">":"");
-    spr_printmenu_item(img,14,2,PSTR("Batt calib"),(cfgSet&&ccur==12)?WILD_RED:WILD_CYAN_D2,ccur==12?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==12)?WILD_RED:TFT_YELLOW);
-    if(foundRtc) spr_printmenu_item(img,15,2,PSTR("Date&Time"),WILD_CYAN_D2,ccur==13?TFT_RED:TFT_BLACK);
-    spr_printmenu_item(img,(foundRtc)?16:15,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==14?TFT_RED:TFT_BLACK);
-    spr_printmenu_item(img,(foundRtc)?17:16,2,PSTR("About"),WILD_CYAN_D2,ccur==15?TFT_RED:TFT_BLACK);
-    // Push sprite
-    img.pushSprite(8,8);
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Batt calib"),(cfgSet&&ccur==12)?WILD_RED:WILD_CYAN_D2,ccur==12?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==12)?WILD_RED:TFT_YELLOW);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    if(foundRtc){
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Date&Time"),WILD_CYAN_D2,ccur==13?TFT_RED:TFT_BLACK);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+    }
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==14?TFT_RED:TFT_BLACK);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.fillScreen(0);
+    spr_printmenu_item(img,1,2,PSTR("About"),WILD_CYAN_D2,ccur==15?TFT_RED:TFT_BLACK);
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    // Fill remaining space to 288px (before battery debug at 296px)
+    img.fillScreen(0);
+    while(screenY<8+288){
+      img.pushSprite(8,screenY);
+      screenY+=16;
+    }
     img.deleteSprite();
   }
   // voltage debug
@@ -797,14 +1000,18 @@ void startUpConfig(){
   TFTInit();
   show_frame();
   img.setColorDepth(8);
-  img.createSprite(224,304);
-  img.fillScreen(0);
-  img.setTextColor(TFT_WHITE);
-  img.setTextSize(1);
+  img.createSprite(224,16);
+  img.setTextWrap(false);
+  img.setTextSize(2);
   img.setFreeFont(&WildFont);
-  spr_println(img,0,9,PSTR("Release button"),2,ALIGN_CENTER,WILD_RED);
-  spr_println(img,0,10,PSTR("to continue!"),2,ALIGN_CENTER,WILD_RED);
-  img.pushSprite(8,8);
+  int screenY=8+8*16; // Start at row 9
+  img.fillScreen(0);
+  spr_println(img,0,1,PSTR("Release button"),2,ALIGN_CENTER,WILD_RED);
+  img.pushSprite(8,screenY);
+  screenY+=16;
+  img.fillScreen(0);
+  spr_println(img,0,1,PSTR("to continue!"),2,ALIGN_CENTER,WILD_RED);
+  img.pushSprite(8,screenY);
   img.deleteSprite();
   while(digitalRead(DN_BTN)==LOW) yield();
   while(true){
@@ -812,28 +1019,62 @@ void startUpConfig(){
     if(scrUpdate){
       scrUpdate=false;
       img.setColorDepth(8);
-      img.createSprite(224,304);
-      img.fillScreen(0);
-      img.setTextColor(TFT_WHITE);
-      img.setTextSize(1);
+      img.createSprite(224,16);
+      img.setTextWrap(false);
+      img.setTextSize(2);
       img.setFreeFont(&WildFont);
+      int screenY=8;
+      // Header
+      img.fillScreen(0);
       spr_println(img,0,1,PSTR("Root Settings"),2,ALIGN_CENTER,WILD_CYAN);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      // Menu items
       sprintf(buf,"%s%s%s",(ptr==0&&itemSet)?"<":"",enc_types[lfsConfig.encType],(ptr==0&&itemSet)?">":"");
-      spr_printmenu_item(img,2,2,PSTR("Encoder type"),WILD_CYAN_D2,ptr==0?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Encoder type"),WILD_CYAN_D2,ptr==0?TFT_RED:TFT_BLACK,buf,TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
       sprintf(buf,"%s%s",(ptr==1&&itemSet)?"<Reset config":"Reset config",(ptr==1&&itemSet)?">":"");
-      spr_printmenu_item(img,3,2,buf,(ptr==1&&itemSet)?TFT_YELLOW:WILD_CYAN_D2,ptr==1?TFT_RED:TFT_BLACK);
-      // Legend
-      if(itemSet){
-        spr_println(img,0,19,PSTR("<"),2,ALIGN_LEFT,WILD_CYAN);
-        spr_println(img,0,19,PSTR("Exit from item"),2,ALIGN_CENTER,WILD_CYAN);
-        spr_println(img,0,19,PSTR(">"),2,ALIGN_RIGHT,WILD_CYAN);
-      }else{
-        spr_println(img,0,18,PSTR("Hold to exit/"),2,ALIGN_CENTER,WILD_CYAN);
-        spr_println(img,0,19,PSTR("Down"),2,ALIGN_LEFT,WILD_CYAN);
-        spr_println(img,0,19,PSTR("Item change"),2,ALIGN_CENTER,WILD_CYAN);
-        spr_println(img,0,19,PSTR("Up"),2,ALIGN_RIGHT,WILD_CYAN);
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,buf,(ptr==1&&itemSet)?TFT_YELLOW:WILD_CYAN_D2,ptr==1?TFT_RED:TFT_BLACK);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      // Empty lines (14 lines to reach row 18)
+      img.fillScreen(0);
+      for(int i=0;i<14;i++){
+        img.pushSprite(8,screenY);
+        screenY+=16;
       }
-      img.pushSprite(8,8);
+      // Legend at row 18-19
+      if(itemSet){
+        img.fillScreen(0);
+        img.pushSprite(8,screenY);
+        screenY+=16;
+        img.fillScreen(0);
+        spr_println(img,0,1,PSTR("<"),2,ALIGN_LEFT,WILD_CYAN);
+        spr_println(img,0,1,PSTR("Exit from item"),2,ALIGN_CENTER,WILD_CYAN);
+        spr_println(img,0,1,PSTR(">"),2,ALIGN_RIGHT,WILD_CYAN);
+        img.pushSprite(8,screenY);
+        screenY+=16;
+      }else{
+        img.fillScreen(0);
+        spr_println(img,0,1,PSTR("Hold to exit/"),2,ALIGN_CENTER,WILD_CYAN);
+        img.pushSprite(8,screenY);
+        screenY+=16;
+        img.fillScreen(0);
+        spr_println(img,0,1,PSTR("Down"),2,ALIGN_LEFT,WILD_CYAN);
+        spr_println(img,0,1,PSTR("Item change"),2,ALIGN_CENTER,WILD_CYAN);
+        spr_println(img,0,1,PSTR("Up"),2,ALIGN_RIGHT,WILD_CYAN);
+        img.pushSprite(8,screenY);
+        screenY+=16;
+      }
+      // Fill remaining space to 304px
+      img.fillScreen(0);
+      while(screenY<8+304){
+        img.pushSprite(8,screenY);
+        screenY+=16;
+      }
       img.deleteSprite();
     }
     if(enc.click()){

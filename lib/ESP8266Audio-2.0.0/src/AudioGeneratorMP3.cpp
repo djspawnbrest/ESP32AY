@@ -527,46 +527,77 @@ signed long AudioGeneratorMP3::getPlaybackTime(bool oneFiftieth) {
   for(int i = 0; i < 190; i++) if(d[i] == 0xFF && (d[i+1] & 0xE0) == 0xE0) { s = i; break; }
   if(s < 0) { file->seek(currentPos, SEEK_SET); return -1; }
   uint8_t *f = &d[s];
-  int v = (f[1] >> 3) & 3, bi = (f[2] >> 4) & 0xF, si = (f[2] >> 2) & 3;
+  int v = (f[1] >> 3) & 3, bi = (f[2] >> 4) & 0xF, si = (f[2] >> 2) & 3, pad = (f[2] >> 1) & 1;
   const int br[16] = {0,32,40,48,56,64,80,96,112,128,160,192,224,256,320,0};
   const int sr[3] = {44100,48000,32000};
-  if(bi == 0 || bi == 15 || si == 3) { file->seek(currentPos, SEEK_SET); return -1; }
-  int xo = (v == 3) ? ((f[3] & 0xC0) == 0xC0 ? 36 : 21) : ((f[3] & 0xC0) == 0xC0 ? 21 : 13);
-  uint8_t *x = &f[xo];
-  if((x[0]=='X'&&x[1]=='i'&&x[2]=='n'&&x[3]=='g')||(x[0]=='I'&&x[1]=='n'&&x[2]=='f'&&x[3]=='o')) {
-    uint32_t fl = x[4]<<24|x[5]<<16|x[6]<<8|x[7];
-    if(fl & 1) {
-      uint32_t fc = x[8]<<24|x[9]<<16|x[10]<<8|x[11];
-      float sec = (float)fc * 1152.0f / (float)sr[si];
-      file->seek(currentPos, SEEK_SET);
-      return (signed long)(sec * (oneFiftieth ? 50 : 1000));
+  if(si == 3) { file->seek(currentPos, SEEK_SET); return -1; }
+  
+  // Check Xing/Info header for VBR
+  if(bi > 0 && bi < 15) {
+    int xo = (v == 3) ? ((f[3] & 0xC0) == 0xC0 ? 36 : 21) : ((f[3] & 0xC0) == 0xC0 ? 21 : 13);
+    uint8_t *x = &f[xo];
+    if((x[0]=='X'&&x[1]=='i'&&x[2]=='n'&&x[3]=='g')||(x[0]=='I'&&x[1]=='n'&&x[2]=='f'&&x[3]=='o')) {
+      uint32_t fl = x[4]<<24|x[5]<<16|x[6]<<8|x[7];
+      if(fl & 1) {
+        uint32_t fc = x[8]<<24|x[9]<<16|x[10]<<8|x[11];
+        float sec = (float)fc * 1152.0f / (float)sr[si];
+        file->seek(currentPos, SEEK_SET);
+        return (signed long)(sec * (oneFiftieth ? 50 : 1000));
+      }
     }
   }
-  // No Xing/Info: scan frames to get average bitrate (handles VBR)
+  
+  // Scan frames in buffer
+  file->seek(start, SEEK_SET);
+  uint8_t buf[4096];
+  int bytesRead = file->read(buf, sizeof(buf));
+  if(bytesRead < 100) { file->seek(currentPos, SEEK_SET); return -1; }
+  
   uint32_t totalBitrate = 0;
   int frameCount = 0;
-  uint32_t scanPos = start;
-  for(int i = 0; i < 50 && scanPos < file->getSize() - 4; i++) {
-    file->seek(scanPos, SEEK_SET);
-    uint8_t hdr[4];
-    if(file->read(hdr, 4) < 4) break;
-    if(hdr[0] != 0xFF || (hdr[1] & 0xE0) != 0xE0) break;
-    int fbi = (hdr[2] >> 4) & 0xF;
-    int fsi = (hdr[2] >> 2) & 3;
-    int padding = (hdr[2] >> 1) & 1;
-    int fv = (hdr[1] >> 3) & 3;
-    if(fbi > 0 && fbi < 15 && fsi < 3) {
+  uint32_t totalFrameSize = 0;
+  int pos = 0;
+  
+  while(pos < bytesRead - 4 && frameCount < 100) {
+    if(buf[pos] != 0xFF || (buf[pos+1] & 0xE0) != 0xE0) { pos++; continue; }
+    int fbi = (buf[pos+2] >> 4) & 0xF;
+    int fsi = (buf[pos+2] >> 2) & 3;
+    int fpad = (buf[pos+2] >> 1) & 1;
+    int fv = (buf[pos+1] >> 3) & 3;
+    if(fsi == 3) { pos++; continue; }
+    
+    int frameSize = 0;
+    if(fbi == 0) {
+      for(int j = pos + 1; j < bytesRead - 1 && j < pos + 2000; j++) {
+        if(buf[j] == 0xFF && (buf[j+1] & 0xE0) == 0xE0) {
+          int nbi = (buf[j+2] >> 4) & 0xF;
+          int nsi = (buf[j+2] >> 2) & 3;
+          if(nbi == 0 && nsi == fsi) { frameSize = j - pos; break; }
+        }
+      }
+      if(frameSize == 0) break;
+      totalFrameSize += frameSize;
+    } else if(fbi < 15) {
+      frameSize = (fv == 3) ? (144 * br[fbi] * 1000 / sr[fsi] + fpad) : (72 * br[fbi] * 1000 / sr[fsi] + fpad);
       totalBitrate += br[fbi];
-      frameCount++;
-      int frameSize = (fv == 3) ? (144 * br[fbi] * 1000 / sr[fsi] + padding) : (72 * br[fbi] * 1000 / sr[fsi] + padding);
-      scanPos += frameSize;
     } else {
-      break;
+      pos++; continue;
     }
+    
+    frameCount++;
+    pos += frameSize;
   }
+  
   if(frameCount > 0) {
-    int avgBitrate = totalBitrate / frameCount;
-    float sec = (float)(file->getSize() - start) * 8.0f / (float)(avgBitrate * 1000);
+    float sec;
+    if(totalBitrate > 0) {
+      int avgBitrate = totalBitrate / frameCount;
+      sec = (float)(file->getSize() - start) * 8.0f / (float)(avgBitrate * 1000);
+    } else {
+      float avgFrameSize = (float)totalFrameSize / (float)frameCount;
+      float totalFrames = (float)(file->getSize() - start) / avgFrameSize;
+      sec = totalFrames * 1152.0f / (float)sr[si];
+    }
     file->seek(currentPos, SEEK_SET);
     return (signed long)(sec * (oneFiftieth ? 50 : 1000));
   }
@@ -657,29 +688,47 @@ int AudioGeneratorMP3::getBitrate(){
     start=((h[6]&0x7F)<<21)|((h[7]&0x7F)<<14)|((h[8]&0x7F)<<7)|(h[9]&0x7F)+10;
   }
   file->seek(start,SEEK_SET);
+  uint8_t buf[4096];
+  int bytesRead=file->read(buf,sizeof(buf));
+  if(bytesRead<100){file->seek(currentPos,SEEK_SET);return 0;}
   const int br[16]={0,32,40,48,56,64,80,96,112,128,160,192,224,256,320,0};
   const int sr[3]={44100,48000,32000};
   uint32_t totalBitrate=0;
   int frameCount=0;
-  uint32_t scanPos=start;
-  for(int i=0;i<20&&scanPos<file->getSize()-4;i++){
-    file->seek(scanPos,SEEK_SET);
-    uint8_t d[4];
-    if(file->read(d,4)<4)break;
-    if(d[0]!=0xFF||(d[1]&0xE0)!=0xE0)break;
-    int bi=(d[2]>>4)&0xF;
-    int si=(d[2]>>2)&3;
-    int pad=(d[2]>>1)&1;
-    int v=(d[1]>>3)&3;
-    if(bi>0&&bi<15&&si<3){
+  uint32_t totalFrameSize=0;
+  int sampleRate=0;
+  int pos=0;
+  while(pos<bytesRead-4&&frameCount<50){
+    if(buf[pos]!=0xFF||(buf[pos+1]&0xE0)!=0xE0){pos++;continue;}
+    int bi=(buf[pos+2]>>4)&0xF;
+    int si=(buf[pos+2]>>2)&3;
+    int pad=(buf[pos+2]>>1)&1;
+    int v=(buf[pos+1]>>3)&3;
+    if(si==3){pos++;continue;}
+    if(sampleRate==0)sampleRate=sr[si];
+    int frameSize=0;
+    if(bi==0){
+      for(int j=pos+1;j<bytesRead-1&&j<pos+2000;j++){
+        if(buf[j]==0xFF&&(buf[j+1]&0xE0)==0xE0){
+          int nbi=(buf[j+2]>>4)&0xF;
+          int nsi=(buf[j+2]>>2)&3;
+          if(nbi==0&&nsi==si){frameSize=j-pos;break;}
+        }
+      }
+      if(frameSize==0)break;
+      totalFrameSize+=frameSize;
+    }else if(bi<15){
       totalBitrate+=br[bi];
-      frameCount++;
-      int frameSize=(v==3)?(144*br[bi]*1000/sr[si]+pad):(72*br[bi]*1000/sr[si]+pad);
-      scanPos+=frameSize;
-    }else break;
+      frameSize=(v==3)?(144*br[bi]*1000/sr[si]+pad):(72*br[bi]*1000/sr[si]+pad);
+    }else{pos++;continue;}
+    frameCount++;
+    pos+=frameSize;
   }
   file->seek(currentPos,SEEK_SET);
-  return frameCount>0?totalBitrate/frameCount:0;
+  if(frameCount==0)return 0;
+  if(totalBitrate>0)return totalBitrate/frameCount;
+  if(totalFrameSize>0&&sampleRate>0)return(int)((float)totalFrameSize*8.0f*sampleRate/(1152.0f*frameCount*1000.0f));
+  return 0;
 }
 
 int AudioGeneratorMP3::getChannelMode(){
@@ -710,25 +759,53 @@ bool AudioGeneratorMP3::isVBR(){
     start=((h[6]&0x7F)<<21)|((h[7]&0x7F)<<14)|((h[8]&0x7F)<<7)|(h[9]&0x7F)+10;
   }
   file->seek(start,SEEK_SET);
+  uint8_t d[200];
+  if(file->read(d,200)<200){file->seek(currentPos,SEEK_SET);return false;}
+  int s=-1;
+  for(int i=0;i<190;i++)if(d[i]==0xFF&&(d[i+1]&0xE0)==0xE0){s=i;break;}
+  if(s<0){file->seek(currentPos,SEEK_SET);return false;}
+  uint8_t*f=&d[s];
+  int v=(f[1]>>3)&3,bi=(f[2]>>4)&0xF;
+  if(bi>0&&bi<15){
+    int xo=(v==3)?((f[3]&0xC0)==0xC0?36:21):((f[3]&0xC0)==0xC0?21:13);
+    uint8_t*x=&f[xo];
+    if((x[0]=='X'&&x[1]=='i'&&x[2]=='n'&&x[3]=='g')||(x[0]=='I'&&x[1]=='n'&&x[2]=='f'&&x[3]=='o')){
+      file->seek(currentPos,SEEK_SET);return true;
+    }
+  }
+  file->seek(start,SEEK_SET);
+  uint8_t buf[4096];
+  int bytesRead=file->read(buf,sizeof(buf));
+  if(bytesRead<100){file->seek(currentPos,SEEK_SET);return false;}
   const int br[16]={0,32,40,48,56,64,80,96,112,128,160,192,224,256,320,0};
   const int sr[3]={44100,48000,32000};
   int firstBitrate=-1;
-  uint32_t scanPos=start;
-  for(int i=0;i<20&&scanPos<file->getSize()-4;i++){
-    file->seek(scanPos,SEEK_SET);
-    uint8_t d[4];
-    if(file->read(d,4)<4)break;
-    if(d[0]!=0xFF||(d[1]&0xE0)!=0xE0)break;
-    int bi=(d[2]>>4)&0xF;
-    int si=(d[2]>>2)&3;
-    int pad=(d[2]>>1)&1;
-    int v=(d[1]>>3)&3;
-    if(bi>0&&bi<15&&si<3){
-      if(firstBitrate==-1)firstBitrate=br[bi];
-      else if(br[bi]!=firstBitrate){file->seek(currentPos,SEEK_SET);return true;}
-      int frameSize=(v==3)?(144*br[bi]*1000/sr[si]+pad):(72*br[bi]*1000/sr[si]+pad);
-      scanPos+=frameSize;
-    }else break;
+  int pos=0;
+  int frameCount=0;
+  while(pos<bytesRead-4&&frameCount<50){
+    if(buf[pos]!=0xFF||(buf[pos+1]&0xE0)!=0xE0){pos++;continue;}
+    int fbi=(buf[pos+2]>>4)&0xF;
+    int fsi=(buf[pos+2]>>2)&3;
+    int pad=(buf[pos+2]>>1)&1;
+    int fv=(buf[pos+1]>>3)&3;
+    if(fsi==3){pos++;continue;}
+    int frameSize=0;
+    if(fbi==0){
+      for(int j=pos+1;j<bytesRead-1&&j<pos+2000;j++){
+        if(buf[j]==0xFF&&(buf[j+1]&0xE0)==0xE0){
+          int nbi=(buf[j+2]>>4)&0xF;
+          int nsi=(buf[j+2]>>2)&3;
+          if(nbi==0&&nsi==fsi){frameSize=j-pos;break;}
+        }
+      }
+      if(frameSize==0)break;
+    }else if(fbi<15){
+      if(firstBitrate==-1)firstBitrate=br[fbi];
+      else if(br[fbi]!=firstBitrate){file->seek(currentPos,SEEK_SET);return true;}
+      frameSize=(fv==3)?(144*br[fbi]*1000/sr[fsi]+pad):(72*br[fbi]*1000/sr[fsi]+pad);
+    }else{pos++;continue;}
+    frameCount++;
+    pos+=frameSize;
   }
   file->seek(currentPos,SEEK_SET);
   return false;

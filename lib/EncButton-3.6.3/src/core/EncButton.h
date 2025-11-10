@@ -21,29 +21,36 @@ class EncButton : public VirtEncButton {
         EB_mode(e1, modeEnc);
         EB_mode(b, modeBtn);
         setBtnLevel(btnLevel);
-        initEnc(EB_read(e0), EB_read(e1));
+        initEnc(readEnc());
     }
 
     // ====================== TICK ======================
     // функция обработки для вызова в прерывании энкодера
     int8_t tickISR() {
-        return VirtEncButton::tickISR(EB_read(e0), EB_read(e1));
+        return VirtEncButton::tickISR(readEnc());
     }
 
     // функция обработки, вызывать в loop
     bool tick() {
-        return ef.read(EB_EISR) ? VirtEncButton::tick(EB_read(b)) : VirtEncButton::tick(EB_read(e0), EB_read(e1), EB_read(b));
+        if (ef.read(EB_EISR)) return VirtEncButton::tick(EB_read(b));
+        else return VirtEncButton::tick(readEnc(), EB_read(b));
     }
 
     // функция обработки без сброса событий
     bool tickRaw() {
-        return ef.read(EB_EISR) ? VirtEncButton::tickRaw(EB_read(b)) : VirtEncButton::tickRaw(EB_read(e0), EB_read(e1), EB_read(b));
+        if (ef.read(EB_EISR)) return VirtEncButton::tickRaw(EB_read(b));
+        else return VirtEncButton::tickRaw(readEnc(), EB_read(b));
     }
 
     // ====================== READ ======================
     // прочитать значение кнопки
     bool readBtn() {
         return EB_read(b) ^ bf.read(EB_INV);
+    }
+
+    // прочитать значение энкодера
+    int8_t readEnc() {
+        return EB_read(e0) | (EB_read(e1) << 1);
     }
 
     // ===================== PRIVATE =====================
@@ -66,23 +73,25 @@ class EncButtonT : public VirtEncButton {
         EB_mode(ENCB, modeEnc);
         EB_mode(BTN, modeBtn);
         setBtnLevel(btnLevel);
-        initEnc(EB_read(ENCA), EB_read(ENCB));
+        initEnc(readEnc());
     }
 
     // ====================== TICK ======================
     // функция обработки для вызова в прерывании энкодера
     int8_t tickISR() {
-        return VirtEncButton::tickISR(EB_read(ENCA), EB_read(ENCB));
+        return VirtEncButton::tickISR(readEnc());
     }
 
     // функция обработки, вызывать в loop
     bool tick() {
-        return ef.read(EB_EISR) ? VirtEncButton::tick(EB_read(BTN)) : VirtEncButton::tick(EB_read(ENCA), EB_read(ENCB), EB_read(BTN));
+        if (ef.read(EB_EISR)) return VirtEncButton::tick(EB_read(BTN));
+        else return VirtEncButton::tick(readEnc(), EB_read(BTN));
     }
 
     // функция обработки без сброса событий
     bool tickRaw() {
-        return ef.read(EB_EISR) ? VirtEncButton::tickRaw(EB_read(BTN)) : VirtEncButton::tickRaw(EB_read(ENCA), EB_read(ENCB), EB_read(BTN));
+        if (ef.read(EB_EISR)) return VirtEncButton::tickRaw(EB_read(BTN));
+        else return VirtEncButton::tickRaw(readEnc(), EB_read(BTN));
     }
 
     // ====================== READ ======================
@@ -90,4 +99,12 @@ class EncButtonT : public VirtEncButton {
     bool readBtn() {
         return EB_read(BTN) ^ bf.read(EB_INV);
     }
+
+    // прочитать значение энкодера
+    int8_t readEnc() {
+        return EB_read(ENCA) | (EB_read(ENCB) << 1);
+    }
+
+    // ===================== PRIVATE =====================
+   private:
 };

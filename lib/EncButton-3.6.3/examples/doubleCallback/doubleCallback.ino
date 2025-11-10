@@ -6,7 +6,7 @@
 
 Button b0(4);
 Button b1(5);
-MultiButton b12;  // виртуальная
+MultiButton b2;  // виртуальная
 
 void decode(uint16_t action) {
     switch (action) {
@@ -23,22 +23,19 @@ void decode(uint16_t action) {
             Serial.println("click");
             break;
         case EB_CLICKS:
-            Serial.println("clicks");
+            Serial.print("clicks");
             break;
         case EB_REL_HOLD:
             Serial.println("release hold");
             break;
         case EB_REL_HOLD_C:
-            Serial.println("release hold clicks ");
+            Serial.print("release hold clicks ");
             break;
         case EB_REL_STEP:
             Serial.println("release step");
             break;
         case EB_REL_STEP_C:
-            Serial.println("release step clicks ");
-            break;
-        case EB_TIMEOUT:
-            Serial.println("timeout");
+            Serial.print("release step clicks ");
             break;
     }
 }
@@ -49,19 +46,19 @@ void setup() {
     // обработчики
     b0.attach([]() {
         uint16_t action = static_cast<VirtButton*>(EB_self)->action();
-        if (action != EB_HOLD) Serial.print("b0: ");
+        if (action != EB_HOLD) Serial.println("b0");
         decode(action);
     });
 
     b1.attach([]() {
         uint16_t action = static_cast<VirtButton*>(EB_self)->action();
-        if (action != EB_HOLD) Serial.print("b1: ");
+        if (action != EB_HOLD) Serial.println("b1");
         decode(action);
     });
 
-    b12.attach([]() {
+    b2.attach([]() {
         uint16_t action = static_cast<VirtButton*>(EB_self)->action();
-        if (action != EB_HOLD) Serial.print("b0+b1: ");
+        if (action != EB_HOLD) Serial.println("b2");
         decode(action);
     });
 }
@@ -69,10 +66,10 @@ void setup() {
 void loop() {
     // обработка одновременного нажатия двух кнопок
     // обрабатываются все три кнопки
-    b12.tick(b0, b1);
+    b2.tick(b0, b1);
 
     // или вручную
     if (b0.click()) Serial.println("b0 click");
     if (b1.click()) Serial.println("b1 click");
-    if (b12.click()) Serial.println("b0+b1 click");
+    if (b2.click()) Serial.println("b0+b1 click");
 }
