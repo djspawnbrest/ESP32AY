@@ -39,7 +39,7 @@ void XM_GetInfo(const char *filename){
     skipMod=true;
     return;
   }
-  xm->playerTaskEnable(false);
+  xm->playerTaskEnable(false);  // Keep in main loop for pause control
   xm->initEQBuffers(bufEQ,modEQchn);
   modChannels=xm->getNumberOfChannels();
   modChannelsEQ=(modChannels>8)?8:modChannels;

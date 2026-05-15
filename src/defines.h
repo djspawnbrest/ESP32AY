@@ -50,8 +50,8 @@ SemaphoreHandle_t sdCardSemaphore=NULL;
 SemaphoreHandle_t outSemaphore=NULL;
 
 //--------------------------------------
-// count of voltage read
-#define READ_CNT 100
+// count of voltage read - REDUCED for performance
+#define READ_CNT 20  // Was 100, now 20 for faster ADC reads
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
 // voltmeter pin
 #define VOLTPIN 7
@@ -85,8 +85,8 @@ float volt=0;
 uint8_t precent=0;
 // index of battery sprite
 uint8_t spriteIndex=0;
-// voltmeter update each ms
-#define V_UPD 2000
+// voltmeter update each ms - INCREASED for less frequent updates
+#define V_UPD 5000  // Was 2000ms, now 5000ms (5 seconds)
 unsigned long mlsV=0;
 unsigned int vUp=V_UPD;
 bool batChange=true;

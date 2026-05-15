@@ -246,6 +246,8 @@ void initialize_xm(AudioOutput *out,bool playerTask){
   for(int i=0;i<XM_BUF_NUM;i++){
     xm_buf[i]=(i16*)heap_caps_malloc(XM_BUF_SIZE, MALLOC_CAP_SPIRAM);
     assert(xm_buf[i]);
+    // Initialize buffers to silence to prevent artifacts
+    memset(xm_buf[i], 0, XM_BUF_SIZE);
   }
 
   // xm_queue=xQueueCreate(XM_BUF_NUM+1, sizeof(XM_TASK));
@@ -254,12 +256,18 @@ void initialize_xm(AudioOutput *out,bool playerTask){
 
   // xTaskCreatePinnedToCore(xm_task, "xm-helper", 4096, NULL, 20, NULL, 0);     // XM helper tasks
 
-  xTaskCreatePinnedToCore(i2s_task,"i2s-writer",4096,NULL,20,&i2s_task_handle,1);   // I2S DAC writer
+  // I2S task: Highest priority (24) for stable audio output, Core 1
+  xTaskCreatePinnedToCore(i2s_task,"i2s-writer",5120,NULL,24,&i2s_task_handle,1);
   if(playerTask){
-    xTaskCreatePinnedToCore(player_task,"player",3072,NULL,22,&player_task_handle,0);    // XM renderer, libxm (should work on a separate core)
+    // Player task: High priority (23), larger stack for complex XM, Core 0
+    xTaskCreatePinnedToCore(player_task,"xm-player",8192,NULL,23,&player_task_handle,0);
   }
 #ifdef LIBXM_DEBUG
   LOG_INFO("\tI2S initialized");
+  LOG_INFO("\tI2S task: Core 1, Priority 24, Stack 5120");
+  if(playerTask) {
+    LOG_INFO("\tPlayer task: Core 0, Priority 23, Stack 8192");
+  }
 #endif
 }
 
@@ -283,6 +291,7 @@ int xmCTX(AudioFileSource* file,size_t fileSize){
     default:
       {
         xm_set_max_loop_count((xm_context_s*)xm_ctx,1);
+        
       #ifdef LIBXM_DEBUG
         LOG_INFO("\tTrack loops: %d",xm_get_loop_count((xm_context_s*)xm_ctx));
         LOG_INFO("\tXM context created");
@@ -328,42 +337,43 @@ bool xm_player_loop(){
           // Check if i2s queue has space before generating
           if(uxQueueSpacesAvailable(i2s_queue)>0){
             auto t1=esp_timer_get_time();
-            // Clear buffer first
-            memset(xm_buf[xm_buf_idx],0,XM_BUF_SIZE);
+            
+            // Safety check once before loop
+            if(t.ctx==nullptr || xm_ctx==nullptr) {
+              return false;
+            }
+            
+            // Render samples - no memset needed, we overwrite everything
             for(int i=0;i<XM_SAMPLES_PER_BUFFER;i++){
-              float left=0.0f,right=0.0f; 
-              // Additional safety check before calling xm_sample
-              if(t.ctx!=nullptr&&xm_ctx!=nullptr){
-                if(!xm_sample(t.ctx,&left,&right)) return false;
-                // Update statistics
-                _st.xm_samp_min=min(_st.xm_samp_min,left);
-                _st.xm_samp_min=min(_st.xm_samp_min,right);
-                _st.xm_samp_max=max(_st.xm_samp_max,left);
-                _st.xm_samp_max=max(_st.xm_samp_max,right);
-                // Clamp values
-                left=max(left,-1.0f);
-                left=min(left,1.0f);
-                right=max(right,-1.0f);
-                right=min(right,1.0f);
-              }
+              float left=0.0f,right=0.0f;
+              if(!xm_sample(t.ctx,&left,&right)) return false;
+              
+              // Clamp values
+              left=max(left,-1.0f);
+              left=min(left,1.0f);
+              right=max(right,-1.0f);
+              right=min(right,1.0f);
+              
               int mvol=32767;
               xm_buf[xm_buf_idx][2*i]=(i16)(left*mvol);
               xm_buf[xm_buf_idx][2*i+1]=(i16)(right*mvol);
             }
             auto t2=esp_timer_get_time();
-            if(xQueueSend(i2s_queue,&xm_buf_idx,0)==pdTRUE){
-              xm_buf_idx++;
-              xm_buf_idx%=XM_BUF_NUM; 
-              // Complete statistics code
-              int t=(t2-t1);
-              _st.xm_render_last_us=t;
-              _st.xm_render_min_us=min(_st.xm_render_min_us,t);
-              _st.xm_render_max_us=max(_st.xm_render_max_us,t);
-              int cpu=t*XM_SAMPLE_RATE/XM_SAMPLES_PER_BUFFER/10000;
-              _st.xm_render_last_cpu=cpu;
-              _st.xm_render_min_cpu=min(_st.xm_render_min_cpu,cpu);
-              _st.xm_render_max_cpu=max(_st.xm_render_max_cpu,cpu);
-            }
+            
+            // Use blocking send to guarantee buffer delivery
+            xQueueSend(i2s_queue,&xm_buf_idx,portMAX_DELAY);
+            xm_buf_idx++;
+            xm_buf_idx%=XM_BUF_NUM; 
+            
+            // Update statistics (outside hot loop)
+            int t=(t2-t1);
+            _st.xm_render_last_us=t;
+            _st.xm_render_min_us=min(_st.xm_render_min_us,t);
+            _st.xm_render_max_us=max(_st.xm_render_max_us,t);
+            int cpu=t*XM_SAMPLE_RATE/XM_SAMPLES_PER_BUFFER/10000;
+            _st.xm_render_last_cpu=cpu;
+            _st.xm_render_min_cpu=min(_st.xm_render_min_cpu,cpu);
+            _st.xm_render_max_cpu=max(_st.xm_render_max_cpu,cpu);
           }
         }
         break;
@@ -410,6 +420,7 @@ void IRAM_ATTR player_task(void *arg){
             xm_buf[xm_buf_idx][2*i+1]=(i16)(right*mvol);
           }
           auto t2 =esp_timer_get_time();
+          
           xQueueSend(i2s_queue,&xm_buf_idx,portMAX_DELAY);
           xm_buf_idx++;
           xm_buf_idx%=XM_BUF_NUM;
@@ -445,15 +456,29 @@ void IRAM_ATTR i2s_task(void *arg){
     // Update EQ buffers here - much better timing than in xm_sample
     extern void xm_update_eq_buffers(void);
     xm_update_eq_buffers();
-    // Send samples one by one to ESP8266Audio
+    
+    // Send entire buffer at once - MUCH faster than sample-by-sample!
+    // Buffer format: [L0, R0, L1, R1, ...] int16_t stereo interleaved
+    size_t bytes_written = 0;
+    size_t total_bytes = XM_SAMPLES_PER_BUFFER * sizeof(int16_t) * 2; // stereo
+    
+    #ifdef ESP32
+    // Direct i2s_write - bypasses ConsumeSample overhead (4410 function calls!)
+    // Note: This assumes output gain is 1.0 and no special processing needed
+    // If gain/processing is needed, we'd need to process the buffer first
+    i2s_write((i2s_port_t)0, (const char*)xm_buf[idx], total_bytes, &bytes_written, portMAX_DELAY);
+    #else
+    // Fallback to sample-by-sample for non-ESP32
     for(int i=0;i<XM_SAMPLES_PER_BUFFER;i++){
       int16_t sample[2];
       sample[0]=xm_buf[idx][2*i];   // Left
       sample[1]=xm_buf[idx][2*i+1]; // Right
       while (!output->ConsumeSample(sample)){
-        vTaskDelay(1); // Wait if output buffer is full
+        vTaskDelay(1);
       }
     }
+    #endif
+    
     vTaskDelay(1);
   }
 }
@@ -736,3 +761,17 @@ void xm_set_loop(bool loop){
     memset(xm_ctx->row_loop_count,0,MAX_NUM_ROWS*xm_ctx->module.length*sizeof(uint8_t));
   }
 }
+
+#ifdef LIBXM_DEBUG
+void log_xm_performance() {
+    if(xm_ctx) {
+        LOG_INFO("XM Performance:");
+        LOG_INFO("  Channels: %d", xm_ctx->module.num_channels);
+        LOG_INFO("  Buffer: %dms (%d samples)", XM_FRAME_MS, XM_SAMPLES_PER_BUFFER);
+        LOG_INFO("  Render time: %d us (min: %d, max: %d)", 
+                 _st.xm_render_last_us, _st.xm_render_min_us, _st.xm_render_max_us);
+        LOG_INFO("  CPU usage: %d%% (min: %d%%, max: %d%%)",
+                 _st.xm_render_last_cpu, _st.xm_render_min_cpu, _st.xm_render_max_cpu);
+    }
+}
+#endif

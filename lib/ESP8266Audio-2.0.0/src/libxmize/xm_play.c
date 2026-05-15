@@ -1518,6 +1518,11 @@ bool IRAM_ATTR xm_sample(xm_context_t* ctx, float* left, float* right)
     return false;
   }
 
+  // Cache function calls OUTSIDE the channel loop - CRITICAL optimization!
+  int separation=xm_get_stereo_separation();
+  float separation_div_128 = separation/128.0f;
+  float inv_separation_div_128 = (128-separation)/128.0f;
+
   for (uint8_t i = 0; i < ctx->module.num_channels; ++i)
   {
     xm_channel_context_t* ch = ctx->channels + i;
@@ -1529,18 +1534,14 @@ bool IRAM_ATTR xm_sample(xm_context_t* ctx, float* left, float* right)
 
     if (!ch->muted && !ch->instrument->muted)
     {
-      // *left  += fval * ch->actual_volume * (1.f - ch->actual_panning);
-      // *right += fval * ch->actual_volume * ch->actual_panning;
-
-      // Apply MOD-style separation by modifying actual_panning
-      int separation=xm_get_stereo_separation();
+      // Apply MOD-style separation - use cached values
       float mod_panning;
       if(i%4==0||i%4==3){
         // Channels 0,3,4,7,8,11... go left
-        mod_panning=separation/128.0f;
+        mod_panning=separation_div_128;
       }else{
         // Channels 1,2,5,6,9,10... go right  
-        mod_panning=(128-separation)/128.0f;
+        mod_panning=inv_separation_div_128;
       }
       // Use original XM mixing with modified panning
       *left+=fval*ch->actual_volume*(1.f-mod_panning);
@@ -1557,18 +1558,25 @@ bool IRAM_ATTR xm_sample(xm_context_t* ctx, float* left, float* right)
   const float fgvol=ctx->global_volume*ctx->amplification;
   *left*=fgvol;
   *right*=fgvol;
+  
   // Increment sample counter for time tracking
   ctx->generated_samples++;
-  // Update track frame pointer with logical time using integer math
-  unsigned long* track_frame=xm_get_track_frame_ptr();
-  if(track_frame){
-    extern int xm_get_original_sample_rate(void);
-    int original_rate=xm_get_original_sample_rate();
-    // Scale by 1000 to avoid float: logical_samples += original_rate / ctx->rate
-    logical_samples_scaled+=(original_rate*1000)/ctx->rate;
-    // Convert to trackFrame: (logical_samples * 50) / original_rate
-    *track_frame=(logical_samples_scaled*50)/(original_rate*1000);
+  
+  // Update track frame pointer - cache function calls and do less frequently
+  static uint16_t frame_update_counter = 0;
+  if(++frame_update_counter >= 441) {  // Update every 10ms instead of every sample
+    frame_update_counter = 0;
+    unsigned long* track_frame=xm_get_track_frame_ptr();
+    if(track_frame){
+      extern int xm_get_original_sample_rate(void);
+      int original_rate=xm_get_original_sample_rate();
+      // Scale by 1000 to avoid float: logical_samples += original_rate / ctx->rate
+      logical_samples_scaled+=(original_rate*1000)/ctx->rate * 441;
+      // Convert to trackFrame: (logical_samples * 50) / original_rate
+      *track_frame=(logical_samples_scaled*50)/(original_rate*1000);
+    }
   }
+  
   return true;
 }
 

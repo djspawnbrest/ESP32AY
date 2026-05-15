@@ -20,31 +20,46 @@ void clearEQ(){
   tA=tB=tC=0;
 }
 
-// Helper: draw channel bar with auto-decrement
-static inline void drawBar(uint8_t &val,uint8_t x,uint8_t y,uint8_t h,uint8_t maxW,uint8_t scale){
-  if(val>0){
-    int w=(val*maxW)/scale;
-    if(w>maxW)w=maxW;
-    img.fillRectHGradient(x,y,w,h,TFT_GREEN,TFT_RED);
-    val--;
-  }
-}
-
-// Helper: setup text style once
-static inline void setupText(){
-  img.setFreeFont(&WildFont);
-  img.setTextSize(2);
-  img.setTextColor(WILD_CYAN);
-}
-
 void fastEQ(){
-  img.setColorDepth(8);
-  img.createSprite(224,68);
-  img.fillScreen(0);
+  // Create sprites ONCE and reuse them - static local variables
+  static TFT_eSprite* eqSprite1 = nullptr;
+  static TFT_eSprite* eqSprite2 = nullptr;
+  
+  // Initialize sprites on first call
+  if(eqSprite1 == nullptr) {
+    eqSprite1 = new TFT_eSprite(&tft);
+    eqSprite1->setColorDepth(8);
+    eqSprite1->createSprite(224,68);
+  }
+  if(eqSprite2 == nullptr) {
+    eqSprite2 = new TFT_eSprite(&tft);
+    eqSprite2->setColorDepth(16);
+    eqSprite2->createSprite(222,20);
+  }
+  
+  // Helper lambda: draw channel bar with auto-decrement
+  auto drawBar = [&](uint8_t &val,uint8_t x,uint8_t y,uint8_t h,uint8_t maxW,uint8_t scale){
+    if(val>0){
+      int w=(val*maxW)/scale;
+      if(w>maxW)w=maxW;
+      eqSprite2->fillRectHGradient(x,y,w,h,TFT_GREEN,TFT_RED);
+      val--;
+    }
+  };
+  
+  // Helper lambda: setup text style
+  auto setupText = [&](){
+    eqSprite2->setFreeFont(&WildFont);
+    eqSprite2->setTextSize(2);
+    eqSprite2->setTextColor(WILD_CYAN);
+  };
+  
+  // Clear and redraw sprite 1
+  eqSprite1->fillScreen(0);
   uint8_t shift=0;
   for(uint8_t i=0;i<56;i++){
-    img.fillRect(shift,26,2,2,TFT_BLUE);
-    img.fillRect(shift,66,2,2,TFT_BLUE);
+    eqSprite1->fillRect(shift,26,2,2,TFT_BLUE);
+    eqSprite1->fillRect(shift,66,2,2,TFT_BLUE);
     shift+=4;
   }
   shift=16;
@@ -54,7 +69,7 @@ void fastEQ(){
       if(bufEQ[i]!=0){
         int h=(EQ_HEIGHT/2)*bufEQ[i]/8;
         if(h>EQ_HEIGHT) h=EQ_HEIGHT;
-        img.fillRectVGradient(shift,24-h,3,h,TFT_RED,TFT_GREEN);
+        eqSprite1->fillRectVGradient(shift,24-h,3,h,TFT_RED,TFT_GREEN);
         bufEQ[i]--;
       }
       shift+=4;
@@ -62,21 +77,19 @@ void fastEQ(){
       if(bufEQ[i]!=0){
         int h=(EQ_HEIGHT/2)*bufEQ[i]/8;
         if(h>EQ_HEIGHT) h=EQ_HEIGHT;
-        img.fillRectVGradient(shift2,24+16+24-h,3,h,TFT_RED,TFT_GREEN);
+        eqSprite1->fillRectVGradient(shift2,24+16+24-h,3,h,TFT_RED,TFT_GREEN);
         bufEQ[i]--;
       }
       shift2+=4;
     }
   }
-  img.pushSprite(9,85);
-  img.deleteSprite();
-  //ABC for AY or ABCDEFGH channels for mod
-  img.setColorDepth(16);
-  img.createSprite(222,20);
-  img.fillScreen(0);
+  eqSprite1->pushSprite(9,85);
+  
+  // Clear and redraw sprite 2
+  eqSprite2->fillScreen(0);
   shift=0;
   for(uint8_t i=0;i<56;i++){
-    img.fillRect(shift,0,2,2,TFT_BLUE);
+    eqSprite2->fillRect(shift,0,2,2,TFT_BLUE);
     shift+=4;
   }
   if((PlayerCTRL.music_type==TYPE_MOD
@@ -86,10 +99,10 @@ void fastEQ(){
   #endif
   )&&!lfsConfig.playerSource==PLAYER_MODE_UART){
     setupText();
-    img.setCursor(0,20);img.print("A");
-    img.setCursor(56,20);img.print("B");
-    img.setCursor(112,20);img.print("C");
-    img.setCursor(168,20);img.print("D");
+    eqSprite2->setCursor(0,20);eqSprite2->print("A");
+    eqSprite2->setCursor(56,20);eqSprite2->print("B");
+    eqSprite2->setCursor(112,20);eqSprite2->print("C");
+    eqSprite2->setCursor(168,20);eqSprite2->print("D");
     switch(modChannelsEQ){
       case 6:
         drawBar(modEQchn[0],11,6,6,44,64);
@@ -118,15 +131,15 @@ void fastEQ(){
     }
   }else if(PlayerCTRL.music_type==TYPE_TAP||PlayerCTRL.music_type==TYPE_TZX||PlayerCTRL.music_type==TYPE_MP3||PlayerCTRL.music_type==TYPE_WAV){
     setupText();
-    img.setCursor(0,20);img.print("L");
-    img.setCursor(113,20);img.print("R");
+    eqSprite2->setCursor(0,20);eqSprite2->print("L");
+    eqSprite2->setCursor(113,20);eqSprite2->print("R");
     drawBar(modEQchn[0],11,6,12,98,64);
     drawBar(modEQchn[1],124,6,12,98,64);
   }else{
     setupText();
-    img.setCursor(0,20);img.print("A");
-    img.setCursor(73,20);img.print("B");
-    img.setCursor(149,20);img.print("C");
+    eqSprite2->setCursor(0,20);eqSprite2->print("A");
+    eqSprite2->setCursor(73,20);eqSprite2->print("B");
+    eqSprite2->setCursor(149,20);eqSprite2->print("C");
     if(AYInfo.is_ts&&lfsConfig.playerSource==PLAYER_MODE_SD){
       drawBar(tA1,11,6,6,58,8);
       drawBar(tA2,11,12,6,58,8);
@@ -140,8 +153,7 @@ void fastEQ(){
       drawBar(tC,160,6,12,58,8);
     }
   }
-  img.pushSprite(9,293);
-  img.deleteSprite();
+  eqSprite2->pushSprite(9,293);
 }
 
 // Helper: find frequency index

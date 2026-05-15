@@ -120,6 +120,8 @@ void loop(){
       alert_screen();
       break;
   }
+  // Yield to other tasks more frequently for better encoder response
+  taskYIELD();
   vTaskDelay(pdMS_TO_TICKS(1));
   scrTimeout();
   esp_task_wdt_reset();

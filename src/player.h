@@ -1268,7 +1268,7 @@ void player_screen(){
       PlayerCTRL.isBrowserCommand=true;
       PlayerCTRL.autoPlay=false;
       PlayerCTRL.isFinish=true;
-      delay(30);
+      vTaskDelay(pdMS_TO_TICKS(30));  // Non-blocking delay
     }
     if(!enc.holding()&&enc.left()&&lcdBlackout==false&&scrNotPlayer==false){
       changeTrackIcon(false);
@@ -1278,7 +1278,7 @@ void player_screen(){
       PlayerCTRL.isBrowserCommand=true;
       PlayerCTRL.autoPlay=false;
       PlayerCTRL.isFinish=true;
-      delay(30);
+      vTaskDelay(pdMS_TO_TICKS(30));  // Non-blocking delay
     }
     if(enc.rightH()&&lcdBlackout==false&&scrNotPlayer==false){
       if(PlayerCTRL.music_type!=TYPE_AY&&PlayerCTRL.music_type!=TYPE_TAP&&PlayerCTRL.music_type!=TYPE_TZX){
