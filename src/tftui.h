@@ -199,6 +199,12 @@ void spr_draw_buttons(TFT_eSprite &spr,uint16_t row,uint8_t size=1,uint8_t curso
 void initVoltage(){
   pinMode(VOLTPIN,INPUT);
   analogReadResolution(12);
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+  // Устанавливаем аттенюацию для ESP32-S3 (0-3.3V диапазон)
+  analogSetAttenuation(ADC_11db); // ADC_11db = 0-3.3V range
+  // Устанавливаем пин-специфичную аттенюацию для VOLTPIN
+  analogSetPinAttenuation(VOLTPIN, ADC_11db);
+#endif
   randomSeed(analogRead(VOLTPIN));
 #ifndef USE_EXTERNAL_DAC
   pinMode(CHGSENS,INPUT);

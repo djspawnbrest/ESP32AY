@@ -143,7 +143,7 @@ void initOut(int buf=32){
 void DACInit(){
   initOut();
   DACTimer=timerBegin(0,80,true); // timer_id = 0; divider=79;(old 80) countUp = true;
-  timerAttachInterrupt(DACTimer,&DACTimer_ISR,true); // edge = true
+  timerAttachInterrupt(DACTimer,&DACTimer_ISR,false); // edge = false (LEVEL mode for ESP32-S3)
   timerAlarmWrite(DACTimer,1000000/TIMER_RATE,true);
   timerAlarmEnable(DACTimer);
   sound_init();

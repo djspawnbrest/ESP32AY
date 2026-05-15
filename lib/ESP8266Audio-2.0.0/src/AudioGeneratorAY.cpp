@@ -508,7 +508,7 @@ bool AudioGeneratorAY::beginTimer()
   
   timerMode = true;
   ayTimer = timerBegin(1, 80, true);
-  timerAttachInterrupt(ayTimer, &timerISR, true);
+  timerAttachInterrupt(ayTimer, &timerISR, false); // edge = false (LEVEL mode for ESP32-S3)
   timerAlarmWrite(ayTimer, 1000000 / sampleRate, true);
   timerAlarmEnable(ayTimer);
   

@@ -1228,7 +1228,9 @@ void checkStartUpConfig(){
   if(digitalRead(OK_BTN)==LOW){
     configResetPlayingPath();
   }
-  #if defined(CONFIG_IDF_TARGET_ESP32S3)
+  #if defined(CONFIG_IDF_TARGET_ESP32S3) && \
+  defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 0 && \
+  defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT == 1
     // Mount SD card to USB
     massStorage();
   #endif

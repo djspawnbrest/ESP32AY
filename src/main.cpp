@@ -66,6 +66,7 @@ void setup(){
   checkStartUpConfig();
   initRTC();
   setRTC();
+  printRTCStatus();
   initVoltage();
   TFTInit();
   buttonsSetup();
