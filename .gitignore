@@ -12,3 +12,12 @@ lib/.DS_Store
 PCB/.DS_Store
 src/.DS_Store
 data/.DS_Store
+
+# Build system generated files (temporary, not committed)
+.build_session
+build_number.lock
+src/build_info.h
+
+# Build system tracked files (MUST be committed for shared build numbers)
+# build_number.txt - committed to git
+# .build_version - committed to git

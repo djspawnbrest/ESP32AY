@@ -219,69 +219,70 @@ void config_about_screen(){
     img.fillScreen(0);
     spr_println(img,0,1,PSTR("About"),2,ALIGN_CENTER,WILD_CYAN);
     img.pushSprite(8,screenY);
-    screenY+=16;
+    img.fillScreen(0);
     // Empty lines
+    screenY+=16;
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.pushSprite(8,screenY);
+    screenY+=16;
+    img.pushSprite(8,screenY);
+    // ZxPOD Player
     img.fillScreen(0);
-    img.pushSprite(8,screenY);
+    spr_println(img,0,1,PSTR("ZxPOD Player"),2,ALIGN_CENTER,TFT_RED);
     screenY+=16;
     img.pushSprite(8,screenY);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    // img.pushSprite(8,screenY);
-    // screenY+=16;
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    // Version
+    // Version with build number
     img.fillScreen(0);
-    sprintf(buf,"ZxPOD Player v.%s",FW_VERSION);
-    spr_println(img,0,1,buf,2,ALIGN_CENTER,TFT_RED);
-    img.pushSprite(8,screenY);
+    sprintf(buf,"v.%s",FULL_VERSION);
+    spr_println(img,0,1,buf,2,ALIGN_CENTER,WILD_GREEN);
     screenY+=16;
+    img.pushSprite(8,screenY);
+    // Date (green, moved before "by")
+    img.fillScreen(0);
+    spr_println(img,0,1,PSTR(BUILD_DATE),2,ALIGN_CENTER,TFT_RED);
+    screenY+=16;
+    img.pushSprite(8,screenY);
     // By
     img.fillScreen(0);
     spr_println(img,0,1,PSTR("by"),2,ALIGN_CENTER,TFT_CYAN);
-    img.pushSprite(8,screenY);
     screenY+=16;
+    img.pushSprite(8,screenY);
     // Authors (3 overlays)
     img.fillScreen(0);
     spr_println(img,0,1,PSTR("       ,"),2,ALIGN_LEFT,WILD_GREEN);
     spr_println(img,0,1,PSTR("  Spawn"),2,ALIGN_LEFT,TFT_YELLOW);
     spr_println(img,0,1,PSTR("Andy Karpov  "),2,ALIGN_RIGHT,TFT_YELLOW);
-    img.pushSprite(8,screenY);
     screenY+=16;
-    // Date
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("11'25"),2,ALIGN_CENTER,WILD_RED);
     img.pushSprite(8,screenY);
-    screenY+=16;
     // Powered with
     img.fillScreen(0);
     spr_println(img,0,1,PSTR("powered with:"),2,ALIGN_CENTER,TFT_CYAN);
-    img.pushSprite(8,screenY);
     screenY+=16;
+    img.pushSprite(8,screenY);
     // Libraries
     img.fillScreen(0);
     spr_println(img,0,1,PSTR("libayfly, z80emu,"),2,ALIGN_CENTER,ZX_RED_B);
-    img.pushSprite(8,screenY);
     screenY+=16;
+    img.pushSprite(8,screenY);
     img.fillScreen(0);
     spr_println(img,0,1,PSTR("ESP8266Audio, SdFat,"),2,ALIGN_CENTER,ZX_YELLOW_B);
-    img.pushSprite(8,screenY);
     screenY+=16;
+    img.pushSprite(8,screenY);
     img.fillScreen(0);
     spr_println(img,0,1,PSTR("libxmize, TFT_eSPI,"),2,ALIGN_CENTER,ZX_GREEN_B);
-    img.pushSprite(8,screenY);
     screenY+=16;
+    img.pushSprite(8,screenY);
     img.fillScreen(0);
     spr_println(img,0,1,PSTR("EncButton, GyverFIFO,"),2,ALIGN_CENTER,ZX_CYAN_B);
-    img.pushSprite(8,screenY);
     screenY+=16;
+    img.pushSprite(8,screenY);
     img.fillScreen(0);
     spr_println(img,0,1,PSTR("ArduinoFFT."),2,ALIGN_CENTER,ZX_RED_B);
-    img.pushSprite(8,screenY);
     screenY+=16;
+    img.pushSprite(8,screenY);
     // Fill remaining space to 304px (19 lines total)
+    screenY+=16;
     img.fillScreen(0);
     while(screenY<8+304){
       img.pushSprite(8,screenY);

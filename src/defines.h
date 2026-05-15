@@ -3,6 +3,7 @@
 #include <Wire.h>
 
 #define FW_VERSION         "3.7"
+#include "build_info.h"
 #define LFSCONFIG_VERSION 2  // Increment when lfsConfig structure changes
 #define SDCONFIG_VERSION  2  // Increment when sdConfig structure changes
 
