@@ -1204,11 +1204,11 @@ void AudioGeneratorS3M::GetSample(int16_t sample[2]){
 		const int64_t scaledL=(int64_t)sampleValue*vol*panL;
 		const int64_t scaledR=(int64_t)sampleValue*vol*panR;
 	#if defined(USE_EXTERNAL_DAC)||defined(CONFIG_IDF_TARGET_ESP32S3)
-		sumL+=scaledL>>14;  // Changed from >>15 to >>14 to double volume (match WAV/MP3 levels)
+		sumL+=scaledL>>14;  // External DAC and S3 - full volume (match WAV/MP3 levels)
 		sumR+=scaledR>>14;
 	#else
-		sumL+=scaledL>>14;  // Keep >>14 for internal DAC (ESP32) - already correct volume
-		sumR+=scaledR>>14;
+		sumL+=scaledL>>13;  // Internal DAC (ESP32) - increase volume to match MOD/MP3
+		sumR+=scaledR>>13;
 	#endif
 	}
 	sample[AudioOutput::LEFTCHANNEL]=(int16_t)constrain(sumL,INT16_MIN,INT16_MAX);
