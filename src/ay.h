@@ -44,42 +44,70 @@ const uint32_t ay_mixer_remap_table[6*3]={
   2,1,0,//LAY_CBA
 };
 
+// Track if AY clock is already initialized
+static bool ay_clock_initialized=false;
+static uint32_t current_ay_clock=0;
+
 static void initAYClock(uint32_t clock){
+  // If clock is already initialized and frequency hasn't changed, skip reconfiguration
+  if(ay_clock_initialized && current_ay_clock==clock){
+    return;
+  }
+  
 #if defined(CONFIG_IDF_TARGET_ESP32)
-  ledc_timer_config_t ledc_timer={};
-  ledc_timer.speed_mode=LEDC_HIGH_SPEED_MODE;
-  ledc_timer.timer_num=LEDC_TIMER_0;
-  ledc_timer.duty_resolution=LEDC_TIMER_1_BIT;
-  ledc_timer.freq_hz=clock;
-  ledc_timer.clk_cfg=LEDC_USE_APB_CLK; 
-  ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
-  ledc_channel_config_t ledc_channel={};
-  ledc_channel.speed_mode=LEDC_HIGH_SPEED_MODE;
-  ledc_channel.channel=LEDC_CHANNEL_0;
-  ledc_channel.timer_sel=LEDC_TIMER_0;
-  ledc_channel.intr_type=LEDC_INTR_DISABLE;
-  ledc_channel.gpio_num=AY_CLK;
-  ledc_channel.duty=1; 
-  ledc_channel.hpoint=0;
-  ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+  // For ESP32: Use ledc_set_freq if already initialized, otherwise full config
+  if(ay_clock_initialized){
+    // Update frequency on the fly without reconfiguring the entire timer
+    ledc_set_freq(LEDC_HIGH_SPEED_MODE, LEDC_TIMER_0, clock);
+  }else{
+    // First time initialization
+    ledc_timer_config_t ledc_timer={};
+    ledc_timer.speed_mode=LEDC_HIGH_SPEED_MODE;
+    ledc_timer.timer_num=LEDC_TIMER_0;
+    ledc_timer.duty_resolution=LEDC_TIMER_1_BIT;
+    ledc_timer.freq_hz=clock;
+    ledc_timer.clk_cfg=LEDC_USE_APB_CLK; 
+    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+    ledc_channel_config_t ledc_channel={};
+    ledc_channel.speed_mode=LEDC_HIGH_SPEED_MODE;
+    ledc_channel.channel=LEDC_CHANNEL_0;
+    ledc_channel.timer_sel=LEDC_TIMER_0;
+    ledc_channel.intr_type=LEDC_INTR_DISABLE;
+    ledc_channel.gpio_num=AY_CLK;
+    ledc_channel.duty=1; 
+    ledc_channel.hpoint=0;
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+    ay_clock_initialized = true;
+  }
 #elif defined(CONFIG_IDF_TARGET_ESP32S3)
-  ledc_timer_config_t ledc_timer={};
-  ledc_timer.speed_mode=LEDC_LOW_SPEED_MODE;//LEDC_HIGH_SPEED_MODE;
-  ledc_timer.timer_num=LEDC_TIMER_2;
-  ledc_timer.duty_resolution=LEDC_TIMER_1_BIT;
-  ledc_timer.freq_hz=clock;
-  ledc_timer.clk_cfg=LEDC_AUTO_CLK; 
-  ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
-  ledc_channel_config_t ledc_channel={};
-  ledc_channel.speed_mode=LEDC_LOW_SPEED_MODE;//LEDC_HIGH_SPEED_MODE;
-  ledc_channel.channel=LEDC_CHANNEL_0;
-  ledc_channel.timer_sel=LEDC_TIMER_2;
-  ledc_channel.intr_type=LEDC_INTR_DISABLE;
-  ledc_channel.gpio_num=AY_CLK;
-  ledc_channel.duty=1; 
-  ledc_channel.hpoint=0;
-  ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+  // For ESP32-S3: Use ledc_set_freq if already initialized, otherwise full config
+  if(ay_clock_initialized){
+    // Update frequency on the fly without reconfiguring the entire timer
+    ledc_set_freq(LEDC_LOW_SPEED_MODE, LEDC_TIMER_2, clock);
+  }else{
+    // First time initialization
+    ledc_timer_config_t ledc_timer={};
+    ledc_timer.speed_mode=LEDC_LOW_SPEED_MODE;
+    ledc_timer.timer_num=LEDC_TIMER_2;
+    ledc_timer.duty_resolution=LEDC_TIMER_1_BIT;
+    ledc_timer.freq_hz=clock;
+    ledc_timer.clk_cfg=LEDC_AUTO_CLK; 
+    ESP_ERROR_CHECK(ledc_timer_config(&ledc_timer));
+    ledc_channel_config_t ledc_channel={};
+    ledc_channel.speed_mode=LEDC_LOW_SPEED_MODE;
+    ledc_channel.channel=LEDC_CHANNEL_0;
+    ledc_channel.timer_sel=LEDC_TIMER_2;
+    ledc_channel.intr_type=LEDC_INTR_DISABLE;
+    ledc_channel.gpio_num=AY_CLK;
+    ledc_channel.duty=1; 
+    ledc_channel.hpoint=0;
+    ESP_ERROR_CHECK(ledc_channel_config(&ledc_channel));
+    ay_clock_initialized = true;
+  }
 #endif
+  
+  current_ay_clock=clock;
+  // printf("AY clock set to %lu Hz (%.2f MHz)\n", clock, clock / 1000000.0f);
 }
 
 void out_595_byte(byte x){

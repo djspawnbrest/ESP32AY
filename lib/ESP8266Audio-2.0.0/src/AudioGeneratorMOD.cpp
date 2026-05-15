@@ -1019,22 +1019,10 @@ void AudioGeneratorMOD::GetSample(int16_t sample[2]){
     sumL+=out32*min(128-Mixer.channelPanning[channel],64)>>6;
     sumR+=out32*min(Mixer.channelPanning[channel],64)>>6;
   }
-  // Downscale to BITDEPTH-a bit faster because the compiler can replaced division by constants with proper "right shift"+correct handling of sign bit
-  if(Mod.numberOfChannels<=4){
-    // up to 4 channels
-    sumL/=4;
-    sumR/=4;
-  }else{
-    if(Mod.numberOfChannels<=6){
-      // 5 or 6 channels-pre-multiply be 1.5,then divide by 8 -> same as division by 6
-      sumL=(sumL+(sumL/2))/8;
-      sumR=(sumR+(sumR/2))/8;      
-    }else{
-      // 7,8,or more channels
-      sumL/=8;
-      sumR/=8;
-    }
-  }
+  // Volume normalization: removed channel division to match WAV/MP3 levels
+  // Old code divided by 4/6/8 depending on channel count, making MOD quieter
+  // Now MOD plays at same volume as WAV/MP3 (full ±32767 range)
+  
   // clip samples to 16bit (with saturation in case of overflow)
   if(sumL<=INT16_MIN) sumL=INT16_MIN;
   else if(sumL>=INT16_MAX) sumL=INT16_MAX;
