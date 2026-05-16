@@ -58,13 +58,37 @@ void XM_GetInfo(const char *filename){
     }
     AYInfo.Length=1;
     skipMod=true;
+    // FIX FOR MEMORY LEAK - delete objects if initialization failed
+    if(xm){
+      delete xm;
+      xm=nullptr;
+    }
+    if(modFile){
+      modFile->close();
+      delete modFile;
+      modFile=nullptr;
+    }
     return;
   }
   xm->playerTaskEnable(false);  // Keep in main loop for pause control
   xm->initEQBuffers(bufEQ,modEQchn);
   modChannels=xm->getNumberOfChannels();
   modChannelsEQ=(modChannels>8)?8:modChannels;
-  if(modChannels<2||modChannels>32){AYInfo.Length=1;skipMod=true;return;}
+  if(modChannels<2||modChannels>32){
+    AYInfo.Length=1;
+    skipMod=true;
+    // FIX FOR MEMORY LEAK - delete objects if channel check failed
+    if(xm){
+      delete xm;
+      xm=nullptr;
+    }
+    if(modFile){
+      modFile->close();
+      delete modFile;
+      modFile=nullptr;
+    }
+    return;
+  }
   AYInfo.Length=xm->getPlaybackTime();
   xm->getTitle(AYInfo.Name,sizeof(AYInfo.Name));
   xm->getDescription(AYInfo.Author,sizeof(AYInfo.Author));

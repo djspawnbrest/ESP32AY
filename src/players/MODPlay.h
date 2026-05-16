@@ -30,14 +30,57 @@ void MOD_GetInfo(const char *filename){
   #endif
   mod->SetStereoSeparation(lfsConfig.modStereoSeparation);
   modFile->open(filename);
-  mod->initializeFile(modFile);
+  bool status=mod->initializeFile(modFile);
+  if(!status){
+    // FIX FOR MEMORY LEAK - delete objects if initialization failed
+    AYInfo.Length=1;
+    skipMod=true;
+    if(mod){
+      delete mod;
+      mod=nullptr;
+    }
+    if(modFile){
+      modFile->close();
+      delete modFile;
+      modFile=nullptr;
+    }
+    return;
+  }
   mod->initEQBuffers(bufEQ,modEQchn);
   modChannels=mod->getNumberOfChannels();
   modChannelsEQ=(modChannels>8)?8:modChannels;
   #if !defined(CONFIG_IDF_TARGET_ESP32S3)&&!defined(BOARD_HAS_PSRAM)
-  if(modChannels<2||modChannels>16){AYInfo.Length=1;skipMod=true;return;}
+  if(modChannels<2||modChannels>16){
+    AYInfo.Length=1;
+    skipMod=true;
+    // FIX FOR MEMORY LEAK - delete objects if channel check failed
+    if(mod){
+      delete mod;
+      mod=nullptr;
+    }
+    if(modFile){
+      modFile->close();
+      delete modFile;
+      modFile=nullptr;
+    }
+    return;
+  }
   #else
-  if(modChannels<2||modChannels>32){AYInfo.Length=1;skipMod=true;return;}
+  if(modChannels<2||modChannels>32){
+    AYInfo.Length=1;
+    skipMod=true;
+    // FIX FOR MEMORY LEAK - delete objects if channel check failed
+    if(mod){
+      delete mod;
+      mod=nullptr;
+    }
+    if(modFile){
+      modFile->close();
+      delete modFile;
+      modFile=nullptr;
+    }
+    return;
+  }
   #endif
   AYInfo.Length=mod->getPlaybackTime();
   mod->getTitle(AYInfo.Name,sizeof(AYInfo.Name));

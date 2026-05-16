@@ -236,6 +236,7 @@ void cleanup_xm(){
     vTaskDelete(player_task_handle);
     player_task_handle=nullptr;
   }
+  // NOTE: xm_ctx is freed in stop_xm(), not here
 }
 
 void initialize_xm(AudioOutput *out,bool playerTask){
@@ -315,10 +316,16 @@ int xmCTX(AudioFileSource* file,size_t fileSize){
 }
 
 void XMPlaybackControl(u8 control){
+  // Check if queue exists before sending
+  if(!player_queue){
+    return;
+  }
+  
   PLAYER_TASK t;
   t.task=control;
   t.ctx=xm_ctx;
-  xQueueSend(player_queue,&t,portMAX_DELAY);
+  // Use timeout instead of portMAX_DELAY to prevent deadlock
+  xQueueSend(player_queue,&t,pdMS_TO_TICKS(100));
 #ifdef LIBXM_DEBUG
   LOG_INFO("\tXM playback control called");
 #endif
@@ -326,6 +333,11 @@ void XMPlaybackControl(u8 control){
 
 bool xm_player_loop(){
   if(player_task_handle==NULL){
+    // Check if queues exist - they might be NULL during initialization
+    if(!player_queue || !i2s_queue){
+      return false;
+    }
+    
     static PLAYER_TASK t;
     static int xm_buf_idx=0;
     // Check for new commands (non-blocking)
@@ -360,8 +372,8 @@ bool xm_player_loop(){
             }
             auto t2=esp_timer_get_time();
             
-            // Use blocking send to guarantee buffer delivery
-            xQueueSend(i2s_queue,&xm_buf_idx,portMAX_DELAY);
+            // Use timeout instead of blocking send to prevent deadlock
+            xQueueSend(i2s_queue,&xm_buf_idx,pdMS_TO_TICKS(100));
             xm_buf_idx++;
             xm_buf_idx%=XM_BUF_NUM; 
             
@@ -421,7 +433,8 @@ void IRAM_ATTR player_task(void *arg){
           }
           auto t2 =esp_timer_get_time();
           
-          xQueueSend(i2s_queue,&xm_buf_idx,portMAX_DELAY);
+          // Use timeout instead of portMAX_DELAY to allow task deletion
+          xQueueSend(i2s_queue,&xm_buf_idx,pdMS_TO_TICKS(100));
           xm_buf_idx++;
           xm_buf_idx%=XM_BUF_NUM;
           int t=(t2-t1);
@@ -452,32 +465,35 @@ void IRAM_ATTR player_task(void *arg){
 void IRAM_ATTR i2s_task(void *arg){
   int idx;
   while(1){
-    xQueueReceive(i2s_queue,&idx,portMAX_DELAY);
-    // Update EQ buffers here - much better timing than in xm_sample
-    extern void xm_update_eq_buffers(void);
-    xm_update_eq_buffers();
-    
-    // Send entire buffer at once - MUCH faster than sample-by-sample!
-    // Buffer format: [L0, R0, L1, R1, ...] int16_t stereo interleaved
-    size_t bytes_written = 0;
-    size_t total_bytes = XM_SAMPLES_PER_BUFFER * sizeof(int16_t) * 2; // stereo
-    
-    #ifdef ESP32
-    // Direct i2s_write - bypasses ConsumeSample overhead (4410 function calls!)
-    // Note: This assumes output gain is 1.0 and no special processing needed
-    // If gain/processing is needed, we'd need to process the buffer first
-    i2s_write((i2s_port_t)0, (const char*)xm_buf[idx], total_bytes, &bytes_written, portMAX_DELAY);
-    #else
-    // Fallback to sample-by-sample for non-ESP32
-    for(int i=0;i<XM_SAMPLES_PER_BUFFER;i++){
-      int16_t sample[2];
-      sample[0]=xm_buf[idx][2*i];   // Left
-      sample[1]=xm_buf[idx][2*i+1]; // Right
-      while (!output->ConsumeSample(sample)){
-        vTaskDelay(1);
+    // Use timeout instead of portMAX_DELAY to allow task deletion
+    if(xQueueReceive(i2s_queue,&idx,pdMS_TO_TICKS(100))==pdTRUE){
+      // Update EQ buffers here - much better timing than in xm_sample
+      extern void xm_update_eq_buffers(void);
+      xm_update_eq_buffers();
+      
+      // Send entire buffer at once - MUCH faster than sample-by-sample!
+      // Buffer format: [L0, R0, L1, R1, ...] int16_t stereo interleaved
+      size_t bytes_written = 0;
+      size_t total_bytes = XM_SAMPLES_PER_BUFFER * sizeof(int16_t) * 2; // stereo
+      
+      #ifdef ESP32
+      // Direct i2s_write - bypasses ConsumeSample overhead (4410 function calls!)
+      // Note: This assumes output gain is 1.0 and no special processing needed
+      // If gain/processing is needed, we'd need to process the buffer first
+      // Use timeout instead of portMAX_DELAY to prevent deadlock during task deletion
+      i2s_write((i2s_port_t)0, (const char*)xm_buf[idx], total_bytes, &bytes_written, pdMS_TO_TICKS(100));
+      #else
+      // Fallback to sample-by-sample for non-ESP32
+      for(int i=0;i<XM_SAMPLES_PER_BUFFER;i++){
+        int16_t sample[2];
+        sample[0]=xm_buf[idx][2*i];   // Left
+        sample[1]=xm_buf[idx][2*i+1]; // Right
+        while (!output->ConsumeSample(sample)){
+          vTaskDelay(1);
+        }
       }
+      #endif
     }
-    #endif
     
     vTaskDelay(1);
   }
