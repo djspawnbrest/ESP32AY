@@ -5,6 +5,7 @@ extern int tap_total_blocks;
 extern char blockTypeLabel[16];
 extern AudioGeneratorTAP *tap;
 AudioGeneratorTAP *tap=nullptr;
+static bool tapOutInitialized=false;  // FIX: Prevent multiple initOut() calls
 
 void setTapSpeed(){
   if(tap) tap->setSpeed(lfsConfig.tapeSpeed);
@@ -24,6 +25,7 @@ void TAP_Cleanup(){
   out->stop();
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
+  tapOutInitialized=false;  // FIX: Reset flag for next track
 }
 
 void TAP_GetInfo(const char *filename){
@@ -38,6 +40,16 @@ void TAP_GetInfo(const char *filename){
     }
     AYInfo.Length=1;
     skipMod=true;
+    // FIX FOR MEMORY LEAK - delete objects if initialization failed
+    if(tap){
+      delete tap;
+      tap=nullptr;
+    }
+    if(modFile){
+      modFile->close();
+      delete modFile;
+      modFile=nullptr;
+    }
     return;
   }
   tap->initEQBuffers(bufEQ,modEQchn);
@@ -84,7 +96,11 @@ void TAP_Play(){
     return;
   }
   if(tap&&!tap->isRunning()){
-    initOut();
+    // FIX: Only call initOut() once per track, not every frame
+    if(!tapOutInitialized){
+      initOut();
+      tapOutInitialized=true;
+    }
     tap->begin(modFile,out);
   }
   TAP_Loop();

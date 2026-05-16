@@ -1,6 +1,7 @@
 #include <AudioGeneratorMP3.h>
 
 AudioGeneratorMP3 *mp3;
+static bool mp3OutInitialized=false;  // FIX: Prevent multiple initOut() calls
 
 void MP3_Cleanup(){
   if(mp3) mp3->stop();
@@ -17,6 +18,7 @@ void MP3_Cleanup(){
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
   isVBR=false;
+  mp3OutInitialized=false;  // FIX: Reset flag for next track
 }
 
 void MP3_GetInfo(const char *filename){
@@ -24,6 +26,19 @@ void MP3_GetInfo(const char *filename){
   mp3=new AudioGeneratorMP3();
   modFile->open(filename);
   bool status=mp3->initializeFile(modFile);
+  if(!status){
+    // FIX FOR MEMORY LEAK - delete objects if initialization failed
+    if(mp3){
+      delete mp3;
+      mp3=nullptr;
+    }
+    if(modFile){
+      modFile->close();
+      delete modFile;
+      modFile=nullptr;
+    }
+    return;
+  }
   mp3->initEQBuffers(bufEQ,modEQchn);
   AYInfo.Length=mp3->getPlaybackTime();
   mp3->getTitle(AYInfo.Name,sizeof(AYInfo.Name));
@@ -50,7 +65,11 @@ void MP3_Loop(){
 
 void MP3_Play(){
   if(mp3&&!mp3->isRunning()){
-    initOut();
+    // FIX: Only call initOut() once per track, not every frame
+    if(!mp3OutInitialized){
+      initOut();
+      mp3OutInitialized=true;
+    }
     mp3->begin(modFile,out);
   }
   MP3_Loop();

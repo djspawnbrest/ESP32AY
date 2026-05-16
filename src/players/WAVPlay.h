@@ -1,6 +1,7 @@
 #include <AudioGeneratorWAV.h>
 
 AudioGeneratorWAV *wav;
+static bool wavOutInitialized=false;  // FIX: Prevent multiple initOut() calls
 
 void WAV_Cleanup(){
   if(wav) wav->stop();
@@ -16,6 +17,7 @@ void WAV_Cleanup(){
   out->stop();
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
+  wavOutInitialized=false;  // FIX: Reset flag for next track
 }
 
 void WAV_GetInfo(const char *filename){
@@ -23,7 +25,20 @@ void WAV_GetInfo(const char *filename){
   wav=new AudioGeneratorWAV();
   wav->SetBufferSize(2048);
   modFile->open(filename);
-  wav->initializeFile(modFile);
+  bool status=wav->initializeFile(modFile);
+  if(!status){
+    // FIX FOR MEMORY LEAK - delete objects if initialization failed
+    if(wav){
+      delete wav;
+      wav=nullptr;
+    }
+    if(modFile){
+      modFile->close();
+      delete modFile;
+      modFile=nullptr;
+    }
+    return;
+  }
   
   wav->initEQBuffers(bufEQ,modEQchn);
   AYInfo.Length=wav->getPlaybackTime();
@@ -50,7 +65,11 @@ void WAV_Loop(){
 
 void WAV_Play(){
   if(wav&&!wav->isRunning()){
-    initOut();
+    // FIX: Only call initOut() once per track, not every frame
+    if(!wavOutInitialized){
+      initOut();
+      wavOutInitialized=true;
+    }
     wav->begin(modFile,out);
   }
   WAV_Loop();

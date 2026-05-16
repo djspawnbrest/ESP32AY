@@ -1,6 +1,7 @@
 #include <AudioGeneratorMOD.h>
 
 AudioGeneratorMOD *mod;
+static bool modOutInitialized=false;  // FIX: Prevent multiple initOut() calls
 
 void setModSeparation(){
   if(mod) mod->SetSeparation(lfsConfig.modStereoSeparation);
@@ -20,6 +21,7 @@ void MOD_Cleanup(){
   out->stop();
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
+  modOutInitialized=false;  // FIX: Reset flag for next track
 }
 
 void MOD_GetInfo(const char *filename){
@@ -100,7 +102,11 @@ void MOD_Loop() {
 
 void MOD_Play(){
   if(mod&&!mod->isRunning()){
-    initOut();
+    // FIX: Only call initOut() once per track, not every frame
+    if(!modOutInitialized){
+      initOut();
+      modOutInitialized=true;
+    }
     mod->begin(modFile,out);
   }
   MOD_Loop();

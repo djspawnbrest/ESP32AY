@@ -7,6 +7,7 @@ extern AudioGeneratorTZX *tzx;
 extern char tzxFullTitle[256];
 AudioGeneratorTZX *tzx=nullptr;
 char tzxFullTitle[256]={0};
+static bool tzxOutInitialized=false;  // FIX: Prevent multiple initOut() calls
 
 
 void setTzxSpeed(){
@@ -27,6 +28,7 @@ void TZX_Cleanup(){
   out->stop();
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
+  tzxOutInitialized=false;  // FIX: Reset flag for next track
 }
 
 void TZX_GetInfo(const char *filename){
@@ -39,6 +41,16 @@ void TZX_GetInfo(const char *filename){
     if(message&&strlen(message)>0) showAlert(message);
     AYInfo.Length=1;
     skipMod=true;
+    // FIX FOR MEMORY LEAK - delete objects if initialization failed
+    if(tzx){
+      delete tzx;
+      tzx=nullptr;
+    }
+    if(modFile){
+      modFile->close();
+      delete modFile;
+      modFile=nullptr;
+    }
     return;
   }
   tzx->initEQBuffers(bufEQ,modEQchn);
@@ -88,7 +100,11 @@ void TZX_Play(){
     return;
   }
   if(tzx&&!tzx->isRunning()){
-    initOut();
+    // FIX: Only call initOut() once per track, not every frame
+    if(!tzxOutInitialized){
+      initOut();
+      tzxOutInitialized=true;
+    }
     tzx->begin(modFile,out);
   }
   TZX_Loop();

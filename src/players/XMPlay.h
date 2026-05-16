@@ -1,6 +1,7 @@
 #include <AudioGeneratorXM.h>
 
 AudioGeneratorXM *xm;
+static bool xmOutInitialized=false;  // FIX: Prevent multiple initOut() calls
 
 void setXmSeparation(){
   if(xm) xm->SetSeparation(lfsConfig.modStereoSeparation);
@@ -40,6 +41,7 @@ void XM_Cleanup(){
   
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
+  xmOutInitialized=false;  // FIX: Reset flag for next track
   xmCleanupInProgress=false;  // Очистка завершена
 }
 
@@ -118,7 +120,11 @@ void XM_Play(){
   if(xmCleanupInProgress) return;  // Выход если идёт очистка
   
   if(xm&&!xm->isRunning()&&!xmCleanupInProgress){
-    initOut();
+    // FIX: Only call initOut() once per track, not every frame
+    if(!xmOutInitialized){
+      initOut();
+      xmOutInitialized=true;
+    }
     xm->begin(modFile,out);
   }
   XM_Loop();

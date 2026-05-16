@@ -1,6 +1,7 @@
 #include <AudioGeneratorS3M.h>
 
 AudioGeneratorS3M *s3m;
+static bool s3mOutInitialized=false;  // FIX: Prevent multiple initOut() calls
 
 void setS3mSeparation(){
   if(s3m) s3m->SetSeparation(lfsConfig.modStereoSeparation);
@@ -20,6 +21,7 @@ void S3M_Cleanup(){
   out->stop();
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
+  s3mOutInitialized=false;  // FIX: Reset flag for next track
 }
 
 void S3M_GetInfo(const char *filename){
@@ -100,7 +102,11 @@ void S3M_Loop(){
 
 void S3M_Play(){
   if(s3m&&!s3m->isRunning()){
-    initOut();
+    // FIX: Only call initOut() once per track, not every frame
+    if(!s3mOutInitialized){
+      initOut();
+      s3mOutInitialized=true;
+    }
     s3m->begin(modFile,out);
   }
   S3M_Loop();
