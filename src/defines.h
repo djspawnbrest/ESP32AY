@@ -135,6 +135,7 @@ FsFile sd_play_dir;
 FsFile sd_play_file;
 AudioFileSourceSDFAT *modFile=NULL;
 bool skipMod=false;
+volatile bool xmCleanupInProgress=false;  // Флаг для синхронизации при удалении XM
 
 uint8_t music_data[48*1024];
 uint32_t music_data_size;
