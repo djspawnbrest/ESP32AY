@@ -923,11 +923,41 @@ static void IRAM_ATTR xm_row(xm_context_t* ctx)
     xm_post_pattern_change(ctx);
   }
 
-  xm_pattern_t* cur     = ctx->module.patterns + ctx->module.pattern_table[ctx->current_table_index];
+  if(ctx->current_table_index >= ctx->module.length) {
+    ctx->current_table_index = ctx->module.restart_position;
+  }
+  uint8_t pattern_index = ctx->module.pattern_table[ctx->current_table_index];
+  if(pattern_index >= ctx->module.num_patterns) {
+    /* FIX: Skip invalid pattern index and advance to next position */
+    /* This should NOT happen after xm_check_sanity_postload, but we handle it defensively */
+    /* CRITICAL: Clear ch->current for all channels to prevent crash on next tick */
+    for(uint16_t i = 0; i < ctx->module.num_channels; ++i) {
+      ctx->channels[i].current = NULL;
+    }
+    ctx->current_row = 0;
+    ctx->current_table_index++;
+    if(ctx->current_table_index >= ctx->module.length) {
+      ctx->current_table_index = ctx->module.restart_position;
+    }
+    return;
+  }
+  
+  xm_pattern_t* cur = ctx->module.patterns + pattern_index;
+  if(!cur->slots) return;
+  
+  if(ctx->current_row >= cur->num_rows) {
+    ctx->current_row = 0;
+    ctx->current_table_index++;
+    if(ctx->current_table_index >= ctx->module.length) {
+      ctx->current_table_index = ctx->module.restart_position;
+    }
+    return;
+  }
+  
   bool        in_a_loop = false;
 
   /* Read notes… */
-  for (uint8_t i = 0; i < ctx->module.num_channels; ++i)
+  for (uint16_t i = 0; i < ctx->module.num_channels; ++i)
   {
     xm_pattern_slot_t   * s  = cur->slots + ctx->current_row * ctx->module.num_channels + i;
     xm_channel_context_t* ch = ctx->channels + i;
@@ -1038,12 +1068,16 @@ static void IRAM_ATTR xm_tick(xm_context_t* ctx)
   if (ctx->current_tick == 0)
     xm_row(ctx);
 
-  for (uint8_t i = 0; i < ctx->module.num_channels; ++i)
+  for (uint16_t i = 0; i < ctx->module.num_channels; ++i)
   {
     xm_channel_context_t* ch = ctx->channels + i;
 
     xm_envelopes(ch);
     xm_autovibrato(ctx, ch);
+
+    /* FIX: Check if ch->current is valid before using it */
+    /* This can be NULL if xm_row() returned early due to invalid pattern */
+    if (!ch->current) continue;
 
     if (ch->arp_in_progress && !HAS_ARPEGGIO(ch->current))
     {
@@ -1494,12 +1528,12 @@ bool IRAM_ATTR xm_sample(xm_context_t* ctx, float* left, float* right)
   *left  = 0.f;
   *right = 0.f;
 
-  // Calculate loop destination time once at startup if looping is enabled
   if(ctx->max_loop_count==0&&!loop_time_calculated){
-    // Simple calculation: sum up ticks to restart_position
     uint64_t dest_ticks=0;
     for(uint8_t p=0;p<ctx->module.restart_position&&p<ctx->module.length;p++){
-      xm_pattern_t* pat=ctx->module.patterns+ctx->module.pattern_table[p];
+      uint8_t pattern_index=ctx->module.pattern_table[p];
+      if(pattern_index>=ctx->module.num_patterns) continue;
+      xm_pattern_t* pat=ctx->module.patterns+pattern_index;
       dest_ticks+=pat->num_rows*ctx->tempo;
     }
     // Convert to scaled integer: dest_ticks/(bpm*0.4) * 1000
@@ -1523,7 +1557,7 @@ bool IRAM_ATTR xm_sample(xm_context_t* ctx, float* left, float* right)
   float separation_div_128 = separation/128.0f;
   float inv_separation_div_128 = (128-separation)/128.0f;
 
-  for (uint8_t i = 0; i < ctx->module.num_channels; ++i)
+  for (uint16_t i = 0; i < ctx->module.num_channels; ++i)
   {
     xm_channel_context_t* ch = ctx->channels + i;
 

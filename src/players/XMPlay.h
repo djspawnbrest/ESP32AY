@@ -76,7 +76,7 @@ void XM_GetInfo(const char *filename){
   xm->initEQBuffers(bufEQ,modEQchn);
   modChannels=xm->getNumberOfChannels();
   modChannelsEQ=(modChannels>8)?8:modChannels;
-  if(modChannels<2||modChannels>32){
+  if(modChannels<2||modChannels>40){
     AYInfo.Length=1;
     skipMod=true;
     // FIX FOR MEMORY LEAK - delete objects if channel check failed
@@ -92,6 +92,21 @@ void XM_GetInfo(const char *filename){
     return;
   }
   AYInfo.Length=xm->getPlaybackTime();
+  if(AYInfo.Length<=0){
+    // Invalid playback time - module is corrupted
+    AYInfo.Length=1;
+    skipMod=true;
+    if(xm){
+      delete xm;
+      xm=nullptr;
+    }
+    if(modFile){
+      modFile->close();
+      delete modFile;
+      modFile=nullptr;
+    }
+    return;
+  }
   xm->getTitle(AYInfo.Name,sizeof(AYInfo.Name));
   xm->getDescription(AYInfo.Author,sizeof(AYInfo.Author));
   xm->initTrackFrame(&PlayerCTRL.trackFrame);

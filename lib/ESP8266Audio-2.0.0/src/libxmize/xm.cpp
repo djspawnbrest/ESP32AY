@@ -74,14 +74,11 @@ void xm_reset_logical_samples(void);
 extern "C"{
   void xm_update_eq_buffers(void){
     if(!xm_ctx||!g_eq_buffer||!g_channel_eq_buffer) return;
-    // // Clear buffers
-    // memset(g_eq_buffer,0,96);
-    // memset(g_channel_eq_buffer,0,8);
     uint16_t volSum[96]={0};
     uint8_t noteCount[96]={0};
     uint8_t channelCount[8]={0};
-    // Process all active channels
-    for(uint8_t i=0;i<xm_ctx->module.num_channels;++i){
+    // Process ALL active channels (no limit)
+    for(uint16_t i=0;i<xm_ctx->module.num_channels;++i){
       xm_channel_context_t* ch=xm_ctx->channels+i;
       if(ch->instrument&&ch->sample&&ch->sample_position>=0&&!ch->muted&&!ch->instrument->muted){
         // Convert XM volume (0.0-1.0) to MOD-style (0-64)
@@ -91,7 +88,7 @@ extern "C"{
         int noteIndex=(int)(ch->note+0.5f);
         if(noteIndex>=1&&noteIndex<=96){
           noteIndex--; // Convert to 0-95 range
-          // Channel averaging
+          // Channel averaging (map all channels to 8 buffers via modulo)
           uint8_t targetIndex=i%8;
           channelCount[targetIndex]++;
           if(channelCount[targetIndex]==1){
@@ -283,11 +280,19 @@ int xmCTX(AudioFileSource* file,size_t fileSize){
     #ifdef LIBXM_DEBUG
       LOG_ERROR("\n\tXM module is not sane!");
     #endif
+      xm_ctx=NULL; // CRITICAL: Set to NULL on error
       break;
     case -2:
     #ifdef LIBXM_DEBUG
       LOG_ERROR("\n\tXM context memory allocation error!");
     #endif
+      xm_ctx=NULL; // CRITICAL: Set to NULL on error
+      break;
+    case -3:
+    #ifdef LIBXM_DEBUG
+      LOG_ERROR("\n\tXM file is corrupted (invalid instrument/sample headers)!");
+    #endif
+      xm_ctx=NULL; // CRITICAL: Set to NULL on error
       break;
     default:
       {
@@ -643,126 +648,294 @@ void xm_init_track_frame(unsigned long* trackFrame){
 // Main calculate playing time function like player plays!
 signed long xm_get_playback_time(bool oneFiftieth){
   if(!xm_ctx) return -1;
+  
+  // Validate module before processing
+  if(xm_ctx->module.length==0||xm_ctx->module.num_patterns==0||
+     xm_ctx->module.num_channels==0||xm_ctx->tempo==0||xm_ctx->bpm==0){
+    return -1; // Invalid module
+  }
+  
+  #ifdef LIBXM_DEBUG
+  LOG_INFO("xm_get_playback_time: length=%d, num_patterns=%d, tempo=%d, bpm=%d",
+           xm_ctx->module.length, xm_ctx->module.num_patterns, xm_ctx->tempo, xm_ctx->bpm);
+  LOG_INFO("  pattern_table[0..4]: %d %d %d %d %d",
+           xm_ctx->module.pattern_table[0], xm_ctx->module.pattern_table[1],
+           xm_ctx->module.pattern_table[2], xm_ctx->module.pattern_table[3],
+           xm_ctx->module.pattern_table[4]);
+  #endif
+  
+  // FIX: Find first valid position (handles corrupted modules like l_of_s.xm)
+  // where pattern_table[0]=80 but num_patterns=14
+  uint8_t start_order=0;
+  
+  // Skip invalid positions at the start
+  while(start_order<xm_ctx->module.length&&
+        xm_ctx->module.pattern_table[start_order]>=xm_ctx->module.num_patterns){
+    start_order++;
+  }
+  
+  if(start_order>=xm_ctx->module.length){
+    return -1; // No valid positions found
+  }
+  
   // Save original state
   uint8_t orig_ord=xm_ctx->current_table_index;
   uint8_t orig_row=xm_ctx->current_row;
-  uint8_t orig_tick=xm_ctx->current_tick;
   uint16_t orig_tempo=xm_ctx->tempo;
   uint16_t orig_bpm=xm_ctx->bpm;
-  uint8_t orig_loop_count=xm_ctx->loop_count;
-  uint16_t orig_extra_ticks=xm_ctx->extra_ticks;
-  bool orig_position_jump=xm_ctx->position_jump;
-  bool orig_pattern_break=xm_ctx->pattern_break;
-  uint8_t orig_jump_dest=xm_ctx->jump_dest;
-  uint8_t orig_jump_row=xm_ctx->jump_row;
-  // Initialize simulation state
-  xm_ctx->current_table_index=0;
-  xm_ctx->current_row=0;
-  xm_ctx->current_tick=0;
-  xm_ctx->position_jump=false;
-  xm_ctx->pattern_break=false;
-  xm_ctx->jump_dest=0;
-  xm_ctx->jump_row=0;
-  xm_ctx->extra_ticks=0;
-  uint64_t total_ticks=0;
-  uint8_t max_loop_count=1;
-  // Clear loop detection array
-  memset(xm_ctx->row_loop_count,0,MAX_NUM_ROWS*xm_ctx->module.length*sizeof(uint8_t));
+  
+  // Initialize simulation state (OpenMPT style)
+  uint8_t current_order=start_order; // Start from first valid position
+  uint16_t current_row=0; // uint16_t because patterns can have up to 256 rows (0-255, need 256 for overflow check)
+  uint8_t next_order=0;
+  uint16_t next_row=0; // uint16_t for consistency
+  uint16_t current_tempo=xm_ctx->tempo;
+  uint16_t current_bpm=xm_ctx->bpm;
+  uint64_t total_samples=0;
+  uint32_t sample_rate=44100; // XM standard
+  uint32_t safety_counter=0;
+  const uint32_t MAX_ITERATIONS=500000;
+  
+  // Pattern flow control
+  bool position_jump_pending=false;
+  bool pattern_break_pending=false;
+  uint8_t jump_dest=0;
+  uint16_t break_row=0; // uint16_t because pattern break can target rows 0-255
+  
+  // Visited rows tracker (OpenMPT RowVisitor style)
+  bool* visited_rows=(bool*)malloc(xm_ctx->module.length*MAX_NUM_ROWS*sizeof(bool));
+  if(!visited_rows) return -1;
+  memset(visited_rows,0,xm_ctx->module.length*MAX_NUM_ROWS*sizeof(bool));
+  
   while(true){
-    esp_task_wdt_reset();
-    // Simulate xm_tick() - only process row when current_tick==0
-    if(xm_ctx->current_tick==0){
-      // Handle position jumps and pattern breaks first
-      if(xm_ctx->position_jump){
-        xm_ctx->current_table_index=xm_ctx->jump_dest;
-        xm_ctx->current_row=xm_ctx->jump_row;
-        xm_ctx->position_jump=false;
-        xm_ctx->pattern_break=false;
-        xm_ctx->jump_row=0;
-        if(xm_ctx->current_table_index>=xm_ctx->module.length){
-          xm_ctx->current_table_index=xm_ctx->module.restart_position;
-        }
-      }else if(xm_ctx->pattern_break){
-        xm_ctx->current_table_index++;
-        xm_ctx->current_row=xm_ctx->jump_row;
-        xm_ctx->pattern_break=false;
-        xm_ctx->jump_row=0;
-        if(xm_ctx->current_table_index>=xm_ctx->module.length){
-          xm_ctx->current_table_index=xm_ctx->module.restart_position;
-        }
-      }
-      xm_pattern_t* cur=xm_ctx->module.patterns+xm_ctx->module.pattern_table[xm_ctx->current_table_index];
-      // Process effects for this row
-      for(uint8_t i=0;i<xm_ctx->module.num_channels;++i){
-        xm_pattern_slot_t* s=cur->slots+xm_ctx->current_row*xm_ctx->module.num_channels+i;
-        switch(s->effect_type){
-          case 0xB: // Position jump
-            if(s->effect_param<xm_ctx->module.length){
-              xm_ctx->position_jump=true;
-              xm_ctx->jump_dest=s->effect_param;
-            }
-            break;
-          case 0xD: // Pattern break
-            xm_ctx->pattern_break=true;
-            xm_ctx->jump_row=(s->effect_param>>4)*10+(s->effect_param&0x0F);
-            break;
-          case 0xE: // Extended command
-            if((s->effect_param>>4)==0xE){ // Pattern delay
-              xm_ctx->extra_ticks=(s->effect_param&0x0F)*xm_ctx->tempo;
-            }
-            break;
-          case 0xF: // Set tempo/BPM
-            if(s->effect_param>0){
-              if(s->effect_param<=0x1F){
-                xm_ctx->tempo=s->effect_param;
-              }else{
-                xm_ctx->bpm=s->effect_param;
-              }
-            }
-            break;
+    if(++safety_counter>MAX_ITERATIONS){
+      free(visited_rows);
+      break;
+    }
+    if((safety_counter&0x3FF)==0) esp_task_wdt_reset();
+    
+    // Bounds check
+    if(current_order>=xm_ctx->module.length){
+      free(visited_rows);
+      break;
+    }
+    
+    uint8_t pattern_index=xm_ctx->module.pattern_table[current_order];
+    if(pattern_index>=xm_ctx->module.num_patterns){
+      // FIX: Skip invalid pattern index (like VLC does)
+      // Try to find next valid position
+      current_order++;
+      if(current_order>=xm_ctx->module.length){
+        // Reached end, try restart position
+        current_order=xm_ctx->module.restart_position;
+        if(current_order>=xm_ctx->module.length||
+           xm_ctx->module.pattern_table[current_order]>=xm_ctx->module.num_patterns){
+          // Restart position is also invalid - give up
+          free(visited_rows);
+          break;
         }
       }
-      // Loop detection - exact replication from xm_play.c
-      xm_ctx->loop_count=(xm_ctx->row_loop_count[MAX_NUM_ROWS*xm_ctx->current_table_index+xm_ctx->current_row]++);
-      if(xm_ctx->loop_count>=max_loop_count){
-        break;
-      }
-      xm_ctx->current_row++;
-      // Handle pattern end
-      if(!xm_ctx->position_jump&&!xm_ctx->pattern_break&&
-         (xm_ctx->current_row>=cur->num_rows||xm_ctx->current_row==0)){
-        xm_ctx->current_table_index++;
-        xm_ctx->current_row=xm_ctx->jump_row;
-        xm_ctx->jump_row=0;
-        if(xm_ctx->current_table_index>=xm_ctx->module.length){
-          xm_ctx->current_table_index=xm_ctx->module.restart_position;
-        }
+      continue; // Retry with next position
+    }
+    
+    xm_pattern_t* pattern=xm_ctx->module.patterns+pattern_index;
+    if(!pattern->slots||current_row>=pattern->num_rows){
+      free(visited_rows);
+      break;
+    }
+    
+    // Check if row already visited (loop detection - OpenMPT style)
+    uint32_t visit_index=current_order*MAX_NUM_ROWS+current_row;
+    #ifdef LIBXM_DEBUG
+    if(safety_counter <= 260) {
+      LOG_INFO("xm_get_playback_time: iter=%u, order=%d, row=%d, visit_index=%u, visited=%d",
+               safety_counter, current_order, current_row, visit_index, visited_rows[visit_index]);
+    }
+    #endif
+    if(visited_rows[visit_index]){
+      // Loop detected - stop (OpenMPT stops at first loop)
+      #ifdef LIBXM_DEBUG
+      LOG_INFO("xm_get_playback_time: Loop detected at order=%d, row=%d, iteration=%u",
+               current_order, current_row, safety_counter);
+      #endif
+      free(visited_rows);
+      break;
+    }
+    visited_rows[visit_index]=true;
+    
+    // Reset flow control for this row
+    position_jump_pending=false;
+    pattern_break_pending=false;
+    
+    // Process ALL effects in this row (OpenMPT processes all channels)
+    for(uint16_t ch=0;ch<xm_ctx->module.num_channels;++ch){
+      xm_pattern_slot_t* slot=pattern->slots+current_row*xm_ctx->module.num_channels+ch;
+      
+      switch(slot->effect_type){
+        case 0xB: // Position jump (Bxx)
+          if(slot->effect_param<xm_ctx->module.length){
+            position_jump_pending=true;
+            jump_dest=slot->effect_param;
+            // XM/MOD: Position jump after pattern break resets break row to 0
+            if(pattern_break_pending){
+              break_row=0;
+            }
+          }
+          break;
+          
+        case 0xD: // Pattern break (Dxx)
+          pattern_break_pending=true;
+          // XM uses decimal format: 0x31 = row 31 (not 0x31 = 49)
+          break_row=(slot->effect_param>>4)*10+(slot->effect_param&0x0F);
+          if(break_row>=64) break_row=0; // Clamp to valid range
+          break;
+          
+        case 0xE: // Extended effects (EXy)
+          {
+            uint8_t ext_cmd=(slot->effect_param>>4);
+            uint8_t ext_param=(slot->effect_param&0x0F);
+            switch(ext_cmd){
+              case 0xE: // Pattern delay (EEx)
+                // Add extra ticks: param * current_tempo ticks
+                // OpenMPT adds these to the row duration
+                total_samples+=(uint64_t)ext_param*current_tempo*sample_rate*125/(current_bpm*50);
+                break;
+              // Note: E6x (pattern loop) is complex and rarely affects total length
+              // OpenMPT handles it with hash-based loop state tracking
+              // For simplicity, we skip it (most XMs don't use it for length calc)
+            }
+          }
+          break;
+          
+        case 0xF: // Set speed/tempo (Fxx)
+          if(slot->effect_param==0){
+            // F00 in XM = stop song
+            free(visited_rows);
+            goto calculate_time;
+          }else if(slot->effect_param<0x20){
+            // Set speed (ticks per row)
+            current_tempo=slot->effect_param;
+          }else{
+            // Set BPM
+            current_bpm=slot->effect_param;
+          }
+          break;
       }
     }
-    // Advance tick
-    xm_ctx->current_tick++;
-    if(xm_ctx->current_tick>=xm_ctx->tempo+xm_ctx->extra_ticks){
-      xm_ctx->current_tick=0;
-      xm_ctx->extra_ticks=0;
+    
+    // Calculate time for this row (OpenMPT formula)
+    // samples_per_tick = sample_rate * 125 / (bpm * 50)
+    // row_duration = samples_per_tick * ticks_per_row
+    uint32_t samples_per_tick=(sample_rate*125)/(current_bpm*50);
+    uint32_t row_samples=samples_per_tick*current_tempo;
+    total_samples+=row_samples;
+    
+    // Handle pattern flow (OpenMPT HandleNextRow logic)
+    if(position_jump_pending||pattern_break_pending){
+      // Combined jump/break
+      if(position_jump_pending){
+        next_order=jump_dest;
+        next_row=pattern_break_pending?break_row:0;
+        #ifdef LIBXM_DEBUG
+        LOG_INFO("xm_get_playback_time: Position jump to order=%d, row=%d", next_order, next_row);
+        #endif
+      }else{
+        // Just break = next pattern
+        next_order=current_order+1;
+        next_row=break_row;
+        #ifdef LIBXM_DEBUG
+        LOG_INFO("xm_get_playback_time: Pattern break to order=%d, row=%d", next_order, next_row);
+        #endif
+      }
+      
+      // Wrap to restart position
+      if(next_order>=xm_ctx->module.length){
+        next_order=xm_ctx->module.restart_position;
+      }
+      
+      // FIX: Skip invalid pattern indices after jump/break
+      while(next_order<xm_ctx->module.length&&
+            xm_ctx->module.pattern_table[next_order]>=xm_ctx->module.num_patterns){
+        next_order++;
+        if(next_order>=xm_ctx->module.length){
+          next_order=xm_ctx->module.restart_position;
+          break; // Prevent infinite loop
+        }
+      }
+      
+      current_order=next_order;
+      current_row=next_row;
+    }else{
+      // Normal advance
+      #ifdef LIBXM_DEBUG
+      if(safety_counter >= 255 && safety_counter <= 258) {
+        LOG_INFO("xm_get_playback_time: Before row++: current_row=%d, pattern->num_rows=%d", current_row, pattern->num_rows);
+      }
+      #endif
+      current_row++;
+      #ifdef LIBXM_DEBUG
+      if(safety_counter >= 255 && safety_counter <= 258) {
+        LOG_INFO("xm_get_playback_time: After row++: current_row=%d, checking if >= %d", current_row, pattern->num_rows);
+      }
+      #endif
+      if(current_row>=pattern->num_rows){
+        current_row=0;
+        current_order++;
+        #ifdef LIBXM_DEBUG
+        LOG_INFO("xm_get_playback_time: After increment current_order=%d", current_order);
+        #endif
+        if(current_order>=xm_ctx->module.length){
+          current_order=xm_ctx->module.restart_position;
+          #ifdef LIBXM_DEBUG
+          LOG_INFO("xm_get_playback_time: Wrap to restart_position=%d", current_order);
+          #endif
+        }
+        #ifdef LIBXM_DEBUG
+        LOG_INFO("xm_get_playback_time: After wrap check current_order=%d", current_order);
+        #endif
+        
+        // FIX: Skip invalid pattern indices after normal advance
+        #ifdef LIBXM_DEBUG
+        uint8_t before_skip = current_order;
+        #endif
+        while(current_order<xm_ctx->module.length&&
+              xm_ctx->module.pattern_table[current_order]>=xm_ctx->module.num_patterns){
+          current_order++;
+          if(current_order>=xm_ctx->module.length){
+            current_order=xm_ctx->module.restart_position;
+            #ifdef LIBXM_DEBUG
+            LOG_INFO("xm_get_playback_time: Skip loop wrapped to restart_position=%d", current_order);
+            #endif
+            break; // Prevent infinite loop
+          }
+        }
+        #ifdef LIBXM_DEBUG
+        if(before_skip != current_order) {
+          LOG_INFO("xm_get_playback_time: Skipped from order=%d to order=%d", before_skip, current_order);
+        }
+        LOG_INFO("xm_get_playback_time: Final current_order=%d before next iteration", current_order);
+        #endif
+      }
     }
-    total_ticks++;
   }
+  
+calculate_time:
   // Restore original state
   xm_ctx->current_table_index=orig_ord;
   xm_ctx->current_row=orig_row;
-  xm_ctx->current_tick=orig_tick;
   xm_ctx->tempo=orig_tempo;
   xm_ctx->bpm=orig_bpm;
-  xm_ctx->loop_count=orig_loop_count;
-  xm_ctx->extra_ticks=orig_extra_ticks;
-  xm_ctx->position_jump=orig_position_jump;
-  xm_ctx->pattern_break=orig_pattern_break;
-  xm_ctx->jump_dest=orig_jump_dest;
-  xm_ctx->jump_row=orig_jump_row;
-  memset(xm_ctx->row_loop_count,0,MAX_NUM_ROWS*xm_ctx->module.length*sizeof(uint8_t));
-  // Returns result
-  float seconds=(float)total_ticks/(xm_ctx->bpm*0.4f);
-  return (signed long)(seconds*(oneFiftieth?50:1000));
+  
+  // Convert samples to time
+  double seconds=(double)total_samples/(double)sample_rate;
+  
+  #ifdef LIBXM_DEBUG
+  LOG_INFO("xm_get_playback_time: total_samples=%llu, seconds=%.2f, safety_counter=%u",
+           total_samples, seconds, safety_counter);
+  #endif
+  
+  // Return in player units (1/50 sec or milliseconds)
+  return (signed long)(seconds*(oneFiftieth?50.0:1000.0));
 }
 
 void xm_set_loop(bool loop){

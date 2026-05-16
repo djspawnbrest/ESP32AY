@@ -58,15 +58,36 @@ int xm_check_sanity_preload(const char* module, size_t module_length) {
 }
 
 int xm_check_sanity_postload(xm_context_t* ctx) {
-	/* @todo: plenty of stuff to do here… */
-
-	/* Check the POT */
+	/* Validate critical parameters */
+	if(ctx->module.length==0){
+		DEBUG("module has zero length");
+		return 1;
+	}
+	if(ctx->module.num_patterns==0){
+		DEBUG("module has zero patterns");
+		return 1;
+	}
+	if(ctx->module.num_channels==0||ctx->module.num_channels>64){
+		DEBUG("module has invalid channel count: %d",ctx->module.num_channels);
+		return 1;
+	}
+	
+	/* Check and fix the POT (Pattern Order Table) */
 	for(uint8_t i = 0; i < ctx->module.length; ++i) {
 		if(ctx->module.pattern_table[i] >= ctx->module.num_patterns) {
 			if(i+1 == ctx->module.length && ctx->module.length > 1) {
-				/* Cheap fix */
+				/* Cheap fix: trim last invalid entry */
 				--ctx->module.length;
 				DEBUG("trimming invalid POT at pos %X", i);
+			} else if(i == 0 && ctx->module.length > 1) {
+				/* Fix: skip first invalid entry by shifting table */
+				DEBUG("fixing invalid POT at pos 0 (pattern %X), shifting table",
+				      ctx->module.pattern_table[i]);
+				for(uint8_t j = 0; j < ctx->module.length - 1; ++j) {
+					ctx->module.pattern_table[j] = ctx->module.pattern_table[j + 1];
+				}
+				--ctx->module.length;
+				--i; /* Recheck position 0 */
 			} else {
 				DEBUG("module has invalid POT, pos %X references nonexistent pattern %X",
 				      i,
@@ -111,28 +132,78 @@ size_t xm_get_memory_needed_for_context(const char* moddata,size_t moddata_lengt
 	}
 	/* Read instrument headers */
 	for(uint16_t i=0;i<num_instruments;i++){
+		// Check if we're still within file bounds
+		if(offset+4>moddata_length){
+			DEBUG("Instrument %d: offset %zu exceeds file size %zu", i, offset, moddata_length);
+			return 0; // Invalid file
+		}
 		FILE_OFFSET(offset);
 		uint32_t instrument_header_size=READ_U32();
+		
+		// Validate instrument header size (should be reasonable, typically 29-263 bytes)
+		if(instrument_header_size<29||instrument_header_size>4096){
+			DEBUG("Instrument %d: invalid header size %u", i, instrument_header_size);
+			return 0; // Invalid file
+		}
+		
 		// Skip to num_samples field
+		if(offset+29>moddata_length){
+			DEBUG("Instrument %d: cannot read num_samples", i);
+			return 0; // Invalid file
+		}
 		FILE_OFFSET(offset+27);
 		uint16_t num_samples=READ_U16();
+		
+		// Validate num_samples (XM format allows max 16 samples per instrument)
+		if(num_samples>16){
+			DEBUG("Instrument %d: invalid num_samples %u (max 16)", i, num_samples);
+			return 0; // Invalid/corrupted file
+		}
+		
 		memory_needed+=num_samples*sizeof(xm_sample_t);
 		uint32_t sample_header_size=0;
 		uint32_t sample_size_aggregate=0;
 		if(num_samples>0){
+			if(offset+33>moddata_length){
+				DEBUG("Instrument %d: cannot read sample_header_size", i);
+				return 0; // Invalid file
+			}
 			FILE_OFFSET(offset+29);
 			sample_header_size=READ_U32();
+			
+			// Validate sample header size (should be 40 bytes for XM)
+			if(sample_header_size!=40){
+				DEBUG("Instrument %d: invalid sample_header_size %u (expected 40)", i, sample_header_size);
+				return 0; // Invalid file
+			}
 		}
 		/* Instrument header size */
 		offset+=instrument_header_size;
 		for(uint16_t j=0;j<num_samples;j++){
+			if(offset+4>moddata_length){
+				DEBUG("Instrument %d, sample %d: offset exceeds file size", i, j);
+				return 0; // Invalid file
+			}
 			FILE_OFFSET(offset);
 			uint32_t sample_size=READ_U32();
+			
+			// Validate sample size (should be reasonable, max ~10MB per sample)
+			if(sample_size>10*1024*1024){
+				DEBUG("Instrument %d, sample %d: sample_size %u too large", i, j, sample_size);
+				return 0; // Invalid file
+			}
+			
 			sample_size_aggregate+=sample_size;
 			memory_needed+=sample_size;
 			offset+=sample_header_size;
 		}
 		offset+=sample_size_aggregate;
+		
+		// Final check: offset should not exceed file size
+		if(offset>moddata_length){
+			DEBUG("Instrument %d: final offset %zu exceeds file size %zu", i, offset, moddata_length);
+			return 0; // Invalid file
+		}
 	}
 	memory_needed+=num_channels*sizeof(xm_channel_context_t);
 	memory_needed+=sizeof(xm_context_t);
@@ -176,6 +247,11 @@ char* xm_load_module(xm_context_t* ctx,const char* moddata,size_t moddata_length
 		xm_pattern_t* pat=mod->patterns+i;
 		pat->num_rows=*(uint16_t*)(buffer+5);
 		uint16_t packed_patterndata_size=*(uint16_t*)(buffer+7);
+		if(pat->num_rows==0){
+			pat->slots=NULL;
+			offset+=pattern_header_length;
+			continue;
+		}
 		pat->slots=(xm_pattern_slot_t*)mempool;
 		mempool+=mod->num_channels*pat->num_rows*sizeof(xm_pattern_slot_t);
 		offset+=pattern_header_length;

@@ -52,6 +52,9 @@ bool AudioGeneratorXM::initializeFile(AudioFileSource *source,const char** messa
       case -2:
         if(message) *message="XM file too big!";
         break;
+      case -3:
+        if(message) *message="XM file corrupted!";
+        break;
     }
     return false;
   }

@@ -18,7 +18,7 @@ int xm_create_context_safe(xm_context_t** ctxp, void* moddata, size_t moddata_le
 	char* mempool;
 	xm_context_t* ctx;
 
-	if(XM_DEFENSIVE){
+	if(XM_DEFENSIVE && moddata != NULL){
 		int ret;
 		if((ret = xm_check_sanity_preload(moddata, moddata_length))) {
 			DEBUG("xm_check_sanity_preload() returned %i, module is not safe to load", ret);
@@ -27,12 +27,18 @@ int xm_create_context_safe(xm_context_t** ctxp, void* moddata, size_t moddata_le
 	}
 
 	bytes_needed = xm_get_memory_needed_for_context(moddata, moddata_length);
+	
+	// Check if file is corrupted (xm_get_memory_needed_for_context returns 0 on validation failure)
+	if(bytes_needed == 0){
+		DEBUG("xm_get_memory_needed_for_context() returned 0, file is corrupted");
+		return -3; // Corrupted file
+	}
   
   mempool = mfunc(bytes_needed);
   
 	if(mempool==NULL&&bytes_needed>0){
 		/* malloc() failed, trouble ahead */
-		DEBUG("call to malloc() failed, returned %p", (void*)mempool);
+		DEBUG("call to malloc() failed, returned %p for %zu bytes", (void*)mempool, bytes_needed);
 		return -2;
 	}
 
@@ -45,6 +51,15 @@ int xm_create_context_safe(xm_context_t** ctxp, void* moddata, size_t moddata_le
 
 	ctx->rate = rate;
 	mempool = xm_load_module(ctx, moddata, moddata_length, mempool);
+	
+	// Validate critical module parameters
+	if(ctx->module.length==0||ctx->module.num_patterns==0||
+	   ctx->module.num_channels==0||ctx->module.num_channels>64){
+		DEBUG("Invalid module: length=%d, patterns=%d, channels=%d",
+		      ctx->module.length,ctx->module.num_patterns,ctx->module.num_channels);
+		if(mempool) mfunc(0); // Free if possible (implementation dependent)
+		return -1;
+	}
 
 	ctx->channels = (xm_channel_context_t*)mempool;
 	mempool += ctx->module.num_channels * sizeof(xm_channel_context_t);
@@ -57,7 +72,7 @@ int xm_create_context_safe(xm_context_t** ctxp, void* moddata, size_t moddata_le
 	ctx->panning_ramp = (1.f / 128.f);
 #endif
 
-	for(uint8_t i = 0; i < ctx->module.num_channels; ++i) {
+	for(uint16_t i = 0; i < ctx->module.num_channels; ++i) {
 		xm_channel_context_t* ch = ctx->channels + i;
 
 		ch->ping = true;
