@@ -34,7 +34,7 @@ void lfs_config_default(){
   lfsConfig.showClock=false;
   lfsConfig.skipTapeFormats=false;
   lfsConfig.tapeSpeed=TAPE_NORMAL;
-  lfsConfig.dacGain=0.2f;
+  lfsConfig.dacGain=0.6f;
 }
 
 void sd_config_default(){
