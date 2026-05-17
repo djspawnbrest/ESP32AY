@@ -300,17 +300,34 @@ bool AudioGeneratorMOD::LoadHeader(){
     Mod.numberOfChannels=2;
   }else if(!strncmp(reinterpret_cast<const char*>(temp),"M.K.",4)||
     !strncmp(reinterpret_cast<const char*>(temp),"M!K!",4)||
+    !strncmp(reinterpret_cast<const char*>(temp),"M&K!",4)||
+    !strncmp(reinterpret_cast<const char*>(temp),"FEST",4)||
+    !strncmp(reinterpret_cast<const char*>(temp),"N.T.",4)||
+    !strncmp(reinterpret_cast<const char*>(temp),"PATT",4)||
+    !strncmp(reinterpret_cast<const char*>(temp),"NSMS",4)||
+    !strncmp(reinterpret_cast<const char*>(temp),"LARD",4)||
+    !strncmp(reinterpret_cast<const char*>(temp),".M.K",4)||
     !strncmp(reinterpret_cast<const char*>(temp),"4CHN",4)||
-	  !strncmp(reinterpret_cast<const char*>(temp),"FLT4",4)){
+	  !strncmp(reinterpret_cast<const char*>(temp),"FLT4",4)||
+	  !strncmp(reinterpret_cast<const char*>(temp),"EXO4",4)){
 	  Mod.numberOfChannels=4;
   }else if(!strncmp(reinterpret_cast<const char*>(temp),"6CHN",4)){
 	  Mod.numberOfChannels=6;
   }else if(!strncmp(reinterpret_cast<const char*>(temp),"8CHN",4)||
     !strncmp(reinterpret_cast<const char*>(temp),"OKTA",4)||
+    !strncmp(reinterpret_cast<const char*>(temp),"OCTA",4)||
     !strncmp(reinterpret_cast<const char*>(temp),"FLT8",4)||
-    !strncmp(reinterpret_cast<const char*>(temp),"CD81",4)){
+    !strncmp(reinterpret_cast<const char*>(temp),"EXO8",4)||
+    !strncmp(reinterpret_cast<const char*>(temp),"CD81",4)||
+    !strncmp(reinterpret_cast<const char*>(temp),"CD61",4)){
 	  Mod.numberOfChannels=8;
-  }else if(!strncmp(reinterpret_cast<const char*>(temp+2),"CH",2)){
+  }else if(temp[0]>='1'&&temp[0]<='9'&&!strncmp(reinterpret_cast<const char*>(temp+1),"CHN",3)){
+    // Format: "xCHN" where x is 1-9 (e.g. "5CHN", "7CHN")
+    Mod.numberOfChannels=temp[0]-'0';
+  }else if(temp[0]>='1'&&temp[0]<='9'&&temp[1]>='0'&&temp[1]<='9'&&
+          (!strncmp(reinterpret_cast<const char*>(temp+2),"CH",2)||
+           !strncmp(reinterpret_cast<const char*>(temp+2),"CN",2))){
+    // Format: "xxCH" or "xxCN" where xx are 10-99 (e.g. "16CH", "32CN")
     Mod.numberOfChannels=(temp[0]-'0')*10+temp[1]-'0';
   }else{
     // Check for old format with 15 samples
@@ -331,6 +348,10 @@ bool AudioGeneratorMOD::LoadHeader(){
       // No known signature found,assume old format
       oldFormat=true;
     }
+  }
+  // Clamp to maximum supported channels
+  if(Mod.numberOfChannels>CHANNELS){
+    Mod.numberOfChannels=CHANNELS;
   }
   // Return the pointer to its original position
   file->seek(currentPos,SEEK_SET);
@@ -1123,10 +1144,16 @@ int AudioGeneratorMOD::getNoteIndex(uint16_t value){
 }
 
 float AudioGeneratorMOD::calcRow(){
+  // Reset per-row flags
   Calc.patternBreak=false;
   Calc.patternJump=false;
   Calc.patternDelay=0;
+  Calc.pendingLoopRow=0xFF;
+  
+  // Seek to current row in pattern
   file->seek(Calc.patternsOffset+(Calc.patternNumber*ROWS*4*Calc.channels)+(Calc.row*4*Calc.channels),SEEK_SET);
+  
+  // Process all channels in this row
   for(int channel=0;channel<Calc.channels;channel++){
     uint8_t noteData[4];
     file->read(noteData,sizeof(noteData));
@@ -1134,63 +1161,78 @@ float AudioGeneratorMOD::calcRow(){
     uint8_t effectParamXY=noteData[3];
     uint8_t effectParamX=effectParamXY>>4;
     uint8_t effectParamY=effectParamXY&0xF;
+    
     switch(effect){
-      case JUMPTOORDER: // Position Jump
-        // printf("Jump to order detected!, orderIdx: %d, order: %d,row: %d,channel: %d,nextOrder: %d,prevOrder: %d\n",Calc.orderIndex,Calc.orderTable[Calc.orderIndex],Calc.row,channel,Calc.orderTable[effectParamXY],Calc.orderTable[Calc.prevOrder]);
-        if(Calc.orderIndex==Calc.songLength-1) break; // break to prevent song loop if jump to order if last order
+      case JUMPTOORDER: // Bxx - Position Jump
         Calc.nextOrder=effectParamXY;
-        if(Calc.orderIndex>=Calc.songLength)
+        if(Calc.nextOrder>=Calc.songLength)
           Calc.nextOrder=0;
         Calc.nextRow=0;
         Calc.patternJump=true;
         break;
-      case BREAKPATTERNTOROW: // Pattern Break
-        // printf("Pattern break detected-order: %d,row: %d,channel: %d,nextRow: %d\n",Calc.orderIndex,Calc.row,channel,effectParamX*10+effectParamY);
+        
+      case BREAKPATTERNTOROW: // Dxx - Pattern Break
         Calc.nextRow=(effectParamX*10+effectParamY>=64)?0:effectParamX*10+effectParamY;
         if(!Calc.patternJump&&!Calc.patternBreak){
           Calc.nextOrder=Calc.orderIndex+1;
         }
         Calc.patternBreak=true;
-        if(Calc.orderIndex==Calc.songLength-1&&Calc.nextOrder==Calc.orderIndex&&Calc.nextRow<=Calc.row){Calc.songEnd=true; break;}
-        if(Calc.nextOrder>=Calc.songLength){Calc.songEnd=true; break;}
         break;
+        
       case ESUBSET: // Extended Effects
         switch(effectParamX){
-          case PATTERNLOOP: // Pattern Loop
-            // printf("Pattern loop detected-order: %d,row: %d,channel: %d,paramY: %d\n",Calc.orderIndex,Calc.row,channel,effectParamY);
-            if(effectParamY){
-              if(Calc.patternLoopRow[channel]>0&&(Calc.row==62||Calc.row==63||Calc.row==57||Calc.row==58)&&effectParamY==1/*&&Calc.orderIndex==Calc.songLength-1*/){Calc.patternLoopRow[channel]=0; break;}
-              if(Calc.patternLoopCount[channel])
-                Calc.patternLoopCount[channel]--;
-              else
-                Calc.patternLoopCount[channel]=effectParamY;
-              if(Calc.patternLoopCount[channel]){
-                Calc.nextRow=Calc.patternLoopRow[channel];
-                Calc.nextOrder=Calc.orderIndex;
-              }
-            } else
+          case PATTERNLOOP: // E6x - Pattern Loop (EXACT OpenMPT algorithm)
+            if(effectParamY==0){
+              // E60: Set loop start point
               Calc.patternLoopRow[channel]=Calc.row;
+            }else{
+              // E6x (x>0): Loop back
+              if(Calc.patternLoopCount[channel]){
+                // Already looping, decrement counter
+                Calc.patternLoopCount[channel]--;
+                if(!Calc.patternLoopCount[channel]){
+                  // Loop finished - DON'T JUMP!
+                  break;
+                }
+              }else{
+                // First time entering loop, set counter
+                Calc.patternLoopCount[channel]=effectParamY;
+              }
+              // Set jump target
+              Calc.pendingLoopRow=Calc.patternLoopRow[channel];
+              Calc.rowsInLoops++;
+            }
             break;
-          case NOTEDELAY: // Note Delay
+            
+          case NOTEDELAY: // EDx - Note Delay
             break;
-          case PATTERNDELAY: // Pattern Delay
-            Calc.patternDelay=effectParamY;
+            
+          case PATTERNDELAY: // EEx - Pattern Delay
+            // OpenMPT: patternDelay = 1 + param
+            Calc.patternDelay=1+effectParamY;
             break;
         }
         break;
-      case SETSPEED: // Set Speed/BPM
+        
+      case SETSPEED: // Fxx - Set Speed/BPM
         if(effectParamXY<32){
-          Calc.currentSpeed=effectParamXY;
+          if(effectParamXY>0) // Ignore F00
+            Calc.currentSpeed=effectParamXY;
         }else{
           Calc.currentBPM=effectParamXY;
         }
         break;
     }
   }
-  // Calculate time for this row
-  float rowTime=(Calc.currentSpeed*0.02f)*(125.0f/Calc.currentBPM);
-  float totalRowTime=rowTime+(Calc.patternDelay*((Calc.currentSpeed*0.02f)*(125.0f/Calc.currentBPM)));
-  return totalRowTime;
+  
+  // Calculate time for this row (EXACT OpenMPT formula)
+  // OpenMPT: numTicks = speed * max(patternDelay, 1)
+  // OpenMPT: rowTime = (2.5 * numTicks) / tempo seconds
+  // Note: patternDelay is already 1+param from EEx processing
+  uint32_t patternDelayValue=(Calc.patternDelay>0)?Calc.patternDelay:1;
+  uint32_t numTicks=Calc.currentSpeed*patternDelayValue;
+  float rowTime=(2.5f*numTicks)/Calc.currentBPM;
+  return rowTime;
 }
 
 void AudioGeneratorMOD::freeFatBuffer(){
@@ -1284,15 +1326,21 @@ void AudioGeneratorMOD::getDescription(char* description,size_t maxLen){
 
 signed long AudioGeneratorMOD::getPlaybackTime(bool oneFiftieth){
   if(!file) return -1;
+  
+  // Initialize calculation state
   Calc.oldMod=false;
   Calc.channels=getNumberOfChannels();
   Calc.patternsOffset=(Calc.oldMod)?600:1084;
+  
+  // Save current file position
   uint32_t currentPos=file->getPos();
-  file->seek(0,SEEK_END);
-  uint32_t fileSize=file->getPos();
+  
+  // Read MOD header
   file->seek(0,SEEK_SET);
-  uint8_t header[Calc.patternsOffset];
+  uint8_t header[1084];
   file->read(header,sizeof(header));
+  
+  // Initialize playback state
   Calc.songLength=header[(Calc.oldMod)?470:950];
   Calc.songRestart=header[(Calc.oldMod)?471:951];
   Calc.totalSeconds=0.0f;
@@ -1301,48 +1349,159 @@ signed long AudioGeneratorMOD::getPlaybackTime(bool oneFiftieth){
   Calc.patternBreak=false;
   Calc.patternJump=false;
   Calc.songEnd=false;
-  Calc.prevOrder=0;
+  Calc.orderIndex=0;
+  Calc.row=0;
   Calc.nextOrder=-1;
   Calc.nextRow=-1;
+  Calc.pendingLoopRow=0xFF;
+  
+  // Initialize loop detection (OpenMPT algorithm - optimized)
+  memset(Calc.visited,0,sizeof(Calc.visited));
+  memset(Calc.loopStates,0,sizeof(Calc.loopStates));
+  Calc.loopStatesCount=0;
+  Calc.rowsInLoops=0;
+  Calc.complexityThreshold=32768;
+  
+  // Initialize pattern loop state
   memset(Calc.patternLoopCount,0,sizeof(Calc.patternLoopCount));
-  memset(Calc.patternLoopRow,0,sizeof(Calc.patternLoopRow));
+  for(int ch=0;ch<CHANNELS;ch++){
+    Calc.patternLoopRow[ch]=0;
+  }
+  
   // Get order table
   uint32_t tableOrderOffset=(Calc.oldMod)?472:952;
-  uint32_t beforePos=file->getPos();
   file->seek(tableOrderOffset,SEEK_SET);
-  if(128!=file->read(Calc.orderTable,128)) return false;
-  file->seek(beforePos,SEEK_SET);
-  // Processing patterns
+  if(128!=file->read(Calc.orderTable,128)){
+    file->seek(currentPos,SEEK_SET);
+    return -1;
+  }
+  
+  // Clamp song length
   Calc.songLength=(Calc.songLength>128)?128:Calc.songLength;
-  for(Calc.orderIndex=0;Calc.orderIndex<Calc.songLength;Calc.orderIndex++){
-    if(Calc.nextOrder!=-1){
-      Calc.orderIndex=Calc.nextOrder;
-      Calc.nextOrder=-1;
+  if(Calc.songLength==0){
+    file->seek(currentPos,SEEK_SET);
+    return 0;
+  }
+  
+  // Main playback simulation loop (OpenMPT GetLength algorithm)
+  while(true){
+    // Check if we've reached the end
+    if(Calc.orderIndex>=Calc.songLength||Calc.songEnd){
+      break;
     }
-    Calc.patternNumber=header[((Calc.oldMod)?472:952)+Calc.orderIndex];
-    for(Calc.row=0;Calc.row<ROWS;Calc.row++){
-      if(Calc.nextOrder!=-1) break;
+    
+    // Check complexity threshold (prevent infinite loops)
+    if(Calc.rowsInLoops>Calc.complexityThreshold){
+      // Infinite loop detected!
+      file->seek(currentPos,SEEK_SET);
+      return (oneFiftieth)?0x7FFFFFFF:0x7FFFFFFF;
+    }
+    
+    // OpenMPT-style loop detection (optimized for ESP32)
+    // Calculate loop state hash (simple XOR of all loop counters)
+    uint16_t loopHash=0;
+    bool hasActiveLoops=false;
+    for(int ch=0;ch<CHANNELS;ch++){
+      if(Calc.patternLoopCount[ch]>0){
+        loopHash^=(Calc.patternLoopCount[ch]<<(ch*2));
+        hasActiveLoops=true;
+      }
+    }
+    
+    // Check if this position was visited before
+    if(!hasActiveLoops){
+      // No active pattern loops - simple visited check
+      if(Calc.visited[Calc.orderIndex][Calc.row]){
+        // Loop detected - we've been here before
+        break;
+      }
+      Calc.visited[Calc.orderIndex][Calc.row]=true;
+    }else{
+      // Active pattern loops - check loop state
+      uint32_t stateKey=((uint32_t)Calc.orderIndex<<24)|((uint32_t)Calc.row<<16)|loopHash;
+      
+      bool stateVisited=false;
+      for(uint16_t i=0;i<Calc.loopStatesCount;i++){
+        if(Calc.loopStates[i]==stateKey){
+          stateVisited=true;
+          break;
+        }
+      }
+      
+      if(stateVisited){
+        // Loop with same state detected
+        break;
+      }
+      
+      // Mark this state as visited
+      if(Calc.loopStatesCount<512){
+        Calc.loopStates[Calc.loopStatesCount++]=stateKey;
+      }else{
+        // Loop states table full - assume infinite loop
+        break;
+      }
+      
+      // Also mark simple visited
+      Calc.visited[Calc.orderIndex][Calc.row]=true;
+    }
+    
+    // Get current pattern number
+    Calc.patternNumber=Calc.orderTable[Calc.orderIndex];
+    
+    // Process current row and calculate its duration
+    Calc.totalSeconds+=calcRow();
+    
+    // Determine next position (OpenMPT HandleNextRow priority)
+    // PRIORITY 1: Pattern Loop (E6x)
+    if(Calc.pendingLoopRow!=0xFF){
+      // Pattern loop takes highest priority
+      Calc.row=Calc.pendingLoopRow;
+      Calc.pendingLoopRow=0xFF;
+      // Stay in same order
+      continue;
+    }
+    
+    // PRIORITY 2: Pattern Break (Dxx) or Position Jump (Bxx)
+    if(Calc.patternBreak||Calc.patternJump){
+      // Handle position jump
+      if(Calc.nextOrder!=-1){
+        Calc.orderIndex=Calc.nextOrder;
+        Calc.nextOrder=-1;
+      }else{
+        Calc.orderIndex++;
+      }
+      
+      // Handle pattern break
       if(Calc.nextRow!=-1){
         Calc.row=Calc.nextRow;
         Calc.nextRow=-1;
+      }else{
+        Calc.row=0;
       }
-      Calc.totalSeconds+=calcRow();
-      if(Calc.orderIndex==Calc.songLength-1&&Calc.nextRow!=-1&&Calc.nextOrder!=-1){ // if pattern loop and last pattern
-        Calc.orderIndex--;
-        Calc.orderIndex=(Calc.orderIndex==255)?0:Calc.orderIndex;
-        Calc.nextOrder=-1;
-        break;
-      }
-      if(Calc.nextOrder>Calc.songLength||Calc.songEnd) break;
+      
+      // MOD format: DON'T reset pattern loop counts (OpenMPT behavior)
+      // Other formats would reset here, but MOD keeps loop counts
+      
+      continue;
     }
-    if(Calc.patternJump&&!Calc.patternBreak&&Calc.orderTable[Calc.nextOrder]!=Calc.orderTable[Calc.orderIndex+1]&&Calc.nextOrder<=Calc.songLength){
-      if(Calc.nextOrder<=Calc.orderIndex&&Calc.orderIndex+1<Calc.songLength&&Calc.nextOrder!=-1) Calc.nextOrder=Calc.orderIndex+1;
-      else break;
+    
+    // PRIORITY 3: Normal advance
+    Calc.row++;
+    
+    // Check if we've reached end of pattern
+    if(Calc.row>=ROWS){
+      Calc.row=0;
+      Calc.orderIndex++;
+      
+      // MOD format: DON'T reset pattern loop counts on pattern change
+      // This is correct OpenMPT behavior for MOD files
     }
-    Calc.prevOrder=Calc.orderIndex;
-    if(Calc.nextOrder>Calc.songLength||Calc.songEnd) break;
   }
+  
+  // Restore file position
   file->seek(currentPos,SEEK_SET);
+  
+  // Convert to requested units
   signed long factor=(oneFiftieth)?50:1000;
   return static_cast<signed long>(Calc.totalSeconds*factor);
 }
@@ -1382,25 +1541,35 @@ uint8_t AudioGeneratorMOD::getNumberOfChannels(){
     numberOfChannels=2;
   }else if(!strncmp(reinterpret_cast<const char*>(temp),"M.K.",4)||
           !strncmp(reinterpret_cast<const char*>(temp),"M!K!",4)||
+          !strncmp(reinterpret_cast<const char*>(temp),"M&K!",4)||
+          !strncmp(reinterpret_cast<const char*>(temp),"FEST",4)||
+          !strncmp(reinterpret_cast<const char*>(temp),"N.T.",4)||
+          !strncmp(reinterpret_cast<const char*>(temp),"PATT",4)||
+          !strncmp(reinterpret_cast<const char*>(temp),"NSMS",4)||
+          !strncmp(reinterpret_cast<const char*>(temp),"LARD",4)||
+          !strncmp(reinterpret_cast<const char*>(temp),".M.K",4)||
           !strncmp(reinterpret_cast<const char*>(temp),"4CHN",4)||
-          !strncmp(reinterpret_cast<const char*>(temp),"FLT4",4)){
+          !strncmp(reinterpret_cast<const char*>(temp),"FLT4",4)||
+          !strncmp(reinterpret_cast<const char*>(temp),"EXO4",4)){
     numberOfChannels=4;
   }else if(!strncmp(reinterpret_cast<const char*>(temp),"6CHN",4)){
     numberOfChannels=6;
   }else if(!strncmp(reinterpret_cast<const char*>(temp),"8CHN",4)||
           !strncmp(reinterpret_cast<const char*>(temp),"OKTA",4)||
+          !strncmp(reinterpret_cast<const char*>(temp),"OCTA",4)||
           !strncmp(reinterpret_cast<const char*>(temp),"FLT8",4)||
-          !strncmp(reinterpret_cast<const char*>(temp),"CD81",4)){
+          !strncmp(reinterpret_cast<const char*>(temp),"EXO8",4)||
+          !strncmp(reinterpret_cast<const char*>(temp),"CD81",4)||
+          !strncmp(reinterpret_cast<const char*>(temp),"CD61",4)){
     numberOfChannels=8;
-  }else if(!strncmp(reinterpret_cast<const char*>(temp+2),"CH",2)){
-    // First verify that temp[0] and temp[1] are valid digits
-    if(temp[0]>='0'&&temp[0]<='9'&&temp[1]>='0'&&temp[1]<='9'){
-      uint8_t tens=temp[0]-'0';
-      uint8_t ones=temp[1]-'0';
-      numberOfChannels=tens*10+ones;
-    }else{
-      numberOfChannels=0;  // Invalid digits found
-    }
+  }else if(temp[0]>='1'&&temp[0]<='9'&&!strncmp(reinterpret_cast<const char*>(temp+1),"CHN",3)){
+    // Format: "xCHN" where x is 1-9 (e.g. "5CHN", "7CHN")
+    numberOfChannels=temp[0]-'0';
+  }else if(temp[0]>='1'&&temp[0]<='9'&&temp[1]>='0'&&temp[1]<='9'&&
+          (!strncmp(reinterpret_cast<const char*>(temp+2),"CH",2)||
+           !strncmp(reinterpret_cast<const char*>(temp+2),"CN",2))){
+    // Format: "xxCH" or "xxCN" where xx are 10-99 (e.g. "16CH", "32CN")
+    numberOfChannels=(temp[0]-'0')*10+temp[1]-'0';
   }else{
     // Check for old format with 15 samples
     numberOfChannels=4; // Default to 4 channels if unknown
@@ -1420,6 +1589,10 @@ uint8_t AudioGeneratorMOD::getNumberOfChannels(){
       // No known signature found,assume old format
       Calc.oldMod=true;
     }
+  }
+  // Clamp to maximum supported channels
+  if(numberOfChannels>CHANNELS){
+    numberOfChannels=CHANNELS;
   }
   // Return the pointer to its original position
   file->seek(currentPos,SEEK_SET);

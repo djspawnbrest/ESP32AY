@@ -216,6 +216,14 @@ class AudioGeneratorMOD:public AudioGenerator{
       bool patternJump;
       bool songEnd;
       bool oldMod;
+      // OpenMPT-style loop detection (optimized for ESP32)
+      bool visited[128][64];  // Simple visited array: 128 orders * 64 rows = 8 KB
+      // For rows with active pattern loops, store loop states
+      uint32_t loopStates[512];  // (order<<24)|(row<<16)|(loopHash) - only for rows with loops
+      uint16_t loopStatesCount;
+      uint16_t rowsInLoops;
+      uint16_t complexityThreshold;
+      uint8_t pendingLoopRow;
     }calcMod;
 
     // Effects

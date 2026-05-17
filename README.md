@@ -38,7 +38,7 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 - .yrg - [Custom AVR-AY format](https://www.avray.ru/ru/avr-ay-player/)
 - .mod - Amiga MOD tracker format designed for creating, storing and playing music on an Amiga PC
 - .s3m - (Scream Tracker 3 Module) is a module file format, based on the original MOD format used on the Amiga computer.
-- .xm  - The XM file format, also known as Extended Module, is a digital audio file type for music created in the FastTracker 2 software.
+- .xm  - The XM file format, also known as Extended Module, is a digital audio file type for music created in the FastTracker 2 software (rev.D and above only).
 - .tap - A file format for emulating ZX Spectrum magnetic tape images, which stores data from standard Sinclair BASIC procedures for working with a cassette.
 - .tzx - A file format used to store programs and games for the ZX Spectrum computer as audio data from magnetic tape.
 - .mp3 - MP3 (MPEG-1 Audio Layer 3) is a widely used digital audio format that uses a lossy compression method to significantly reduce file size while maintaining near-CD quality audio.
