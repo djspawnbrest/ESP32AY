@@ -136,6 +136,7 @@ class AudioGeneratorMOD:public AudioGenerator{
       uint8_t note8[ROWS][CHANNELS];
       uint8_t effectNumber[ROWS][CHANNELS];
       uint8_t effectParameter[ROWS][CHANNELS];
+      uint16_t rawPeriod[ROWS][CHANNELS];  // Store raw period for notes outside standard range
     }Pattern;
     
     typedef struct player{

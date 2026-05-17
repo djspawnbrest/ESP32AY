@@ -468,6 +468,7 @@ bool AudioGeneratorMOD::LoadPattern(uint8_t pattern){
       if(4!=file->read(temp,4)) return false;
       Player.currentPattern.sampleNumber[row][channel]=(temp[0]&0xF0)+(temp[2]>>4);
       amigaPeriod=((temp[0]&0xF)<<8)+temp[1];
+      Player.currentPattern.rawPeriod[row][channel]=amigaPeriod;  // Store raw period
       Player.currentPattern.note8[row][channel]=NONOTE8;
       for(i=1;i<37;i++)
         if(amigaPeriod>ReadAmigaPeriods(i*8)-3&&
@@ -610,6 +611,16 @@ bool AudioGeneratorMOD::ProcessRow(){
         Player.lastAmigaPeriod[channel]=Player.amigaPeriod[channel];
       if(!(Player.waveControl[channel]&0x80)) Player.vibratoPos[channel]=0;
       if(!(Player.waveControl[channel]&0x08)) Player.tremoloPos[channel]=0;
+    }else{
+      // Check if there's a raw period for notes outside standard range
+      uint16_t rawPeriod = Player.currentPattern.rawPeriod[Player.lastRow][channel];
+      if(rawPeriod > 0 && sampleNumber){
+        // Use raw period directly for very high notes (period < 113)
+        Player.amigaPeriod[channel] = rawPeriod;
+        if(effectNumber!=TONEPORTAMENTO&&effectNumber!=PORTAMENTOVOLUMESLIDE)
+          Player.lastAmigaPeriod[channel]=Player.amigaPeriod[channel];
+        note = rawPeriod;  // Set note to trigger sample playback
+      }
     }
     switch(effectNumber){
       case TONEPORTAMENTO:
