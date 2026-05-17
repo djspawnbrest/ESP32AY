@@ -110,11 +110,11 @@ class AudioGeneratorMOD:public AudioGenerator{
 #endif
 
     typedef struct Sample{
-      uint16_t length;
+      uint32_t length;        // Changed from uint16_t to support samples > 65535 bytes
       int8_t fineTune;
       uint8_t volume;
-      uint16_t loopBegin;
-      uint16_t loopLength;
+      uint32_t loopBegin;     // Changed from uint16_t for consistency
+      uint32_t loopLength;    // Changed from uint16_t for consistency
       #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
         // keys For PSRAM
         uint8_t* data=nullptr;

@@ -364,6 +364,7 @@ bool AudioGeneratorMOD::LoadHeader(){
     if(2!=file->read(temp,2)) return false;
     Mod.samples[i].length=MakeWord(temp[0],temp[1])*2;
     if(1!=file->read(reinterpret_cast<uint8_t*>(&Mod.samples[i].fineTune),1)) return false;
+    Mod.samples[i].fineTune &= 0x0F;  // Mask to valid 4-bit range (0-15)
     if(Mod.samples[i].fineTune>7) Mod.samples[i].fineTune-=16;
     if(1!=file->read(&Mod.samples[i].volume,1)) return false;
     if(2!=file->read(temp,2)) return false;
@@ -467,7 +468,6 @@ bool AudioGeneratorMOD::LoadPattern(uint8_t pattern){
       if(4!=file->read(temp,4)) return false;
       Player.currentPattern.sampleNumber[row][channel]=(temp[0]&0xF0)+(temp[2]>>4);
       amigaPeriod=((temp[0]&0xF)<<8)+temp[1];
-        // Player.currentPattern.note[row][channel]=NONOTE;
       Player.currentPattern.note8[row][channel]=NONOTE8;
       for(i=1;i<37;i++)
         if(amigaPeriod>ReadAmigaPeriods(i*8)-3&&
@@ -601,7 +601,11 @@ bool AudioGeneratorMOD::ProcessRow(){
     }
     if(note!=NONOTE){
       Player.lastNote[channel]=note;
-      Player.amigaPeriod[channel]=ReadAmigaPeriods(note+Mod.samples[Player.lastSampleNumber[channel]].fineTune);
+      // Calculate period with finetune (standard behavior)
+      int16_t noteIndex = note + Mod.samples[Player.lastSampleNumber[channel]].fineTune;
+      if(noteIndex < 0) noteIndex = 0;
+      if(noteIndex > 295) noteIndex = 295;
+      Player.amigaPeriod[channel] = ReadAmigaPeriods(noteIndex);
       if(effectNumber!=TONEPORTAMENTO&&effectNumber!=PORTAMENTOVOLUMESLIDE)
         Player.lastAmigaPeriod[channel]=Player.amigaPeriod[channel];
       if(!(Player.waveControl[channel]&0x80)) Player.vibratoPos[channel]=0;
@@ -808,10 +812,12 @@ bool AudioGeneratorMOD::ProcessTick(){
                 break;
               case 1:
                 tempNote=Player.lastNote[channel]+effectParameterX*8+Mod.samples[Player.lastSampleNumber[channel]].fineTune;
+                if(tempNote<0) tempNote=0;
                 if(tempNote<296) Mixer.channelFrequency[channel]=Player.amiga/ReadAmigaPeriods(tempNote);
                 break;
               case 2:
                 tempNote=Player.lastNote[channel]+effectParameterY*8+Mod.samples[Player.lastSampleNumber[channel]].fineTune;
+                if(tempNote<0) tempNote=0;
                 if(tempNote<296) Mixer.channelFrequency[channel]=Player.amiga/ReadAmigaPeriods(tempNote);
                 break;
             }
