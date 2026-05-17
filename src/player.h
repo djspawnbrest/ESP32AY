@@ -658,7 +658,7 @@ void player(){
   }
   if(lfsConfig.playerSource==PLAYER_MODE_SD){
     if(PlayerCTRL.isFinish){
-      xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+      // FIX: Removed duplicate xSemaphoreGive - semaphore already released at line 657
       playFinish();
       muteAYBeep();
       if(sdConfig.isPlayAYL){
@@ -1250,10 +1250,14 @@ void player_screen(){
   ayClockShow();
   showFileInfo();
   if(lfsConfig.playerSource==PLAYER_MODE_SD){
-    timeShow();
-    showPlayerIcons();
+    if(PlayerCTRL.screen_mode!=SCR_ALERT){
+      timeShow();
+      showPlayerIcons();
+    }
   }
-  fastEQ();
+  if(PlayerCTRL.screen_mode!=SCR_ALERT){
+    fastEQ();
+  }
   if(lfsConfig.showClock&&foundRtc) showClock();
   //keypad survey
   if(lfsConfig.playerSource==PLAYER_MODE_SD){

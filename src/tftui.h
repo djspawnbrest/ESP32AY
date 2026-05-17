@@ -359,34 +359,62 @@ void clear_display_field(){
 }
 
 void showAlert(const char* message){
+  // FIX: Don't show alerts in system screens (settings, about, etc.)
+  // Only show alerts in user-interactive screens (player, browser)
+  if(PlayerCTRL.screen_mode == SCR_CONFIG ||
+     PlayerCTRL.screen_mode == SCR_RESET_CONFIG ||
+     PlayerCTRL.screen_mode == SCR_DATETIME ||
+     PlayerCTRL.screen_mode == SCR_ABOUT ||
+     PlayerCTRL.screen_mode == SCR_NOFILES ||
+     PlayerCTRL.screen_mode == SCR_SDEJECT) {
+    // Save message but don't interrupt user
+    strncpy(PlayerCTRL.alert_message,message,sizeof(PlayerCTRL.alert_message)-1);
+    PlayerCTRL.alert_message[sizeof(PlayerCTRL.alert_message)-1]='\0';
+    return;  // Don't switch screen
+  }
+  
+  // Show alert for PLAYER and BROWSER screens
   strncpy(PlayerCTRL.alert_message,message,sizeof(PlayerCTRL.alert_message)-1);
   PlayerCTRL.alert_message[sizeof(PlayerCTRL.alert_message)-1]='\0';
-  PlayerCTRL.prev_screen_mode=PlayerCTRL.screen_mode;
+  if(PlayerCTRL.screen_mode!=SCR_ALERT){
+    PlayerCTRL.prev_screen_mode=PlayerCTRL.screen_mode;
+  }
   PlayerCTRL.screen_mode=SCR_ALERT;
   PlayerCTRL.scr_mode_update[SCR_ALERT]=true;
   PlayerCTRL.alert_start_time=millis();
 }
 
+// Forward declarations
+void player_screen();
+int browser_screen(int mode);
+void config_screen();
+
 void alert_screen(){
-  if(PlayerCTRL.scr_mode_update[SCR_ALERT]){
-    PlayerCTRL.scr_mode_update[SCR_ALERT]=false;
-    img.setColorDepth(16);
-    img.createSprite(200,64);
-    // img.fillScreen(0);
-    img.setTextColor(TFT_WHITE);
-    img.setTextSize(2);
-    img.setFreeFont(&WildFont);
-    // Draw alert box
-    img.fillRoundRect(0,0,200,64,8,TFT_BLACK);
-    img.drawRoundRect(0,0,200,64,8,TFT_RED);
-    // Draw message
-    spr_println(img,0,2,PlayerCTRL.alert_message,2,ALIGN_CENTER,WILD_CYAN);
-    spr_println(img,0,6,"Press any key",1,ALIGN_CENTER,TFT_YELLOW);
-    // draw sprite
-    img.pushSprite(20,128);
-    img.deleteSprite();
+  // 1. СНАЧАЛА вызываем фоновый экран для обработки действий
+  switch(PlayerCTRL.prev_screen_mode){
+    case SCR_PLAYER:
+      player_screen();
+      break;
+    case SCR_BROWSER:
+      browser_screen(sdConfig.isBrowserPlaylist);
+      break;
   }
-  // Auto-dismiss after 3 seconds or on any key press
+  
+  // 2. ПОТОМ рисуем alert ПОВЕРХ обновленного фона
+  // Перерисовываем alert каждый кадр (он маленький, это быстро)
+  img.setColorDepth(16);
+  img.createSprite(200,64);
+  img.setTextColor(TFT_WHITE);
+  img.setTextSize(2);
+  img.setFreeFont(&WildFont);
+  img.fillRoundRect(0,0,200,64,8,TFT_BLACK);
+  img.drawRoundRect(0,0,200,64,8,TFT_RED);
+  spr_println(img,0,2,PlayerCTRL.alert_message,2,ALIGN_CENTER,WILD_CYAN);
+  spr_println(img,0,6,"Press any key",1,ALIGN_CENTER,TFT_YELLOW);
+  img.pushSprite(20,128);
+  img.deleteSprite();
+  
+  // 3. Проверка закрытия
   if((millis()-PlayerCTRL.alert_start_time>3000)||enc.action()||dn.action()||up.action()){
     PlayerCTRL.screen_mode=PlayerCTRL.prev_screen_mode;
     PlayerCTRL.scr_mode_update[PlayerCTRL.screen_mode]=true;
@@ -422,6 +450,11 @@ void noFilesFound(){
 
 void TFTInit(){
   if(!tftInitialized){
+    // FIX: Disable PSRAM for TFT_eSPI to leave PSRAM available for XM modules
+    // This prevents OOM when loading large XM files
+    #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+      tft.setAttribute(PSRAM_ENABLE,0);  // 0 = disable PSRAM for TFT sprites
+    #endif
     tft.init(TFT_BLACK);
     tftInitialized=true;
   }
