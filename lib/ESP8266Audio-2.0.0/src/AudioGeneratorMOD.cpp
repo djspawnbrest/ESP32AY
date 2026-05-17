@@ -886,25 +886,6 @@ bool AudioGeneratorMOD::ProcessTick(){
 bool AudioGeneratorMOD::RunPlayer(){
   if(!running) return false;
 
-  if(trackFrameInitialized){
-    // Calculate how many 1/50th second frames should pass for this tick
-    // One tick duration in seconds=Player.samplesPerTick/sampleRate
-    // Number of 1/50th frames=(samplesPerTick/sampleRate)*50
-    
-    float secondsPerTick=(float)Player.samplesPerTick/(float)sampleRate;
-    float trackFramesPerTick=secondsPerTick*50.0f;
-    
-    // Accumulate and round to nearest whole number
-    static float frameAccumulator=0.0f;
-    frameAccumulator+=trackFramesPerTick;
-    
-    if(frameAccumulator>=1.0f){
-      int framesToAdd=(int)frameAccumulator;
-      (*trackFrame)+=framesToAdd;
-      frameAccumulator-=framesToAdd;
-    }
-  }
-
   if(Player.tick==Player.speed){
     Player.tick=0;
 
@@ -934,6 +915,27 @@ bool AudioGeneratorMOD::RunPlayer(){
   }
 
   Player.tick++;
+  
+  // Update trackFrame AFTER processing tick (correct synchronization)
+  if(trackFrameInitialized){
+    // Calculate how many 1/50th second frames should pass for this tick
+    // One tick duration in seconds=Player.samplesPerTick/sampleRate
+    // Number of 1/50th frames=(samplesPerTick/sampleRate)*50
+    
+    float secondsPerTick=(float)Player.samplesPerTick/(float)sampleRate;
+    float trackFramesPerTick=secondsPerTick*50.0f;
+    
+    // Accumulate and round to nearest whole number
+    static float frameAccumulator=0.0f;
+    frameAccumulator+=trackFramesPerTick;
+    
+    if(frameAccumulator>=1.0f){
+      int framesToAdd=(int)frameAccumulator;
+      (*trackFrame)+=framesToAdd;
+      frameAccumulator-=framesToAdd;
+    }
+  }
+  
   return true;
 }
 
