@@ -40,6 +40,11 @@ enum{
 #define SORT_HASH_LEN       4
 #define SORT_FILES_MAX      1280 //there are 1070 entries in the Tr_Songs/Authors currently
 
+#define SCROLLBAR_X         232
+#define SCROLLBAR_Y         24
+#define SCROLLBAR_WIDTH     4
+#define SCROLLBAR_HEIGHT    288
+
 struct sortStruct{
   char hash[SORT_HASH_LEN];
   uint16_t file_id;
@@ -53,6 +58,33 @@ sortStruct sort_list_play[SORT_FILES_MAX];
 int16_t sort_list_len,sort_list_play_len;
 int16_t cursor_offset;
 uint8_t browser_rebuild=1;
+
+//not need semaphore
+void clear_scrollbar(){
+  // Очищаем область скроллбара (закрашиваем фоном)
+  tft.fillRect(SCROLLBAR_X,SCROLLBAR_Y,SCROLLBAR_WIDTH,SCROLLBAR_HEIGHT,TFT_BLACK);
+}
+
+//not need semaphore
+void draw_scrollbar(int current_pos,int total_items){
+  if(total_items<=BROWSER_LINES) return;
+  // Фон полосы прокрутки (трек)
+  tft.fillRect(SCROLLBAR_X,SCROLLBAR_Y,SCROLLBAR_WIDTH,SCROLLBAR_HEIGHT,TFT_DARKGREY);
+  // Расчет размера ползунка (пропорционально видимой части)
+  int thumb_height=(BROWSER_LINES*SCROLLBAR_HEIGHT)/total_items;
+  if(thumb_height<8) thumb_height=8;  // минимальная высота для видимости
+  // Расчет позиции начала отображения (как в browser_screen)
+  int id=current_pos-BROWSER_LINES/2;
+  if(id>=total_items-BROWSER_LINES) id=total_items-BROWSER_LINES;
+  if(id<0) id=0;
+  // Позиция ползунка
+  int thumb_pos=0;
+  if(total_items>BROWSER_LINES){
+    thumb_pos=(id*(SCROLLBAR_HEIGHT-thumb_height))/(total_items-BROWSER_LINES);
+  }
+  // Ползунок
+  tft.fillRect(SCROLLBAR_X,SCROLLBAR_Y+thumb_pos,SCROLLBAR_WIDTH,thumb_height,TFT_WHITE);
+}
 
 //not need semaphore
 void scrollString(char *txt,uint8_t textSize,uint16_t textColor,int width,int height,int xPos,int yPos,uint8_t scrollNumber=0,uint16_t bgColor=BRWSR_CURSOR,bool rounded=true){
@@ -804,6 +836,14 @@ int browser_screen(int mode){
     }else{
       browser_ayl_draw_end();
     }
+    // scrollbar
+    if(sort_list_len>BROWSER_LINES){
+      // draw scrollbar
+      draw_scrollbar(sdConfig.dir_cur,sort_list_len);
+    }else{
+      // clear scrollbar
+      clear_scrollbar();
+    }
     PlayerCTRL.scr_mode_update[SCR_BROWSER]=false;
     img.deleteSprite();
   }
@@ -877,11 +917,15 @@ int browser_screen(int mode){
   }
   if(enc.left()&&lcdBlackout==false&&scrNotPlayer==false){
     PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
-    browser_move_cur(-1,true);
+    if(enc.fast()) browser_move_cur(-5,true);
+    else browser_move_cur(-1,true);
+    enc.clear();
   }
   if(enc.right()&&lcdBlackout==false&&scrNotPlayer==false){
     PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
-    browser_move_cur(1,true);
+    if(enc.fast()) browser_move_cur(5,true);
+    else browser_move_cur(1,true);
+    enc.clear();
   }
   if(enc.hasClicks(1)&&!up.holding()&&lcdBlackout==false&&scrNotPlayer==false){
     if(mode==BROWSE_DIR){

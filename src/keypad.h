@@ -23,7 +23,7 @@ void buttonsSetup(){
   enc.setEncReverse(lfsConfig.encReverse);
   enc.setClickTimeout(200);
   enc.setHoldTimeout(500);
-  enc.setFastTimeout(100);
+  enc.setFastTimeout(80);
   dn.setClickTimeout(200);
   dn.setHoldTimeout(500);
   up.setClickTimeout(200);
@@ -42,6 +42,7 @@ void generalTick(){
       if(PlayerCTRL.screen_mode==SCR_CONFIG) PlayerCTRL.screen_mode=SCR_PLAYER;
       PlayerCTRL.scr_mode_update[PlayerCTRL.screen_mode]=true;
       if(PlayerCTRL.screen_mode==SCR_BROWSER) scrNotPlayer=true;
+      else clear_scrollbar();
     }
   }
   if(enc.hasClicks(2)){
@@ -50,6 +51,7 @@ void generalTick(){
       PlayerCTRL.screen_mode=SCR_CONFIG;
       PlayerCTRL.scr_mode_update[PlayerCTRL.screen_mode]=true;
       scrNotPlayer=true;
+      if(PlayerCTRL.prev_screen_mode==SCR_BROWSER) clear_scrollbar();
     }
   }
   if(PlayerCTRL.screen_mode==SCR_ALERT){scrNotPlayer=true;}

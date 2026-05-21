@@ -409,6 +409,7 @@ void MP3_Loop();
 void MP3_Play();
 void WAV_Loop();
 void WAV_Play();
+void clear_scrollbar();
 
 //I2C autedect
 byte eepAddress=80;   // 0x50  - default
