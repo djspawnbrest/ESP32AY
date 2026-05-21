@@ -1,11 +1,12 @@
 #include <Arduino.h>
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
+  #include "s3wrapper.h"
+#endif
 #include <SPI.h>
 #include <SdFat.h>
 #include "esp_task_wdt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-
-// #define DEBUG_RAM 1
 
 #ifdef DEBUG_RAM
 #include "debug.h"

@@ -7,6 +7,7 @@
  * http://sam.zoy.org/wtfpl/COPYING for more details. */
 
 #include "xm_internal.h"
+#include "esp_heap_caps.h"
 
 #define OFFSET(ptr) do {										\
 		(ptr) = (void*)((intptr_t)(ptr) + (intptr_t)(*ctxp));	\
@@ -141,7 +142,7 @@ void xm_create_context_from_libxmize(xm_context_t** ctxp, char* libxmized, uint3
 }
 
 void xm_free_context(xm_context_t* context) {
-	free(context);
+	heap_caps_free(context);
 }
 
 void xm_set_max_loop_count(xm_context_t* context, uint8_t loopcnt) {

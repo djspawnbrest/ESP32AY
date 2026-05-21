@@ -479,8 +479,9 @@ TFT_eSPI::TFT_eSPI(int16_t w, int16_t h)
   else
 #endif
 #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
-  if (psramFound()) _psram_enable = true; // Enable the use of PSRAM (if available)
-  else
+  // if (psramFound()) _psram_enable = false; // Enable the use of PSRAM (if available)
+  _psram_enable = false;
+  // else
 #endif
   _psram_enable = false;
 
@@ -4870,8 +4871,9 @@ void TFT_eSPI::setAttribute(uint8_t attr_id, uint8_t param) {
             if (psramFound()) _psram_enable = param; // Enable the use of PSRAM (if available)
             else
 #elif defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
-            if (psramFound()) _psram_enable = param; // Enable the use of PSRAM (if available)
-            else
+            // if (psramFound()) _psram_enable = param; // Enable the use of PSRAM (if available)
+            // else
+            _psram_enable = false;
 #endif
             _psram_enable = false;
             break;

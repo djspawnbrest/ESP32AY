@@ -155,19 +155,19 @@ void TFT_eSPI::loadMetrics(void)
   uint32_t headerPtr = 24;
   uint32_t bitmapPtr = headerPtr + gFont.gCount * 28;
 
-#if defined (ESP32) && defined (CONFIG_SPIRAM_SUPPORT)
-  if ( psramFound() )
-  {
-    gUnicode  = (uint16_t*)ps_malloc( gFont.gCount * 2); // Unicode 16-bit Basic Multilingual Plane (0-FFFF)
-    gHeight   =  (uint8_t*)ps_malloc( gFont.gCount );    // Height of glyph
-    gWidth    =  (uint8_t*)ps_malloc( gFont.gCount );    // Width of glyph
-    gxAdvance =  (uint8_t*)ps_malloc( gFont.gCount );    // xAdvance - to move x cursor
-    gdY       =  (int16_t*)ps_malloc( gFont.gCount * 2); // offset from bitmap top edge from lowest point in any character
-    gdX       =   (int8_t*)ps_malloc( gFont.gCount );    // offset for bitmap left edge relative to cursor X
-    gBitmap   = (uint32_t*)ps_malloc( gFont.gCount * 4); // seek pointer to glyph bitmap in the file
-  }
-  else
-#endif
+// #if defined (ESP32) && defined (CONFIG_SPIRAM_SUPPORT)
+//   if ( psramFound() )
+//   {
+//     gUnicode  = (uint16_t*)ps_malloc( gFont.gCount * 2); // Unicode 16-bit Basic Multilingual Plane (0-FFFF)
+//     gHeight   =  (uint8_t*)ps_malloc( gFont.gCount );    // Height of glyph
+//     gWidth    =  (uint8_t*)ps_malloc( gFont.gCount );    // Width of glyph
+//     gxAdvance =  (uint8_t*)ps_malloc( gFont.gCount );    // xAdvance - to move x cursor
+//     gdY       =  (int16_t*)ps_malloc( gFont.gCount * 2); // offset from bitmap top edge from lowest point in any character
+//     gdX       =   (int8_t*)ps_malloc( gFont.gCount );    // offset for bitmap left edge relative to cursor X
+//     gBitmap   = (uint32_t*)ps_malloc( gFont.gCount * 4); // seek pointer to glyph bitmap in the file
+//   }
+//   else
+// #endif
   {
     gUnicode  = (uint16_t*)malloc( gFont.gCount * 2); // Unicode 16-bit Basic Multilingual Plane (0-FFFF)
     gHeight   =  (uint8_t*)malloc( gFont.gCount );    // Height of glyph

@@ -238,6 +238,10 @@ char* xm_load_module(xm_context_t* ctx,const char* moddata,size_t moddata_length
 	mod->frequency_type=(flags&1)?XM_LINEAR_FREQUENCIES:XM_AMIGA_FREQUENCIES;
 	ctx->tempo=*(uint16_t*)(buffer+16);
 	ctx->bpm=*(uint16_t*)(buffer+18);
+	
+	// FIX: Set default tempo/bpm if file has invalid values
+	if(ctx->tempo==0) ctx->tempo=6;  // XM default tempo
+	if(ctx->bpm==0) ctx->bpm=125;    // XM default bpm
 	memcpy(mod->pattern_table,buffer+20,PATTERN_ORDER_TABLE_LENGTH);
 	offset+=header_size;
 	for(uint16_t i=0;i<mod->num_patterns;i++){

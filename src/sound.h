@@ -127,9 +127,7 @@ void initOut(int buf=32){
   if(out){
     out->stop();
     vTaskDelay(pdMS_TO_TICKS(10));
-    delete out;
-    out=nullptr;
-  }
+  }else{
 #if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(USE_EXTERNAL_DAC)
   out=new AudioOutputI2S(0,AudioOutputI2S::EXTERNAL_I2S,buf);
   out->SetPinout(PIN_BCK,PIN_LCK,PIN_DIN);
@@ -137,11 +135,13 @@ void initOut(int buf=32){
 #else
   out=new AudioOutputI2S(0,AudioOutputI2S::INTERNAL_DAC,buf);  // I2S output
 #endif
+  }
   unMuteAmp();
 }
 
 void DACInit(){
   initOut();
+  out->begin();
   DACTimer=timerBegin(0,80,true); // timer_id = 0; divider=79;(old 80) countUp = true;
   timerAttachInterrupt(DACTimer,&DACTimer_ISR,false); // edge = false (LEVEL mode for ESP32-S3)
   timerAlarmWrite(DACTimer,1000000/TIMER_RATE,true);

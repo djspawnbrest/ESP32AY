@@ -36,7 +36,7 @@ TFT_eSprite::TFT_eSprite(TFT_eSPI *tft)
 
   _colorMap = nullptr;
 
-  _psram_enable = true;
+  _psram_enable = false;
   
   // Ensure end_tft_write() does nothing in inherited functions.
   lockTransaction = true;
@@ -55,7 +55,7 @@ void* TFT_eSprite::createSprite(int16_t w, int16_t h, uint8_t frames)
 
   if ( w < 1 || h < 1 ) return nullptr;
 
-  _psram_enable = _tft->getAttribute(PSRAM_ENABLE);    // Update the new Sprite Class parameter with the latest value from the TFT Class
+  // _psram_enable = _tft->getAttribute(PSRAM_ENABLE);    // Update the new Sprite Class parameter with the latest value from the TFT Class
   _iwidth  = _dwidth  = _bitwidth = w;
   _iheight = _dheight = h;
 
@@ -172,16 +172,22 @@ void* TFT_eSprite::callocSprite(int16_t w, int16_t h, uint8_t frames)
     else
 #endif
 #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
-    if ( psramFound() && _psram_enable && !_tft->DMA_Enabled)
+    // if ( psramFound() && _psram_enable && !_tft->DMA_Enabled)
+    // {
+    //   ptr8 = ( uint8_t*) ps_calloc(frames * w * h + frames, sizeof(uint16_t));
+    //   printf("PSRAM 1\n");
+    // }
+    // else
     {
-      ptr8 = ( uint8_t*) ps_calloc(frames * w * h + frames, sizeof(uint16_t));
-      printf("PSRAM 1\n");
+      ptr8 = ( uint8_t*) calloc(frames * w * h + frames, sizeof(uint16_t));
+      //Serial.println("Normal RAM");
+      printf("Normal S3 RAM\n");
     }
-    else
 #endif
     {
       ptr8 = ( uint8_t*) calloc(frames * w * h + frames, sizeof(uint16_t));
       //Serial.println("Normal RAM");
+      printf("Normal RAM\n");
     }
   }
 
@@ -192,8 +198,9 @@ void* TFT_eSprite::callocSprite(int16_t w, int16_t h, uint8_t frames)
     else
 #endif
 #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
-    if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(frames * w * h + frames, sizeof(uint8_t));
-    else
+    // if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(frames * w * h + frames, sizeof(uint8_t));
+    // else
+    ptr8 = ( uint8_t*) calloc(frames * w * h + frames, sizeof(uint8_t));
 #endif
     ptr8 = ( uint8_t*) calloc(frames * w * h + frames, sizeof(uint8_t));
   }
@@ -207,8 +214,9 @@ void* TFT_eSprite::callocSprite(int16_t w, int16_t h, uint8_t frames)
     else
 #endif
 #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
-    if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(((frames * w * h) >> 1) + frames, sizeof(uint8_t));
-    else
+    // if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(((frames * w * h) >> 1) + frames, sizeof(uint8_t));
+    // else
+    ptr8 = ( uint8_t*) calloc(((frames * w * h) >> 1) + frames, sizeof(uint8_t));
 #endif
     ptr8 = ( uint8_t*) calloc(((frames * w * h) >> 1) + frames, sizeof(uint8_t));
   }
@@ -228,8 +236,9 @@ void* TFT_eSprite::callocSprite(int16_t w, int16_t h, uint8_t frames)
     else
 #endif
 #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
-    if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(frames * (w>>3) * h + frames, sizeof(uint8_t));
-    else
+    // if ( psramFound() && _psram_enable ) ptr8 = ( uint8_t*) ps_calloc(frames * (w>>3) * h + frames, sizeof(uint8_t));
+    // else
+    ptr8 = ( uint8_t*) calloc(frames * (w>>3) * h + frames, sizeof(uint8_t));
 #endif
     ptr8 = ( uint8_t*) calloc(frames * (w>>3) * h + frames, sizeof(uint8_t));
   }

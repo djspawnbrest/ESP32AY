@@ -185,11 +185,6 @@ extern "C"{
 }
 
 void *xm_malloc(size_t size){
-  // Force PSRAM cleanup before large allocations
-  void* cleanup1=heap_caps_malloc(1,MALLOC_CAP_SPIRAM);
-  void* cleanup2=heap_caps_malloc(1,MALLOC_CAP_SPIRAM);
-  if(cleanup1) heap_caps_free(cleanup1);  // Free the first one too!
-  if(cleanup2) heap_caps_free(cleanup2);
   void *ctx_mem=heap_caps_malloc(size,MALLOC_CAP_SPIRAM);
   if(!ctx_mem){
     ctx_mem=heap_caps_malloc(size, MALLOC_CAP_8BIT);
@@ -270,6 +265,14 @@ void initialize_xm(AudioOutput *out,bool playerTask){
 }
 
 int xmCTX(AudioFileSource* file,size_t fileSize){
+  // Safety: clean up old context if exists (paranoid check)
+  if(xm_ctx){
+    #ifdef LIBXM_DEBUG
+      LOG_WARN("xm_ctx was not NULL! Cleaning up old context...");
+    #endif
+    xm_free_context(xm_ctx);
+    xm_ctx=NULL;
+  }
   xm_file=file;
   xm_file_size=fileSize;
   // Reset logical samples counter for new track
@@ -280,19 +283,28 @@ int xmCTX(AudioFileSource* file,size_t fileSize){
     #ifdef LIBXM_DEBUG
       LOG_ERROR("\n\tXM module is not sane!");
     #endif
-      xm_ctx=NULL; // CRITICAL: Set to NULL on error
+      if(xm_ctx){
+        xm_free_context(xm_ctx);  // ← ДОБАВИТЬ ЭТО!
+        xm_ctx=NULL;
+      }
       break;
     case -2:
     #ifdef LIBXM_DEBUG
       LOG_ERROR("\n\tXM context memory allocation error!");
     #endif
-      xm_ctx=NULL; // CRITICAL: Set to NULL on error
+      if(xm_ctx){
+        xm_free_context(xm_ctx);  // ← ДОБАВИТЬ ЭТО!
+        xm_ctx=NULL;
+      }
       break;
     case -3:
     #ifdef LIBXM_DEBUG
       LOG_ERROR("\n\tXM file is corrupted (invalid instrument/sample headers)!");
     #endif
-      xm_ctx=NULL; // CRITICAL: Set to NULL on error
+      if(xm_ctx){
+        xm_free_context(xm_ctx);  // ← ДОБАВИТЬ ЭТО!
+        xm_ctx=NULL;
+      }
       break;
     default:
       {
@@ -360,6 +372,12 @@ bool xm_player_loop(){
               return false;
             }
             
+            #ifdef ESP32
+              uint8_t gain=output->GetGain();
+              int mvol=(32767*gain)>>6;  // Pre-calculate
+            #else
+              int mvol=32767;
+            #endif
             // Render samples - no memset needed, we overwrite everything
             for(int i=0;i<XM_SAMPLES_PER_BUFFER;i++){
               float left=0.0f,right=0.0f;
@@ -371,7 +389,6 @@ bool xm_player_loop(){
               right=max(right,-1.0f);
               right=min(right,1.0f);
               
-              int mvol=32767;
               xm_buf[xm_buf_idx][2*i]=(i16)(left*mvol);
               xm_buf[xm_buf_idx][2*i+1]=(i16)(right*mvol);
             }
@@ -421,6 +438,12 @@ void IRAM_ATTR player_task(void *arg){
       case PLAYER_PLAY:
         {
           auto t1=esp_timer_get_time();
+          #ifdef ESP32
+            uint8_t gain=output->GetGain();
+            int mvol=(32767*gain)>>6;
+          #else
+            int mvol=32767;
+          #endif
           for(int i=0;i<XM_SAMPLES_PER_BUFFER;i++){
             float left,right;
             xm_sample(t.ctx,&left,&right);
@@ -647,17 +670,35 @@ void xm_init_track_frame(unsigned long* trackFrame){
 
 // Main calculate playing time function like player plays!
 signed long xm_get_playback_time(bool oneFiftieth){
-  if(!xm_ctx) return -1;
+  #ifdef LIBXM_TIME_DEBUG
+  LOG_INFO("xm_get_playback_time: ENTRY, xm_ctx=%p", xm_ctx);
+  #endif
+  
+  if(!xm_ctx) {
+    #ifdef LIBXM_TIME_DEBUG
+    LOG_INFO("xm_get_playback_time: xm_ctx is NULL, returning -1");
+    #endif
+    return -1;
+  }
+  
+  #ifdef LIBXM_TIME_DEBUG
+  LOG_INFO("xm_get_playback_time: Checking module validity...");
+  LOG_INFO("  length=%d, num_patterns=%d, num_channels=%d, tempo=%d, bpm=%d",
+           xm_ctx->module.length, xm_ctx->module.num_patterns, 
+           xm_ctx->module.num_channels, xm_ctx->tempo, xm_ctx->bpm);
+  #endif
   
   // Validate module before processing
   if(xm_ctx->module.length==0||xm_ctx->module.num_patterns==0||
      xm_ctx->module.num_channels==0||xm_ctx->tempo==0||xm_ctx->bpm==0){
+    #ifdef LIBXM_TIME_DEBUG
+    LOG_INFO("xm_get_playback_time: Module validation FAILED, returning -1");
+    #endif
     return -1; // Invalid module
   }
   
-  #ifdef LIBXM_DEBUG
-  LOG_INFO("xm_get_playback_time: length=%d, num_patterns=%d, tempo=%d, bpm=%d",
-           xm_ctx->module.length, xm_ctx->module.num_patterns, xm_ctx->tempo, xm_ctx->bpm);
+  #ifdef LIBXM_TIME_DEBUG
+  LOG_INFO("xm_get_playback_time: Module validation OK");
   LOG_INFO("  pattern_table[0..4]: %d %d %d %d %d",
            xm_ctx->module.pattern_table[0], xm_ctx->module.pattern_table[1],
            xm_ctx->module.pattern_table[2], xm_ctx->module.pattern_table[3],
@@ -709,29 +750,45 @@ signed long xm_get_playback_time(bool oneFiftieth){
   
   while(true){
     if(++safety_counter>MAX_ITERATIONS){
-      free(visited_rows);
+      #ifdef LIBXM_TIME_DEBUG
+      LOG_INFO("xm_get_playback_time: MAX_ITERATIONS exceeded at order=%d, row=%d", current_order, current_row);
+      #endif
+      heap_caps_free(visited_rows);
       break;
     }
     if((safety_counter&0x3FF)==0) esp_task_wdt_reset();
     
     // Bounds check
     if(current_order>=xm_ctx->module.length){
-      free(visited_rows);
+      #ifdef LIBXM_TIME_DEBUG
+      LOG_INFO("xm_get_playback_time: current_order=%d >= length=%d, stopping", current_order, xm_ctx->module.length);
+      #endif
+      heap_caps_free(visited_rows);
       break;
     }
     
     uint8_t pattern_index=xm_ctx->module.pattern_table[current_order];
     if(pattern_index>=xm_ctx->module.num_patterns){
+      #ifdef LIBXM_TIME_DEBUG
+      LOG_INFO("xm_get_playback_time: Invalid pattern_index=%d at order=%d (num_patterns=%d), skipping",
+               pattern_index, current_order, xm_ctx->module.num_patterns);
+      #endif
       // FIX: Skip invalid pattern index (like VLC does)
       // Try to find next valid position
       current_order++;
       if(current_order>=xm_ctx->module.length){
         // Reached end, try restart position
         current_order=xm_ctx->module.restart_position;
+        #ifdef LIBXM_TIME_DEBUG
+        LOG_INFO("xm_get_playback_time: Wrapped to restart_position=%d after invalid pattern", current_order);
+        #endif
         if(current_order>=xm_ctx->module.length||
            xm_ctx->module.pattern_table[current_order]>=xm_ctx->module.num_patterns){
           // Restart position is also invalid - give up
-          free(visited_rows);
+          #ifdef LIBXM_TIME_DEBUG
+          LOG_INFO("xm_get_playback_time: Restart position also invalid, giving up");
+          #endif
+          heap_caps_free(visited_rows);
           break;
         }
       }
@@ -740,13 +797,19 @@ signed long xm_get_playback_time(bool oneFiftieth){
     
     xm_pattern_t* pattern=xm_ctx->module.patterns+pattern_index;
     if(!pattern->slots||current_row>=pattern->num_rows){
-      free(visited_rows);
+      heap_caps_free(visited_rows);
+      break;
+    }
+    
+    // CRITICAL: Bounds check before array access to prevent crash
+    if(current_row>=MAX_NUM_ROWS){
+      heap_caps_free(visited_rows);
       break;
     }
     
     // Check if row already visited (loop detection - OpenMPT style)
     uint32_t visit_index=current_order*MAX_NUM_ROWS+current_row;
-    #ifdef LIBXM_DEBUG
+    #ifdef LIBXM_TIME_DEBUG
     if(safety_counter <= 260) {
       LOG_INFO("xm_get_playback_time: iter=%u, order=%d, row=%d, visit_index=%u, visited=%d",
                safety_counter, current_order, current_row, visit_index, visited_rows[visit_index]);
@@ -754,11 +817,11 @@ signed long xm_get_playback_time(bool oneFiftieth){
     #endif
     if(visited_rows[visit_index]){
       // Loop detected - stop (OpenMPT stops at first loop)
-      #ifdef LIBXM_DEBUG
+      #ifdef LIBXM_TIME_DEBUG
       LOG_INFO("xm_get_playback_time: Loop detected at order=%d, row=%d, iteration=%u",
                current_order, current_row, safety_counter);
       #endif
-      free(visited_rows);
+      heap_caps_free(visited_rows);
       break;
     }
     visited_rows[visit_index]=true;
@@ -810,7 +873,7 @@ signed long xm_get_playback_time(bool oneFiftieth){
         case 0xF: // Set speed/tempo (Fxx)
           if(slot->effect_param==0){
             // F00 in XM = stop song
-            free(visited_rows);
+            heap_caps_free(visited_rows);
             goto calculate_time;
           }else if(slot->effect_param<0x20){
             // Set speed (ticks per row)
@@ -836,14 +899,14 @@ signed long xm_get_playback_time(bool oneFiftieth){
       if(position_jump_pending){
         next_order=jump_dest;
         next_row=pattern_break_pending?break_row:0;
-        #ifdef LIBXM_DEBUG
+        #ifdef LIBXM_TIME_DEBUG
         LOG_INFO("xm_get_playback_time: Position jump to order=%d, row=%d", next_order, next_row);
         #endif
       }else{
         // Just break = next pattern
         next_order=current_order+1;
         next_row=break_row;
-        #ifdef LIBXM_DEBUG
+        #ifdef LIBXM_TIME_DEBUG
         LOG_INFO("xm_get_playback_time: Pattern break to order=%d, row=%d", next_order, next_row);
         #endif
       }
@@ -867,13 +930,13 @@ signed long xm_get_playback_time(bool oneFiftieth){
       current_row=next_row;
     }else{
       // Normal advance
-      #ifdef LIBXM_DEBUG
+      #ifdef LIBXM_TIME_DEBUG
       if(safety_counter >= 255 && safety_counter <= 258) {
         LOG_INFO("xm_get_playback_time: Before row++: current_row=%d, pattern->num_rows=%d", current_row, pattern->num_rows);
       }
       #endif
       current_row++;
-      #ifdef LIBXM_DEBUG
+      #ifdef LIBXM_TIME_DEBUG
       if(safety_counter >= 255 && safety_counter <= 258) {
         LOG_INFO("xm_get_playback_time: After row++: current_row=%d, checking if >= %d", current_row, pattern->num_rows);
       }
@@ -881,21 +944,21 @@ signed long xm_get_playback_time(bool oneFiftieth){
       if(current_row>=pattern->num_rows){
         current_row=0;
         current_order++;
-        #ifdef LIBXM_DEBUG
+        #ifdef LIBXM_TIME_DEBUG
         LOG_INFO("xm_get_playback_time: After increment current_order=%d", current_order);
         #endif
         if(current_order>=xm_ctx->module.length){
           current_order=xm_ctx->module.restart_position;
-          #ifdef LIBXM_DEBUG
+          #ifdef LIBXM_TIME_DEBUG
           LOG_INFO("xm_get_playback_time: Wrap to restart_position=%d", current_order);
           #endif
         }
-        #ifdef LIBXM_DEBUG
+        #ifdef LIBXM_TIME_DEBUG
         LOG_INFO("xm_get_playback_time: After wrap check current_order=%d", current_order);
         #endif
         
         // FIX: Skip invalid pattern indices after normal advance
-        #ifdef LIBXM_DEBUG
+        #ifdef LIBXM_TIME_DEBUG
         uint8_t before_skip = current_order;
         #endif
         while(current_order<xm_ctx->module.length&&
@@ -903,13 +966,13 @@ signed long xm_get_playback_time(bool oneFiftieth){
           current_order++;
           if(current_order>=xm_ctx->module.length){
             current_order=xm_ctx->module.restart_position;
-            #ifdef LIBXM_DEBUG
+            #ifdef LIBXM_TIME_DEBUG
             LOG_INFO("xm_get_playback_time: Skip loop wrapped to restart_position=%d", current_order);
             #endif
             break; // Prevent infinite loop
           }
         }
-        #ifdef LIBXM_DEBUG
+        #ifdef LIBXM_TIME_DEBUG
         if(before_skip != current_order) {
           LOG_INFO("xm_get_playback_time: Skipped from order=%d to order=%d", before_skip, current_order);
         }
@@ -929,7 +992,7 @@ calculate_time:
   // Convert samples to time
   double seconds=(double)total_samples/(double)sample_rate;
   
-  #ifdef LIBXM_DEBUG
+  #ifdef LIBXM_TIME_DEBUG
   LOG_INFO("xm_get_playback_time: total_samples=%llu, seconds=%.2f, safety_counter=%u",
            total_samples, seconds, safety_counter);
   #endif

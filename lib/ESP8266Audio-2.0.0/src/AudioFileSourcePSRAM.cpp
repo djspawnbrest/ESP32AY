@@ -41,7 +41,8 @@ bool AudioFileSourcePSRAM::open(AudioFileSource *source)
     return false;
   }
   
-  psramData = (uint8_t*)ps_malloc(size);
+  // psramData = (uint8_t*)ps_malloc(size);
+  psramData = (uint8_t*)heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
   if (!psramData) {
     return false;
   }
@@ -113,7 +114,7 @@ bool AudioFileSourcePSRAM::seek(int32_t pos, int dir)
 bool AudioFileSourcePSRAM::close()
 {
   if (psramData) {
-    free(psramData);
+    heap_caps_free(psramData);
     psramData = NULL;
   }
   opened = false;

@@ -8,41 +8,34 @@ void setXmSeparation(){
 }
 
 void XM_Cleanup(){
-  xmCleanupInProgress=true;  // Сигнал XM_Loop что идёт очистка
-  vTaskDelay(pdMS_TO_TICKS(50));  // УВЕЛИЧЕНА задержка - дать время завершиться всем операциям
-  
-  if(xm){
-    xm->stop();  // Это вызовет stop_xm() в библиотеке
-    vTaskDelay(pdMS_TO_TICKS(50));  // Дополнительная задержка после stop()
+  xmCleanupInProgress=true;
+  vTaskDelay(pdMS_TO_TICKS(50));
+  if(xm&&xm->isRunning()){
+    xm->stop();
+    vTaskDelay(pdMS_TO_TICKS(50));
   }
-  
   memset(modEQchn,0,sizeof(modEQchn));
   memset(bufEQ,0,sizeof(bufEQ));
   memset(&music_data,0,sizeof(music_data));
   memset(&AYInfo,0,sizeof(AYInfo));
-  
   if(modFile){
     modFile->close();
   }
-  
   if(xm){
     delete xm;
     xm=nullptr;
   }
-  
   if(modFile){
     delete modFile;
     modFile=nullptr;
   }
-  
   if(out){
     out->stop();
   }
-  
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
   xmOutInitialized=false;  // FIX: Reset flag for next track
-  xmCleanupInProgress=false;  // Очистка завершена
+  xmCleanupInProgress=false;
 }
 
 void XM_GetInfo(const char *filename){
@@ -114,7 +107,7 @@ void XM_GetInfo(const char *filename){
 }
 
 void XM_Loop(){
-  if(xmCleanupInProgress) return;  // Выход если идёт очистка
+  if(xmCleanupInProgress) return;
   
   if(skipMod){
     if(lfsConfig.play_mode==PLAY_MODE_ONE) sdConfig.play_cur++;
@@ -123,17 +116,14 @@ void XM_Loop(){
   }
   if(xm&&xm->isRunning()&&PlayerCTRL.isPlay){
     if(!xm->loop()){
-      if(!xmCleanupInProgress){  // Дополнительная проверка перед stop()
-        xm->stop();
-      }
+      xm->stop();
       PlayerCTRL.isFinish=true;
     }
   }
 }
 
 void XM_Play(){
-  if(xmCleanupInProgress) return;  // Выход если идёт очистка
-  
+  if(xmCleanupInProgress) return;
   if(xm&&!xm->isRunning()&&!xmCleanupInProgress){
     // FIX: Only call initOut() once per track, not every frame
     if(!xmOutInitialized){

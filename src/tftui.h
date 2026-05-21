@@ -450,12 +450,8 @@ void noFilesFound(){
 
 void TFTInit(){
   if(!tftInitialized){
-    // FIX: Disable PSRAM for TFT_eSPI to leave PSRAM available for XM modules
-    // This prevents OOM when loading large XM files
-    #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)
-      tft.setAttribute(PSRAM_ENABLE,0);  // 0 = disable PSRAM for TFT sprites
-    #endif
     tft.init(TFT_BLACK);
+    tft.initDMA();
     tftInitialized=true;
   }
   tft.fillScreen(TFT_BLACK);
