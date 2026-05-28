@@ -22,23 +22,21 @@ void clearEQ(){
 
 void fastEQ(){
   // Create sprites ONCE and reuse them - static local variables
-  static TFT_eSprite* eqSprite1 = nullptr;
-  static TFT_eSprite* eqSprite2 = nullptr;
-  
+  static TFT_eSprite* eqSprite1=nullptr;
+  static TFT_eSprite* eqSprite2=nullptr;
   // Initialize sprites on first call
-  if(eqSprite1 == nullptr) {
-    eqSprite1 = new TFT_eSprite(&tft);
+  if(eqSprite1==nullptr){
+    eqSprite1=new TFT_eSprite(&tft);
     eqSprite1->setColorDepth(8);
     eqSprite1->createSprite(224,68);
   }
-  if(eqSprite2 == nullptr) {
-    eqSprite2 = new TFT_eSprite(&tft);
+  if(eqSprite2==nullptr){
+    eqSprite2=new TFT_eSprite(&tft);
     eqSprite2->setColorDepth(16);
     eqSprite2->createSprite(222,20);
   }
-  
   // Helper lambda: draw channel bar with auto-decrement
-  auto drawBar = [&](uint8_t &val,uint8_t x,uint8_t y,uint8_t h,uint8_t maxW,uint8_t scale){
+  auto drawBar=[&](uint8_t &val,uint8_t x,uint8_t y,uint8_t h,uint8_t maxW,uint8_t scale){
     if(val>0){
       int w=(val*maxW)/scale;
       if(w>maxW)w=maxW;
@@ -46,14 +44,12 @@ void fastEQ(){
       val--;
     }
   };
-  
   // Helper lambda: setup text style
-  auto setupText = [&](){
+  auto setupText=[&](){
     eqSprite2->setFreeFont(&WildFont);
     eqSprite2->setTextSize(2);
     eqSprite2->setTextColor(WILD_CYAN);
   };
-  
   // Clear and redraw sprite 1
   eqSprite1->fillScreen(0);
   uint8_t shift=0;
@@ -84,7 +80,6 @@ void fastEQ(){
     }
   }
   eqSprite1->pushSprite(9,85);
-  
   // Clear and redraw sprite 2
   eqSprite2->fillScreen(0);
   shift=0;

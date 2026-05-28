@@ -109,7 +109,7 @@ int32_t msc_write_cb(uint32_t lba,uint8_t* buffer,uint32_t bufsize){
   bool rc;
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
     rc=sd_fat.card()->writeSectors(lba,buffer,bufsize/512);
-    if(rc) msc_changed = true;
+    if(rc) msc_changed=true;
     xSemaphoreGive(sdCardSemaphore);
   }
   return rc?bufsize:-1;
@@ -119,7 +119,7 @@ void msc_flush_cb(void){
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
     if(msc_changed){
       sd_fat.card()->syncDevice();
-      msc_changed = false;
+      msc_changed=false;
     }
     xSemaphoreGive(sdCardSemaphore);
   }
@@ -137,46 +137,45 @@ void s3Serial(){
 }
 
 void massStorage(){
-   if(!TinyUSBDevice.isInitialized()){
-     TinyUSBDevice.begin(0);
-   }
-   usb_msc.setID("ZxPOD","SD <-->","1.0");
-   usb_msc.setReadWriteCallback(0,msc_read_cb,msc_write_cb,msc_flush_cb);
-   usb_msc.setStartStopCallback(0,msc_start_stop_cb);
-   usb_msc.setReadyCallback(0,msc_ready_cb);
-   usb_msc.setWritableCallback(0,msc_writable_cb);
-   mountSD();
-   usb_msc.begin();
-   if(!usbTaskRunning){
-     usbTaskRunning=true;
-     xTaskCreatePinnedToCore(usbMscTask,"USB MSC",4096,NULL,1,&usbTaskHandle,0);
-   }
+  if(!TinyUSBDevice.isInitialized()){
+    TinyUSBDevice.begin(0);
+  }
+  usb_msc.setID("ZxPOD","SD <-->","1.0");
+  usb_msc.setReadWriteCallback(0,msc_read_cb,msc_write_cb,msc_flush_cb);
+  usb_msc.setStartStopCallback(0,msc_start_stop_cb);
+  usb_msc.setReadyCallback(0,msc_ready_cb);
+  usb_msc.setWritableCallback(0,msc_writable_cb);
+  mountSD();
+  usb_msc.begin();
+  if(!usbTaskRunning){
+    usbTaskRunning=true;
+    xTaskCreatePinnedToCore(usbMscTask,"USB MSC",4096,NULL,1,&usbTaskHandle,0);
+  }
  }
 
 // USB Bootloader Reset - упрощенная версия usb_switch_to_cdc_jtag()
-static void usb_switch_to_cdc_jtag_copy() {
+static void usb_switch_to_cdc_jtag_copy(){
   // switch to hardware CDC+JTAG
-  CLEAR_PERI_REG_MASK(RTC_CNTL_USB_CONF_REG, (RTC_CNTL_SW_HW_USB_PHY_SEL|RTC_CNTL_SW_USB_PHY_SEL|RTC_CNTL_USB_PAD_ENABLE));
+  CLEAR_PERI_REG_MASK(RTC_CNTL_USB_CONF_REG,(RTC_CNTL_SW_HW_USB_PHY_SEL|RTC_CNTL_SW_USB_PHY_SEL|RTC_CNTL_USB_PAD_ENABLE));
   // don't use external PHY
-  CLEAR_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_PHY_SEL);
+  CLEAR_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG,USB_SERIAL_JTAG_PHY_SEL);
   // disable GPIO from CDC+JTAG
-  CLEAR_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
+  CLEAR_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG,USB_SERIAL_JTAG_USB_PAD_ENABLE);
   // Force the host to re-enumerate (BUS_RESET)
-  pinMode(USBPHY_DM_NUM, OUTPUT_OPEN_DRAIN);
-  pinMode(USBPHY_DP_NUM, OUTPUT_OPEN_DRAIN);
-  digitalWrite(USBPHY_DM_NUM, LOW);
-  digitalWrite(USBPHY_DP_NUM, LOW);
+  pinMode(USBPHY_DM_NUM,OUTPUT_OPEN_DRAIN);
+  pinMode(USBPHY_DP_NUM,OUTPUT_OPEN_DRAIN);
+  digitalWrite(USBPHY_DM_NUM,LOW);
+  digitalWrite(USBPHY_DP_NUM,LOW);
   delay(50);
   // Connecting GPIO to the integrated CDC+JTAG
-  SET_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
+  SET_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG,USB_SERIAL_JTAG_USB_PAD_ENABLE);
   delay(100);
 }
 
 // TinyUSB CDC Line Coding Callback - 1200bps reset for DFU mode
-void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const* p_line_coding) {
+void tud_cdc_line_coding_cb(uint8_t itf,cdc_line_coding_t const* p_line_coding){
   // check baudrate = 1200
-  if (p_line_coding->bit_rate == 1200) {
-    printf("1200bps reset detected! Rebooting to bootloader...\n");
+  if(p_line_coding->bit_rate==1200){
     delay(100);
     if(usbTaskHandle){
       vTaskDelete(usbTaskHandle);
@@ -546,7 +545,7 @@ void time_date_screen(){
     img.pushSprite(8,screenY);
     screenY+=16;
     // Formatted date and time
-    sprintf(buf, "%02d %s %04d",now.day(),monthsOfTheYear[now.month()],now.year());
+    sprintf(buf,"%02d %s %04d",now.day(),monthsOfTheYear[now.month()],now.year());
     img.fillScreen(0);
     spr_println(img,0,1,buf,2,ALIGN_CENTER,TFT_YELLOW);
     img.pushSprite(8,screenY);
@@ -1054,7 +1053,7 @@ void config_screen(){
         case 5:
           PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
           lfsConfig.scr_bright+=10;
-          if (lfsConfig.scr_bright>100) lfsConfig.scr_bright=10;
+          if(lfsConfig.scr_bright>100) lfsConfig.scr_bright=10;
           display_brightness(lfsConfig.scr_bright);
           break;
         case 6:
@@ -1245,28 +1244,24 @@ void startUpConfig(){
       bool usbConn=usbConnected;
       img.fillScreen(0);
       if(!usbConn){
-        // Если USB не подключен - всегда показываем "Wait for USB"
         spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
         img.pushSprite(8,screenY);
         screenY+=16;
         img.fillScreen(0);
         spr_println(img,0,1,PSTR("Wait for USB"),2,ALIGN_CENTER,TFT_RED);
       }else if(osEjected){
-        // USB подключен, но был eject
         spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
         img.pushSprite(8,screenY);
         screenY+=16;
         img.fillScreen(0);
         spr_println(img,0,1,PSTR("OS EJECTED"),2,ALIGN_CENTER,TFT_YELLOW);
       }else if(sdMounted){
-        // USB подключен и SD примонтирована
         spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
         img.pushSprite(8,screenY);
         screenY+=16;
         img.fillScreen(0);
         spr_println(img,0,1,PSTR("MOUNTED"),2,ALIGN_CENTER,TFT_GREEN);
       }else{
-        // USB подключен, но SD не найдена
         spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
         img.pushSprite(8,screenY);
         screenY+=16;
@@ -1404,7 +1399,7 @@ void checkStartUpConfig(){
   // TinyUSBDevice.begin(2);
   pinMode(DN_BTN,INPUT);
   pinMode(UP_BTN,INPUT);
-  pinMode(OK_BTN, INPUT);
+  pinMode(OK_BTN,INPUT);
   if(digitalRead(DN_BTN)==LOW){
     startUpConfig();
   }

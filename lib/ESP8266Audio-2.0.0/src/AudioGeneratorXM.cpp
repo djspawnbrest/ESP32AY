@@ -114,7 +114,6 @@ bool AudioGeneratorXM::stop(){
   // Give time for any ongoing sample processing to complete
 	vTaskDelay(pdMS_TO_TICKS(10));  
   stop_xm();
-  if(output) output->flush();  //flush I2S output buffer, if the player was actually running before.
   if(file&&file->isOpen()) file->close();
   if(output) output->stop();
   running=false;
