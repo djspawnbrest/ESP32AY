@@ -1,9 +1,24 @@
 #include <LittleFS.h>
 #include "csmos.h"
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if defined(CONFIG_IDF_TARGET_ESP32S3)&&(ARDUINO_USB_MODE==0)&&(ARDUINO_USB_CDC_ON_BOOT==1)
 #include "Adafruit_TinyUSB.h"
+#include "tusb.h"
+#include "USB.h"
+#include "esp32-hal-tinyusb.h"
+#include "soc/rtc_cntl_reg.h"
+#include "soc/usb_serial_jtag_reg.h"
+#include "hal/usb_serial_jtag_ll.h"
+#include "soc/periph_defs.h"
+#define USBPHY_DM_NUM 19
+#define USBPHY_DP_NUM 20
 Adafruit_USBD_MSC usb_msc;
+USBCDC USBSerial;
 bool sdMounted=false;
+bool usbTaskRunning=false;
+bool osEjected=false;
+bool msc_changed=false;
+bool usbConnected=false;
+TaskHandle_t usbTaskHandle=NULL;
 #endif
 
 bool cfgSet=false;
@@ -15,6 +30,170 @@ void sd_config_save();
 void lfs_config_save();
 void setTapSpeed();
 void setTzxSpeed();
+
+//ESP32S3 usb <--> SD mass storage device
+#if defined(CONFIG_IDF_TARGET_ESP32S3)&&(ARDUINO_USB_MODE==0)&&(ARDUINO_USB_CDC_ON_BOOT==1)
+void mountSD(){
+  if(osEjected) return;
+  if(sd_fat.card()){
+    if(!sdMounted){
+      uint32_t block_count=sd_fat.card()->sectorCount();
+      usb_msc.setCapacity(0,block_count,512);
+      sdMounted=true;
+    }
+    usb_msc.setUnitReady(0,true);
+  }else if(sd_fat.begin(SD_CONFIG)){
+    uint32_t block_count=sd_fat.card()->sectorCount();
+    usb_msc.setCapacity(0,block_count,512);
+    usb_msc.setUnitReady(0,true);
+    sdMounted=true;
+  }
+}
+
+void umountSD(){
+  osEjected=true;
+  usb_msc.setUnitReady(0,false);
+  sdMounted=false;
+}
+
+void usbMscTask(void* parameter){
+  while(1){
+    if(TinyUSBDevice.isInitialized()){
+      TinyUSBDevice.task();
+    }
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+}
+
+void tud_mount_cb(void){
+  usbConnected=true;
+  if(osEjected){
+    osEjected=false;
+  }
+  mountSD();
+}
+
+void tud_umount_cb(void){
+  usbConnected=false;
+  sdMounted=false;
+}
+
+void tud_suspend_cb(bool remote_wakeup_en){
+  (void)remote_wakeup_en;
+  usbConnected=false;
+  sdMounted=false;
+}
+
+bool msc_start_stop_cb(uint8_t power_condition,bool start,bool load_eject){
+  if(load_eject&&!start){
+    osEjected=true;
+    sdMounted=false;
+  }
+  return true;
+}
+
+bool msc_writable_cb(){
+  return !osEjected;
+}
+
+int32_t msc_read_cb(uint32_t lba,void* buffer,uint32_t bufsize){
+  bool rc;
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    rc=sd_fat.card()->readSectors(lba,(uint8_t*)buffer,bufsize/512);
+    xSemaphoreGive(sdCardSemaphore);
+  }
+  return rc?bufsize:-1;
+}
+
+int32_t msc_write_cb(uint32_t lba,uint8_t* buffer,uint32_t bufsize){
+  bool rc;
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    rc=sd_fat.card()->writeSectors(lba,buffer,bufsize/512);
+    if(rc) msc_changed = true;
+    xSemaphoreGive(sdCardSemaphore);
+  }
+  return rc?bufsize:-1;
+}
+
+void msc_flush_cb(void){
+  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
+    if(msc_changed){
+      sd_fat.card()->syncDevice();
+      msc_changed = false;
+    }
+    xSemaphoreGive(sdCardSemaphore);
+  }
+}
+
+bool msc_ready_cb(){
+  return !osEjected;
+}
+
+void s3Serial(){
+  if(!TinyUSBDevice.isInitialized()){
+    TinyUSBDevice.begin(0);
+  }
+  USBSerial.begin();
+}
+
+void massStorage(){
+   if(!TinyUSBDevice.isInitialized()){
+     TinyUSBDevice.begin(0);
+   }
+   usb_msc.setID("ZxPOD","SD <-->","1.0");
+   usb_msc.setReadWriteCallback(0,msc_read_cb,msc_write_cb,msc_flush_cb);
+   usb_msc.setStartStopCallback(0,msc_start_stop_cb);
+   usb_msc.setReadyCallback(0,msc_ready_cb);
+   usb_msc.setWritableCallback(0,msc_writable_cb);
+   mountSD();
+   usb_msc.begin();
+   if(!usbTaskRunning){
+     usbTaskRunning=true;
+     xTaskCreatePinnedToCore(usbMscTask,"USB MSC",4096,NULL,1,&usbTaskHandle,0);
+   }
+ }
+
+// USB Bootloader Reset - упрощенная версия usb_switch_to_cdc_jtag()
+static void usb_switch_to_cdc_jtag_copy() {
+  // switch to hardware CDC+JTAG
+  CLEAR_PERI_REG_MASK(RTC_CNTL_USB_CONF_REG, (RTC_CNTL_SW_HW_USB_PHY_SEL|RTC_CNTL_SW_USB_PHY_SEL|RTC_CNTL_USB_PAD_ENABLE));
+  // don't use external PHY
+  CLEAR_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_PHY_SEL);
+  // disable GPIO from CDC+JTAG
+  CLEAR_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
+  // Force the host to re-enumerate (BUS_RESET)
+  pinMode(USBPHY_DM_NUM, OUTPUT_OPEN_DRAIN);
+  pinMode(USBPHY_DP_NUM, OUTPUT_OPEN_DRAIN);
+  digitalWrite(USBPHY_DM_NUM, LOW);
+  digitalWrite(USBPHY_DP_NUM, LOW);
+  delay(50);
+  // Connecting GPIO to the integrated CDC+JTAG
+  SET_PERI_REG_MASK(USB_SERIAL_JTAG_CONF0_REG, USB_SERIAL_JTAG_USB_PAD_ENABLE);
+  delay(100);
+}
+
+// TinyUSB CDC Line Coding Callback - 1200bps reset for DFU mode
+void tud_cdc_line_coding_cb(uint8_t itf, cdc_line_coding_t const* p_line_coding) {
+  // check baudrate = 1200
+  if (p_line_coding->bit_rate == 1200) {
+    printf("1200bps reset detected! Rebooting to bootloader...\n");
+    delay(100);
+    if(usbTaskHandle){
+      vTaskDelete(usbTaskHandle);
+      usbTaskHandle=NULL;
+      usbTaskRunning=false;
+    }
+    osEjected=true;
+    umountSD();
+    TinyUSBDevice.detach();
+    delay(200);
+    // switch to Serial/JTAG mode
+    usb_switch_to_cdc_jtag_copy();
+    // Reboot to DFU
+    usb_persist_restart(RESTART_BOOTLOADER);
+  }
+}
+#endif
 
 void lfs_config_default(){
   memset(&lfsConfig,0,sizeof(lfsConfig));
@@ -996,6 +1175,9 @@ void startUpConfig(){
   static bool itemSet=false;
   static int8_t ptr=0;
   static char buf[32];
+  static bool prevOsEjected=false;
+  static bool prevSdMounted=false;
+  static bool prevUsbConnected=false;
   const char* const enc_types[]={"STEP 4L","STEP 4H","STEP 2","STEP 1"};
   buttonsSetup();
   TFTInit();
@@ -1015,8 +1197,20 @@ void startUpConfig(){
   img.pushSprite(8,screenY);
   img.deleteSprite();
   while(digitalRead(DN_BTN)==LOW) yield();
+  //ESP32S3 usb <--> SD mass storage device
+#if defined(CONFIG_IDF_TARGET_ESP32S3)&&(ARDUINO_USB_MODE==0)&&(ARDUINO_USB_CDC_ON_BOOT==1)
+  massStorage();
+#endif
   while(true){
     generalTick();
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&(ARDUINO_USB_MODE==0)&&(ARDUINO_USB_CDC_ON_BOOT==1)
+    if(prevOsEjected!=osEjected||prevSdMounted!=sdMounted||prevUsbConnected!=usbConnected){
+      prevOsEjected=osEjected;
+      prevSdMounted=sdMounted;
+      prevUsbConnected=usbConnected;
+      scrUpdate=true;
+    }
+  #endif
     if(scrUpdate){
       scrUpdate=false;
       img.setColorDepth(8);
@@ -1041,12 +1235,59 @@ void startUpConfig(){
       spr_printmenu_item(img,1,2,buf,(ptr==1&&itemSet)?TFT_YELLOW:WILD_CYAN_D2,ptr==1?TFT_RED:TFT_BLACK);
       img.pushSprite(8,screenY);
       screenY+=16;
+      // SD Card Status
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)&&(ARDUINO_USB_MODE==0)&&(ARDUINO_USB_CDC_ON_BOOT==1)
+      img.fillScreen(0);
+      for(int i=0;i<5;i++){
+        img.pushSprite(8,screenY);
+        screenY+=16;
+      }
+      bool usbConn=usbConnected;
+      img.fillScreen(0);
+      if(!usbConn){
+        // Если USB не подключен - всегда показываем "Wait for USB"
+        spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
+        img.pushSprite(8,screenY);
+        screenY+=16;
+        img.fillScreen(0);
+        spr_println(img,0,1,PSTR("Wait for USB"),2,ALIGN_CENTER,TFT_RED);
+      }else if(osEjected){
+        // USB подключен, но был eject
+        spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
+        img.pushSprite(8,screenY);
+        screenY+=16;
+        img.fillScreen(0);
+        spr_println(img,0,1,PSTR("OS EJECTED"),2,ALIGN_CENTER,TFT_YELLOW);
+      }else if(sdMounted){
+        // USB подключен и SD примонтирована
+        spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
+        img.pushSprite(8,screenY);
+        screenY+=16;
+        img.fillScreen(0);
+        spr_println(img,0,1,PSTR("MOUNTED"),2,ALIGN_CENTER,TFT_GREEN);
+      }else{
+        // USB подключен, но SD не найдена
+        spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
+        img.pushSprite(8,screenY);
+        screenY+=16;
+        img.fillScreen(0);
+        spr_println(img,0,1,PSTR("SD not found!"),2,ALIGN_CENTER,TFT_RED);
+      }
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      img.fillScreen(0);
+      for(int i=0;i<7;i++){
+        img.pushSprite(8,screenY);
+        screenY+=16;
+      }
+    #else
       // Empty lines (14 lines to reach row 18)
       img.fillScreen(0);
       for(int i=0;i<14;i++){
         img.pushSprite(8,screenY);
         screenY+=16;
       }
+    #endif
       // Legend at row 18-19
       if(itemSet){
         img.fillScreen(0);
@@ -1132,80 +1373,32 @@ void startUpConfig(){
       }
       scrUpdate=true;
     }
-    if(enc.holding()&&!itemSet){lfs_config_save(); ESP.restart(); break;} // Exit
+    if(enc.holding()&&!itemSet){
+    #if defined(CONFIG_IDF_TARGET_ESP32S3)&&(ARDUINO_USB_MODE==0)&&(ARDUINO_USB_CDC_ON_BOOT==1)
+      if(usbTaskHandle){
+        vTaskDelete(usbTaskHandle);
+        usbTaskHandle=NULL;
+        usbTaskRunning=false;
+      }
+      osEjected=true;
+      umountSD();
+      TinyUSBDevice.detach();
+      delay(100);
+      lfs_config_save();
+      while(digitalRead(OK_BTN)==LOW) yield();
+      delay(100);
+      ESP.restart();
+      break;
+    #endif
+      lfs_config_save();
+      while(digitalRead(OK_BTN)==LOW) yield();
+      delay(100);
+      ESP.restart();
+      break;
+    } // Exit
     yield();
   }
 }
-
-//ESP32S3 usb <--> SD mass storage device
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
-// Callback invoked when received READ10 command.
-// Copy disk's data to buffer (up to bufsize) and
-// return number of copied bytes (must be multiple of block size)
-// Callback invoked when received READ10 command.
-// Copy disk's data to buffer (up to bufsize) and
-// return number of copied bytes (must be multiple of block size)
-int32_t msc_read_cb(uint32_t lba,void* buffer,uint32_t bufsize){
-  bool rc;
-  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
-    rc=sd_fat.card()->readSectors(lba,(uint8_t*)buffer,bufsize/512);
-    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
-  }
-  return rc?bufsize:-1;
-}
-// Callback invoked when received WRITE10 command.
-// Process data in buffer to disk's storage and 
-// return number of written bytes (must be multiple of block size)
-int32_t msc_write_cb(uint32_t lba,uint8_t* buffer,uint32_t bufsize){
-  bool rc;
-  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
-    rc=sd_fat.card()->writeSectors(lba,buffer,bufsize/512);
-    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
-  }
-  return rc?bufsize:-1;
-}
-// Callback invoked when WRITE10 command is completed (status received and accepted by host).
-// used to flush any pending cache.
-void msc_flush_cb(void){
-  if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
-    sd_fat.card()->syncDevice();
-    //sd_fat.cacheClear();
-    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
-  }
-}
-
-void mountSD(){
-  if(sd_fat.begin(SD_CONFIG)&&!sdMounted){
-    uint32_t block_count=sd_fat.card()->sectorCount();
-    usb_msc.setCapacity(0,block_count,512);
-    usb_msc.setUnitReady(0,true);
-    sdMounted=true;
-  }
-}
-
-void umountSD(){
-  usb_msc.setUnitReady(0,false);
-  sdMounted=false;
-}
-
-void massStorage(){
-  // Manual begin() is required on core without built-in support e.g. mbed rp2040
-  if(!TinyUSBDevice.isInitialized()){
-    TinyUSBDevice.begin(1);
-  }
-  // Set disk vendor id, product id and revision with string up to 8, 16, 4 characters respectively
-  usb_msc.setID("ZxPOD","SD <-->","1.0");
-  usb_msc.setReadWriteCallback(0,msc_read_cb,msc_write_cb,msc_flush_cb);
-  mountSD();
-  usb_msc.begin();
-  // If already enumerated, additional class driverr begin() e.g msc, hid, midi won't take effect until re-enumeration
-  if(TinyUSBDevice.mounted()){
-    TinyUSBDevice.detach();
-    delay(10);
-    TinyUSBDevice.attach();
-  }
-}
-#endif
 
 void checkStartUpConfig(){
   // TinyUSBDevice.begin(2);
@@ -1229,10 +1422,7 @@ void checkStartUpConfig(){
   if(digitalRead(OK_BTN)==LOW){
     configResetPlayingPath();
   }
-  #if defined(CONFIG_IDF_TARGET_ESP32S3) && \
-  defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 0 && \
-  defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT == 1
-    // Mount SD card to USB
-    massStorage();
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&(ARDUINO_USB_MODE==0)&&(ARDUINO_USB_CDC_ON_BOOT==1)
+    s3Serial();
   #endif
 }

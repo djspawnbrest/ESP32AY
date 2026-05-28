@@ -640,20 +640,12 @@ void player(){
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
     if(!sd_fat.card()->sectorCount()){
       xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
-    #if defined(CONFIG_IDF_TARGET_ESP32S3)
-      umountSD();
-    #endif
       PlayerCTRL.isFinish=true;
       PlayerCTRL.scr_mode_update[SCR_PLAYER]=true;
       PlayerCTRL.isSDeject=true;
       PlayerCTRL.screen_mode=SCR_SDEJECT;
       return;
     }
-  #if defined(CONFIG_IDF_TARGET_ESP32S3)
-    else{
-      mountSD();
-    }
-  #endif
     xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
   if(lfsConfig.playerSource==PLAYER_MODE_SD){
@@ -677,7 +669,6 @@ void player(){
       memcpy(playFileName,lfn,sizeof(lfn));
       music_open(playFileName,ay_cur_song);
       music_init();
-      xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
       PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
       browser_rebuild=1;
       PlayerCTRL.isFinish=false;

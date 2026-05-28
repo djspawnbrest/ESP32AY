@@ -10,7 +10,7 @@ extern "C" {
   }
   //calloc wrapper
   void* __wrap_calloc(size_t num, size_t size) {
-    // Выделяем очищенную память строго во внутреннем DRAM
+    // We allocate cleared memory strictly in the internal DRAM
     return heap_caps_calloc(num, size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
   }
 }
