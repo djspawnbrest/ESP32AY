@@ -44,7 +44,7 @@ You need to cut the tracks as shown in Figure 5 (red cut lines), then carefully 
 - .mp3 - MP3 (MPEG-1 Audio Layer 3) is a widely used digital audio format that uses a lossy compression method to significantly reduce file size while maintaining near-CD quality audio.
 - .wav - is an audio file format for storing uncompressed audio data, developed by Microsoft and IBM. It is known for high-quality audio that retains all original data, but results in large file sizes, making it popular for professional audio recording and editing. The format stores audio data in chunks and commonly uses linear pulse-code modulation (LPCM) for encoding.
 - UART mode (available in player settings menu as Player source)
-- SD forwarding via USB as Mass Storage device (rev.D and above only)
+- SD forwarding via USB as Mass Storage device (rev.D and above only) (press left button("-") and turn ON player)
 
 ### Controls
 - Before player turning on - hold left button and turn on player to enter root config (needed for change encoder type). Encoder types:
