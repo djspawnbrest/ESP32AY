@@ -81,6 +81,15 @@ class FsVolume {
                     : 0;
   }
   //----------------------------------------------------------------------------
+  /** Clear the cache and returns a pointer to the cache.
+   * \return A pointer to the cache buffer or zero if an error occurs.
+   */
+  uint8_t* cacheClear() {
+    return m_fVol   ? m_fVol->cacheClear()
+           : m_xVol ? m_xVol->cacheClear()
+                    : nullptr;
+  }
+  //----------------------------------------------------------------------------
   /**
    * Set volume working directory to root.
    * \return true for success or false for failure.

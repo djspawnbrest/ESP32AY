@@ -2,23 +2,17 @@
 #include "csmos.h"
 #if defined(CONFIG_IDF_TARGET_ESP32S3)&&(ARDUINO_USB_MODE==0)&&(ARDUINO_USB_CDC_ON_BOOT==1)
 #include "Adafruit_TinyUSB.h"
-#include "tusb.h"
-#include "USB.h"
-#include "esp32-hal-tinyusb.h"
-#include "soc/rtc_cntl_reg.h"
-#include "soc/usb_serial_jtag_reg.h"
-#include "hal/usb_serial_jtag_ll.h"
-#include "soc/periph_defs.h"
-#define USBPHY_DM_NUM 19
-#define USBPHY_DP_NUM 20
 Adafruit_USBD_MSC usb_msc;
-USBCDC USBSerial;
 bool sdMounted=false;
 bool usbTaskRunning=false;
 bool osEjected=false;
 bool msc_changed=false;
 bool usbConnected=false;
 TaskHandle_t usbTaskHandle=NULL;
+bool msc_read_active=false;
+bool msc_write_active=false;
+uint32_t msc_read_time=0;
+uint32_t msc_write_time=0;
 #endif
 
 bool cfgSet=false;
@@ -98,6 +92,8 @@ bool msc_writable_cb(){
 
 int32_t msc_read_cb(uint32_t lba,void* buffer,uint32_t bufsize){
   bool rc;
+  msc_read_active=true;
+  msc_read_time=millis();
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
     rc=sd_fat.card()->readSectors(lba,(uint8_t*)buffer,bufsize/512);
     xSemaphoreGive(sdCardSemaphore);
@@ -107,6 +103,8 @@ int32_t msc_read_cb(uint32_t lba,void* buffer,uint32_t bufsize){
 
 int32_t msc_write_cb(uint32_t lba,uint8_t* buffer,uint32_t bufsize){
   bool rc;
+  msc_write_active=true;
+  msc_write_time=millis();
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
     rc=sd_fat.card()->writeSectors(lba,buffer,bufsize/512);
     if(rc) msc_changed=true;
@@ -119,6 +117,7 @@ void msc_flush_cb(void){
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
     if(msc_changed){
       sd_fat.card()->syncDevice();
+      sd_fat.cacheClear();
       msc_changed=false;
     }
     xSemaphoreGive(sdCardSemaphore);
@@ -130,16 +129,14 @@ bool msc_ready_cb(){
 }
 
 void s3Serial(){
-  if(!TinyUSBDevice.isInitialized()){
-    TinyUSBDevice.begin(0);
+  if(TinyUSBDevice.mounted()){
+    TinyUSBDevice.detach();
+    delay(10);
+    TinyUSBDevice.attach();
   }
-  USBSerial.begin();
 }
 
 void massStorage(){
-  if(!TinyUSBDevice.isInitialized()){
-    TinyUSBDevice.begin(0);
-  }
   usb_msc.setID("ZxPOD","SD <-->","1.0");
   usb_msc.setReadWriteCallback(0,msc_read_cb,msc_write_cb,msc_flush_cb);
   usb_msc.setStartStopCallback(0,msc_start_stop_cb);
@@ -151,9 +148,14 @@ void massStorage(){
     usbTaskRunning=true;
     xTaskCreatePinnedToCore(usbMscTask,"USB MSC",4096,NULL,1,&usbTaskHandle,0);
   }
+  if(TinyUSBDevice.mounted()){
+    TinyUSBDevice.detach();
+    delay(10);
+    TinyUSBDevice.attach();
+  }
  }
 
-// USB Bootloader Reset - упрощенная версия usb_switch_to_cdc_jtag()
+// USB Bootloader Reset - simplified version usb_switch_to_cdc_jtag()
 static void usb_switch_to_cdc_jtag_copy(){
   // switch to hardware CDC+JTAG
   CLEAR_PERI_REG_MASK(RTC_CNTL_USB_CONF_REG,(RTC_CNTL_SW_HW_USB_PHY_SEL|RTC_CNTL_SW_USB_PHY_SEL|RTC_CNTL_USB_PAD_ENABLE));
@@ -1209,6 +1211,10 @@ void startUpConfig(){
       prevUsbConnected=usbConnected;
       scrUpdate=true;
     }
+    // Force update for R/W indicators animation when mounted
+    if(sdMounted&&(msc_read_active||msc_write_active)){
+      scrUpdate=true;
+    }
   #endif
     if(scrUpdate){
       scrUpdate=false;
@@ -1243,35 +1249,52 @@ void startUpConfig(){
       }
       bool usbConn=usbConnected;
       img.fillScreen(0);
+      uint8_t eS=7;
       if(!usbConn){
         spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
         img.pushSprite(8,screenY);
         screenY+=16;
         img.fillScreen(0);
         spr_println(img,0,1,PSTR("Wait for USB"),2,ALIGN_CENTER,TFT_RED);
+        eS=7;
       }else if(osEjected){
         spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
         img.pushSprite(8,screenY);
         screenY+=16;
         img.fillScreen(0);
         spr_println(img,0,1,PSTR("OS EJECTED"),2,ALIGN_CENTER,TFT_YELLOW);
+        eS=7;
       }else if(sdMounted){
         spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
         img.pushSprite(8,screenY);
         screenY+=16;
         img.fillScreen(0);
         spr_println(img,0,1,PSTR("MOUNTED"),2,ALIGN_CENTER,TFT_GREEN);
+        img.pushSprite(8,screenY);
+        screenY+=16*2;
+        // R/W indicators
+        img.fillScreen(0);
+        uint32_t now=millis();
+        if(now-msc_read_time>100) msc_read_active=false;
+        if(now-msc_write_time>100) msc_write_active=false;
+        uint16_t colorR=msc_read_active?TFT_GREEN:TFT_LIGHTGREY;
+        uint16_t colorW=msc_write_active?TFT_RED:TFT_LIGHTGREY;
+        spr_println(img,0,1,PSTR("   "),2,ALIGN_CENTER,TFT_BLACK);
+        spr_println(img,0,1,PSTR("R  "),2,ALIGN_CENTER,colorR);
+        spr_println(img,0,1,PSTR("  W"),2,ALIGN_CENTER,colorW);
+        eS=5;
       }else{
         spr_println(img,0,1,PSTR("SD Card:"),2,ALIGN_CENTER,WILD_CYAN_D2);
         img.pushSprite(8,screenY);
         screenY+=16;
         img.fillScreen(0);
         spr_println(img,0,1,PSTR("SD not found!"),2,ALIGN_CENTER,TFT_RED);
+        eS=7;
       }
       img.pushSprite(8,screenY);
       screenY+=16;
       img.fillScreen(0);
-      for(int i=0;i<7;i++){
+      for(int i=0;i<eS;i++){
         img.pushSprite(8,screenY);
         screenY+=16;
       }
