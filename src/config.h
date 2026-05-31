@@ -129,6 +129,8 @@ bool msc_ready_cb(){
 }
 
 void s3Serial(){
+  TinyUSBDevice.setProductDescriptor("ZxPOD AY/YM Serial");
+  TinyUSBDevice.setManufacturerDescriptor("Spawn Development");
   if(TinyUSBDevice.mounted()){
     TinyUSBDevice.detach();
     delay(10);
@@ -137,7 +139,9 @@ void s3Serial(){
 }
 
 void massStorage(){
-  usb_msc.setID("ZxPOD","SD <-->","1.0");
+  TinyUSBDevice.setProductDescriptor("ZxPOD Mass Storage Device");
+  TinyUSBDevice.setManufacturerDescriptor("Spawn Development");
+  usb_msc.setID("ZxPOD","SD",FULL_VERSION);
   usb_msc.setReadWriteCallback(0,msc_read_cb,msc_write_cb,msc_flush_cb);
   usb_msc.setStartStopCallback(0,msc_start_stop_cb);
   usb_msc.setReadyCallback(0,msc_ready_cb);
