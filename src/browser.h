@@ -946,7 +946,7 @@ int browser_screen(int mode){
             PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
             browser_rebuild=1;
             sdConfig.isBrowserPlaylist=BROWSE_AYL;
-            delay(30);
+            vTaskDelay(pdMS_TO_TICKS(30));
             break;
           case TYPE_PT1:
           case TYPE_PT2:
@@ -986,11 +986,13 @@ int browser_screen(int mode){
             PlayerCTRL.isBrowserCommand=true;
             PlayerCTRL.autoPlay=false;
             PlayerCTRL.isFinish=true;
-            delay(30);
+            vTaskDelay(pdMS_TO_TICKS(30));
             break;
         }
       }
     }else{
+      muteAmp();
+      muteAYBeep();
       PlayerCTRL.isPlay=false;
       playlist_get_entry_full_path(sdConfig.dir_cur,lfn,sizeof(lfn));
       memcpy(sdConfig.play_ayl_file,sdConfig.ayl_file,sizeof(sdConfig.ayl_file));
@@ -1006,7 +1008,7 @@ int browser_screen(int mode){
       PlayerCTRL.isBrowserCommand=true;
       PlayerCTRL.autoPlay=false;
       PlayerCTRL.isFinish=true;
-      delay(30);
+      vTaskDelay(pdMS_TO_TICKS(30));
     }
     sd_config_save();
     return sdConfig.dir_cur;
@@ -1050,7 +1052,7 @@ int browser_screen(int mode){
         // rebuild browser list command
         browser_rebuild=1;
         PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
-        delay(30);
+        vTaskDelay(pdMS_TO_TICKS(30));
       }else{ // no more file in this dir - leave, search new
         PlayerCTRL.isPlay=false;
         if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
