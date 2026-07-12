@@ -69,7 +69,7 @@ void XM_GetInfo(const char *filename){
   xm->initEQBuffers(bufEQ,modEQchn);
   modChannels=xm->getNumberOfChannels();
   modChannelsEQ=(modChannels>8)?8:modChannels;
-  if(modChannels<2||modChannels>40){
+  if(modChannels<2||modChannels>46){
     AYInfo.Length=1;
     skipMod=true;
     // FIX FOR MEMORY LEAK - delete objects if channel check failed
