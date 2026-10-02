@@ -4,7 +4,7 @@
 
 #define FW_VERSION         "3.7"
 #include "build_info.h"
-#define LFSCONFIG_VERSION 2  // Increment when lfsConfig structure changes
+#define LFSCONFIG_VERSION 3  // Increment when lfsConfig structure changes (2 -> 3: modEngine, skin; migrated in lfs_config_load)
 #define SDCONFIG_VERSION  2  // Increment when sdConfig structure changes
 
 #define CLK_SPECTRUM  	1773400
@@ -49,6 +49,14 @@
 // Declare the semaphore handle
 SemaphoreHandle_t sdCardSemaphore=NULL;
 SemaphoreHandle_t outSemaphore=NULL;
+// The I2C bus: the amp (written from both cores: upstream's players call
+// initOut() from the player task), the RTC and the EEPROM (core 1).  The
+// build has CONFIG_DISABLE_HAL_LOCKS, so Wire itself does not serialise.
+SemaphoreHandle_t i2cSemaphore=NULL;
+struct I2CLock{
+  I2CLock(){ if(i2cSemaphore) xSemaphoreTakeRecursive(i2cSemaphore,portMAX_DELAY); }
+  ~I2CLock(){ if(i2cSemaphore) xSemaphoreGiveRecursive(i2cSemaphore); }
+};
 
 //--------------------------------------
 // count of voltage read - REDUCED for performance
@@ -192,7 +200,12 @@ struct{
   uint32_t ay_clock;            // 1.75 MHz e.t.c.
   float batCalib;               // Battery calibration
   float dacGain;
+  uint8_t modEngine;            // .mod: MOD_ENGINE_GS / MOD_ENGINE_NATIVE (version 3)
+  uint8_t skin;                 // SKIN_ZPLAYER / SKIN_WILD (version 3)
 }lfsConfig;
+
+enum{ MOD_ENGINE_GS=0, MOD_ENGINE_NATIVE=1 };
+enum{ SKIN_ZPLAYER=0, SKIN_WILD=1 };
 
 enum{
   PENT_INT=0,

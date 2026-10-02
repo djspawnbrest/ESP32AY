@@ -213,12 +213,25 @@ void lfs_config_default(){
   lfsConfig.play_mode=PLAY_MODE_ALL;
   lfsConfig.modStereoSeparation=MOD_HALFSTEREO;
   lfsConfig.batCalib=0.0;
-  lfsConfig.encType=EB_STEP2;
+  lfsConfig.encType=EB_STEP4_LOW;  // the ZxPod's encoder: a full cycle a click, resting high (traced 28 Sep; upstream: EB_STEP2)
   lfsConfig.encReverse=false;
   lfsConfig.showClock=false;
   lfsConfig.skipTapeFormats=false;
   lfsConfig.tapeSpeed=TAPE_NORMAL;
   lfsConfig.dacGain=0.6f;
+  lfsConfig.modEngine=MOD_ENGINE_GS;
+  lfsConfig.skin=SKIN_ZPLAYER;
+}
+
+// Version 2 is version 3 without its last two fields: kept, not reset (the
+// user's volume, AY layout, encoder type...), the new ones at their defaults.
+#define LFSCONFIG_V2_SIZE offsetof(decltype(lfsConfig),modEngine)
+static bool lfs_config_migrate(){
+  if(lfsConfig.version!=2) return false;
+  lfsConfig.version=LFSCONFIG_VERSION;
+  lfsConfig.modEngine=MOD_ENGINE_GS;
+  lfsConfig.skin=SKIN_ZPLAYER;
+  return true;
 }
 
 void sd_config_default(){
@@ -280,7 +293,7 @@ void sd_config_load(){
 }
 
 void lfs_config_load(){
-  bool needReset=false;
+  bool needReset=false,needSave=false;
   if(foundRom){
     eeInit(eepAddress);
     uint8_t lfsConfigEepromFlag=255;
@@ -293,7 +306,8 @@ void lfs_config_load(){
     }else if(lfsConfigEepromFlag==64){ // Read config
       // printf("Load lfsConfig from eeprom...\n");
       eep.read(LFS_START_ADDRESS,reinterpret_cast<uint8_t*>(&lfsConfig),sizeof(lfsConfig));
-      if(lfsConfig.version!=LFSCONFIG_VERSION){
+      if(lfs_config_migrate()) needSave=true;
+      else if(lfsConfig.version!=LFSCONFIG_VERSION){
         // printf("LFS Config version mismatch! Expected %d, got %d. Resetting...\n",LFSCONFIG_VERSION,lfsConfig.version);
         needReset=true;
       }
@@ -302,7 +316,11 @@ void lfs_config_load(){
     LittleFS.begin(true);
     fs::File f=LittleFS.open(CFG_FILENAME,"r");
     if(f){
-      if(f.size()==sizeof(lfsConfig)){
+      if(f.size()==LFSCONFIG_V2_SIZE){
+        f.readBytes((char*)&lfsConfig,LFSCONFIG_V2_SIZE);
+        if(lfs_config_migrate()) needSave=true;
+        else needReset=true;
+      }else if(f.size()==sizeof(lfsConfig)){
         f.readBytes((char*)&lfsConfig,sizeof(lfsConfig));
         if(lfsConfig.version!=LFSCONFIG_VERSION){
           // printf("LFS Config version mismatch! Expected %d, got %d. Resetting...\n",LFSCONFIG_VERSION,lfsConfig.version);
@@ -323,7 +341,7 @@ void lfs_config_load(){
   if(needReset){
     lfs_config_default();
     lfs_config_save();
-  }
+  }else if(needSave) lfs_config_save();
   // printf("LFS Config size: %d bytes, version: %d\n",sizeof(lfsConfig),lfsConfig.version);
 }
 
@@ -337,6 +355,7 @@ void startup_config_load(){
 void sd_config_save(){
   if(foundRom){
     // printf("Save sdConfig to eeprom...\n");
+    I2CLock lock;
     eeInit(eepAddress);
     eep.write(SD_START_ADDRESS,reinterpret_cast<uint8_t*>(&sdConfig),sizeof(sdConfig));
     eep.write(SD_FLAG_ADDRESS,64);
@@ -360,6 +379,7 @@ void sd_config_save(){
 void lfs_config_save(){
   if(foundRom){
     // printf("Save lfsConfig to eeprom...\n");
+    I2CLock lock;
     eeInit(eepAddress);
     eep.write(LFS_START_ADDRESS,reinterpret_cast<uint8_t*>(&lfsConfig),sizeof(lfsConfig));
     eep.write(LFS_FLAG_ADDRESS,64);
@@ -389,90 +409,93 @@ void configResetPlayingPath(){
   sd_config_save();
 }
 
+bool zpAboutDraw();               // zp/zpconfig.h
 void config_about_screen(){
   char buf[32];
-  if(PlayerCTRL.scr_mode_update[SCR_ABOUT]){
-    PlayerCTRL.scr_mode_update[SCR_ABOUT]=false;
-    img.setColorDepth(8);
-    img.createSprite(224,16);
-    img.setTextWrap(false);
-    img.setTextSize(2);
-    img.setFreeFont(&WildFont);
-    int screenY=8;
-    // Header
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("About"),2,ALIGN_CENTER,WILD_CYAN);
-    img.pushSprite(8,screenY);
-    img.fillScreen(0);
-    // Empty lines
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    // ZxPOD Player
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("ZxPOD Player"),2,ALIGN_CENTER,TFT_RED);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    // Version with build number
-    img.fillScreen(0);
-    sprintf(buf,"v.%s",FULL_VERSION);
-    spr_println(img,0,1,buf,2,ALIGN_CENTER,WILD_GREEN);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    // Date (green, moved before "by")
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR(BUILD_DATE),2,ALIGN_CENTER,TFT_RED);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    // By
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("by"),2,ALIGN_CENTER,TFT_CYAN);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    // Authors (3 overlays)
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("       ,"),2,ALIGN_LEFT,WILD_GREEN);
-    spr_println(img,0,1,PSTR("  Spawn"),2,ALIGN_LEFT,TFT_YELLOW);
-    spr_println(img,0,1,PSTR("Andy Karpov  "),2,ALIGN_RIGHT,TFT_YELLOW);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    // Powered with
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("powered with:"),2,ALIGN_CENTER,TFT_CYAN);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    // Libraries
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("libayfly, z80emu,"),2,ALIGN_CENTER,ZX_RED_B);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("ESP8266Audio, SdFat,"),2,ALIGN_CENTER,ZX_YELLOW_B);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("libxmize, TFT_eSPI,"),2,ALIGN_CENTER,ZX_GREEN_B);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("EncButton, GyverFIFO,"),2,ALIGN_CENTER,ZX_CYAN_B);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("ArduinoFFT."),2,ALIGN_CENTER,ZX_RED_B);
-    screenY+=16;
-    img.pushSprite(8,screenY);
-    // Fill remaining space to 304px (19 lines total)
-    screenY+=16;
-    img.fillScreen(0);
-    while(screenY<8+304){
+  if(!zpAboutDraw()){             // the Z-Player look draws the page (zp/zpconfig.h)
+    if(PlayerCTRL.scr_mode_update[SCR_ABOUT]){
+      PlayerCTRL.scr_mode_update[SCR_ABOUT]=false;
+      img.setColorDepth(8);
+      img.createSprite(224,16);
+      img.setTextWrap(false);
+      img.setTextSize(2);
+      img.setFreeFont(&WildFont);
+      int screenY=8;
+      // Header
+      img.fillScreen(0);
+      spr_println(img,0,1,PSTR("About"),2,ALIGN_CENTER,WILD_CYAN);
+      img.pushSprite(8,screenY);
+      img.fillScreen(0);
+      // Empty lines
+      screenY+=16;
       img.pushSprite(8,screenY);
       screenY+=16;
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      // ZxPOD Player
+      img.fillScreen(0);
+      spr_println(img,0,1,PSTR("ZxPOD Player"),2,ALIGN_CENTER,TFT_RED);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      // Version with build number
+      img.fillScreen(0);
+      sprintf(buf,"v.%s",FULL_VERSION);
+      spr_println(img,0,1,buf,2,ALIGN_CENTER,WILD_GREEN);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      // Date (green, moved before "by")
+      img.fillScreen(0);
+      spr_println(img,0,1,PSTR(BUILD_DATE),2,ALIGN_CENTER,TFT_RED);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      // By
+      img.fillScreen(0);
+      spr_println(img,0,1,PSTR("by"),2,ALIGN_CENTER,TFT_CYAN);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      // Authors (3 overlays)
+      img.fillScreen(0);
+      spr_println(img,0,1,PSTR("       ,"),2,ALIGN_LEFT,WILD_GREEN);
+      spr_println(img,0,1,PSTR("  Spawn"),2,ALIGN_LEFT,TFT_YELLOW);
+      spr_println(img,0,1,PSTR("Andy Karpov  "),2,ALIGN_RIGHT,TFT_YELLOW);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      // Powered with
+      img.fillScreen(0);
+      spr_println(img,0,1,PSTR("powered with:"),2,ALIGN_CENTER,TFT_CYAN);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      // Libraries
+      img.fillScreen(0);
+      spr_println(img,0,1,PSTR("libayfly, z80emu,"),2,ALIGN_CENTER,ZX_RED_B);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      img.fillScreen(0);
+      spr_println(img,0,1,PSTR("ESP8266Audio, SdFat,"),2,ALIGN_CENTER,ZX_YELLOW_B);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      img.fillScreen(0);
+      spr_println(img,0,1,PSTR("libxmize, TFT_eSPI,"),2,ALIGN_CENTER,ZX_GREEN_B);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      img.fillScreen(0);
+      spr_println(img,0,1,PSTR("EncButton, GyverFIFO,"),2,ALIGN_CENTER,ZX_CYAN_B);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      img.fillScreen(0);
+      spr_println(img,0,1,PSTR("ArduinoFFT."),2,ALIGN_CENTER,ZX_RED_B);
+      screenY+=16;
+      img.pushSprite(8,screenY);
+      // Fill remaining space to 304px (19 lines total)
+      screenY+=16;
+      img.fillScreen(0);
+      while(screenY<8+304){
+        img.pushSprite(8,screenY);
+        screenY+=16;
+      }
+      img.deleteSprite();
     }
-    img.deleteSprite();
   }
   //survey keypad
   if(enc.click()&&lcdBlackout==false){
@@ -652,32 +675,32 @@ void time_date_screen(){
       case 1: // year
         cfgDateTimeSet=!cfgDateTimeSet;
         if(cfgDateTimeSet) year_set=year;
-        if(!cfgDateTimeSet) rtc.adjust(DateTime(year_set,month,day,hour,minute,second));
+        if(!cfgDateTimeSet){ I2CLock lock; rtc.adjust(DateTime(year_set,month,day,hour,minute,second)); }
         break;
       case 2: // month
         cfgDateTimeSet=!cfgDateTimeSet;
         if(cfgDateTimeSet) month_set=month;
-        if(!cfgDateTimeSet) rtc.adjust(DateTime(year,month_set,day,hour,minute,second));
+        if(!cfgDateTimeSet){ I2CLock lock; rtc.adjust(DateTime(year,month_set,day,hour,minute,second)); }
         break;
       case 3: // day
         cfgDateTimeSet=!cfgDateTimeSet;
         if(cfgDateTimeSet) day_set=day;
-        if(!cfgDateTimeSet) rtc.adjust(DateTime(year,month,day_set,hour,minute,second));
+        if(!cfgDateTimeSet){ I2CLock lock; rtc.adjust(DateTime(year,month,day_set,hour,minute,second)); }
         break;
       case 4: // hour
         cfgDateTimeSet=!cfgDateTimeSet;
         if(cfgDateTimeSet) hour_set=hour;
-        if(!cfgDateTimeSet) rtc.adjust(DateTime(year,month,day,hour_set,minute,second));
+        if(!cfgDateTimeSet){ I2CLock lock; rtc.adjust(DateTime(year,month,day,hour_set,minute,second)); }
         break;
       case 5: // minute
         cfgDateTimeSet=!cfgDateTimeSet;
         if(cfgDateTimeSet) minute_set=minute;
-        if(!cfgDateTimeSet) rtc.adjust(DateTime(year,month,day,hour,minute_set,second));
+        if(!cfgDateTimeSet){ I2CLock lock; rtc.adjust(DateTime(year,month,day,hour,minute_set,second)); }
         break;
       case 6: // second
         cfgDateTimeSet=!cfgDateTimeSet;
         if(cfgDateTimeSet) second_set=second;
-        if(!cfgDateTimeSet) rtc.adjust(DateTime(year,month,day,hour,minute,second_set));
+        if(!cfgDateTimeSet){ I2CLock lock; rtc.adjust(DateTime(year,month,day,hour,minute,second_set)); }
         break;
     }
     PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
@@ -789,127 +812,139 @@ void config_reset_default_screen(){
   }
 }
 
+bool zpConfigDraw();              // zp/zpconfig.h, included after this file
 void config_screen(){
   const char* const player_sources[]={"SD","UART"};
   const char* const play_modes[]={"Once","All","Shuffle"};
   const char* const zx_int[]={"PENT 48.8","ZX 50.0"};
   const char* const enc_reverse[]={"NORMAL","REVERSE"};
   char buf[32];
-  if(PlayerCTRL.scr_mode_update[SCR_CONFIG]){
-    PlayerCTRL.scr_mode_update[SCR_CONFIG]=false;
-    int8_t ccur=lfsConfig.cfg_cur;
-    img.setColorDepth(8);
-    img.createSprite(224,16);
-    img.setTextWrap(false);
-    img.setTextSize(2);
-    img.setFreeFont(&WildFont);
-    int screenY=8;
-    // Header
-    img.fillScreen(0);
-    spr_println(img,0,1,PSTR("Settings"),2,ALIGN_CENTER,WILD_CYAN);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    // Menu items - draw line by line
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("Player source"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,player_sources[lfsConfig.playerSource],TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("ZX INT"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,zx_int[lfsConfig.zx_int],TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    sprintf(buf,"%s%s%s",(cfgSet&&ccur==2)?"<":"",ay_layout_names[lfsConfig.ay_layout],(cfgSet&&ccur==2)?">":"");
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("Stereo"),(cfgSet&&ccur==2)?WILD_RED:WILD_CYAN_D2,ccur==2?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==2)?WILD_RED:TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    switch(lfsConfig.ay_clock){
-      case CLK_SPECTRUM: sprintf(buf,"%sZX 1.77MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
-      case CLK_PENTAGON: sprintf(buf,"%sPEN 1.75MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
-      case CLK_MSX: sprintf(buf,"%sMSX 1.78MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
-      case CLK_CPC: sprintf(buf,"%sCPC 1.0MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
-      case CLK_ATARIST: sprintf(buf,"%sST 2.0MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
-    }
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("AY Clock"),(cfgSet&&ccur==3)?WILD_RED:WILD_CYAN_D2,ccur==3?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==3)?WILD_RED:TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    sprintf(buf,"%s%s%s",(cfgSet&&ccur==4)?"<":"",play_modes[lfsConfig.play_mode],(cfgSet&&ccur==4)?">":"");
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("Play mode"),(cfgSet&&ccur==4)?WILD_RED:WILD_CYAN_D2,ccur==4?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==4)?WILD_RED:TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    sprintf(buf,"%s%2u%%%s",(cfgSet&&ccur==5)?"<":"",lfsConfig.scr_bright,(cfgSet&&ccur==5)?">":"");
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("Scr.brightness"),(cfgSet&&ccur==5)?WILD_RED:WILD_CYAN_D2,ccur==5?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==5)?WILD_RED:TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    if(!lfsConfig.scr_timeout){
-      sprintf(buf,"%sOff%s",(cfgSet&&ccur==6)?"<":"",(cfgSet&&ccur==6)?">":"");
-    }else{
-      sprintf(buf,"%s%2us%s",(cfgSet&&ccur==6)?"<":"",lfsConfig.scr_timeout,(cfgSet&&ccur==6)?">":"");
-    }
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("Scr.timeout"),(cfgSet&&ccur==6)?WILD_RED:WILD_CYAN_D2,ccur==6?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==6)?WILD_RED:TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    sprintf(buf,"%s%d%%%s",(cfgSet&&ccur==7)?"<":"",(int)roundf(lfsConfig.dacGain*100),(cfgSet&&ccur==7)?">":"");
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("DAC Gain"),(cfgSet&&ccur==7)?WILD_RED:WILD_CYAN_D2,ccur==7?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==7)?WILD_RED:TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    switch(lfsConfig.modStereoSeparation){
-      case MOD_FULLSTEREO: sprintf(buf,"%sFull Stereo%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
-      case MOD_HALFSTEREO: sprintf(buf,"%sHalf Stereo%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
-      case MOD_MONO: sprintf(buf,"%sMono%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
-    }
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("DAC Pan."),(cfgSet&&ccur==8)?WILD_RED:WILD_CYAN_D2,ccur==8?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==8)?WILD_RED:TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("Skip tape"),WILD_CYAN_D2,ccur==9?TFT_RED:TFT_BLACK,lfsConfig.skipTapeFormats?PSTR("Yes"):PSTR("No"),TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    switch(lfsConfig.tapeSpeed){
-      case TAPE_NORMAL: sprintf(buf,"%s3.5MHz(1x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
-      case TAPE_TURBO1: sprintf(buf,"%s7MHz(2x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
-      case TAPE_TURBO2: sprintf(buf,"%s14MHz(4x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
-    }
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("Tape speed"),(cfgSet&&ccur==10)?WILD_RED:WILD_CYAN_D2,ccur==10?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==10)?WILD_RED:TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("Enc direction"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK,enc_reverse[lfsConfig.encReverse],TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==12)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==12)?">":"");
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("Batt calib"),(cfgSet&&ccur==12)?WILD_RED:WILD_CYAN_D2,ccur==12?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==12)?WILD_RED:TFT_YELLOW);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    if(foundRtc){
+  bool zp=zpConfigDraw();          // the Z-Player look draws the page (zp/zpconfig.h)
+  if(!zp){
+    if(PlayerCTRL.scr_mode_update[SCR_CONFIG]){
+      PlayerCTRL.scr_mode_update[SCR_CONFIG]=false;
+      int8_t ccur=lfsConfig.cfg_cur;
+      img.setColorDepth(8);
+      img.createSprite(224,16);
+      img.setTextWrap(false);
+      img.setTextSize(2);
+      img.setFreeFont(&WildFont);
+      int screenY=8;
+      // Header
       img.fillScreen(0);
-      spr_printmenu_item(img,1,2,PSTR("Date&Time"),WILD_CYAN_D2,ccur==13?TFT_RED:TFT_BLACK);
+      spr_println(img,0,1,PSTR("Settings"),2,ALIGN_CENTER,WILD_CYAN);
       img.pushSprite(8,screenY);
       screenY+=16;
-    }
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==14?TFT_RED:TFT_BLACK);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    img.fillScreen(0);
-    spr_printmenu_item(img,1,2,PSTR("About"),WILD_CYAN_D2,ccur==15?TFT_RED:TFT_BLACK);
-    img.pushSprite(8,screenY);
-    screenY+=16;
-    // Fill remaining space to 288px (before battery debug at 296px)
-    img.fillScreen(0);
-    while(screenY<8+288){
+      // Menu items - draw line by line
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Player source"),WILD_CYAN_D2,ccur==0?TFT_RED:TFT_BLACK,player_sources[lfsConfig.playerSource],TFT_YELLOW);
       img.pushSprite(8,screenY);
       screenY+=16;
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("ZX INT"),WILD_CYAN_D2,ccur==1?TFT_RED:TFT_BLACK,zx_int[lfsConfig.zx_int],TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      sprintf(buf,"%s%s%s",(cfgSet&&ccur==2)?"<":"",ay_layout_names[lfsConfig.ay_layout],(cfgSet&&ccur==2)?">":"");
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Stereo"),(cfgSet&&ccur==2)?WILD_RED:WILD_CYAN_D2,ccur==2?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==2)?WILD_RED:TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      switch(lfsConfig.ay_clock){
+        case CLK_SPECTRUM: sprintf(buf,"%sZX 1.77MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
+        case CLK_PENTAGON: sprintf(buf,"%sPEN 1.75MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
+        case CLK_MSX: sprintf(buf,"%sMSX 1.78MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
+        case CLK_CPC: sprintf(buf,"%sCPC 1.0MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
+        case CLK_ATARIST: sprintf(buf,"%sST 2.0MHz%s",(cfgSet&&ccur==3)?"<":"",(cfgSet&&ccur==3)?">":"");break;
+      }
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("AY Clock"),(cfgSet&&ccur==3)?WILD_RED:WILD_CYAN_D2,ccur==3?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==3)?WILD_RED:TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      sprintf(buf,"%s%s%s",(cfgSet&&ccur==4)?"<":"",play_modes[lfsConfig.play_mode],(cfgSet&&ccur==4)?">":"");
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Play mode"),(cfgSet&&ccur==4)?WILD_RED:WILD_CYAN_D2,ccur==4?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==4)?WILD_RED:TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      sprintf(buf,"%s%2u%%%s",(cfgSet&&ccur==5)?"<":"",lfsConfig.scr_bright,(cfgSet&&ccur==5)?">":"");
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Scr.brightness"),(cfgSet&&ccur==5)?WILD_RED:WILD_CYAN_D2,ccur==5?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==5)?WILD_RED:TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      if(!lfsConfig.scr_timeout){
+        sprintf(buf,"%sOff%s",(cfgSet&&ccur==6)?"<":"",(cfgSet&&ccur==6)?">":"");
+      }else{
+        sprintf(buf,"%s%2us%s",(cfgSet&&ccur==6)?"<":"",lfsConfig.scr_timeout,(cfgSet&&ccur==6)?">":"");
+      }
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Scr.timeout"),(cfgSet&&ccur==6)?WILD_RED:WILD_CYAN_D2,ccur==6?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==6)?WILD_RED:TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      sprintf(buf,"%s%d%%%s",(cfgSet&&ccur==7)?"<":"",(int)roundf(lfsConfig.dacGain*100),(cfgSet&&ccur==7)?">":"");
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("DAC Gain"),(cfgSet&&ccur==7)?WILD_RED:WILD_CYAN_D2,ccur==7?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==7)?WILD_RED:TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      switch(lfsConfig.modStereoSeparation){
+        case MOD_FULLSTEREO: sprintf(buf,"%sFull Stereo%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
+        case MOD_HALFSTEREO: sprintf(buf,"%sHalf Stereo%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
+        case MOD_MONO: sprintf(buf,"%sMono%s",(cfgSet&&ccur==8)?"<":"",(cfgSet&&ccur==8)?">":"");break;
+      }
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("DAC Pan."),(cfgSet&&ccur==8)?WILD_RED:WILD_CYAN_D2,ccur==8?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==8)?WILD_RED:TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Skip tape"),WILD_CYAN_D2,ccur==9?TFT_RED:TFT_BLACK,lfsConfig.skipTapeFormats?PSTR("Yes"):PSTR("No"),TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      switch(lfsConfig.tapeSpeed){
+        case TAPE_NORMAL: sprintf(buf,"%s3.5MHz(1x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
+        case TAPE_TURBO1: sprintf(buf,"%s7MHz(2x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
+        case TAPE_TURBO2: sprintf(buf,"%s14MHz(4x)%s",(cfgSet&&ccur==10)?"<":"",(cfgSet&&ccur==10)?">":"");break;
+      }
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Tape speed"),(cfgSet&&ccur==10)?WILD_RED:WILD_CYAN_D2,ccur==10?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==10)?WILD_RED:TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Enc direction"),WILD_CYAN_D2,ccur==11?TFT_RED:TFT_BLACK,enc_reverse[lfsConfig.encReverse],TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      sprintf(buf,"%s%.1fV%s",(cfgSet&&ccur==12)?(lfsConfig.batCalib>0.0)?"<+":"<":(lfsConfig.batCalib>0.0)?"+":"",lfsConfig.batCalib,(cfgSet&&ccur==12)?">":"");
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Batt calib"),(cfgSet&&ccur==12)?WILD_RED:WILD_CYAN_D2,ccur==12?(cfgSet)?TFT_GREEN:TFT_RED:TFT_BLACK,buf,(cfgSet&&ccur==12)?WILD_RED:TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("MOD player"),WILD_CYAN_D2,ccur==13?TFT_RED:TFT_BLACK,lfsConfig.modEngine==MOD_ENGINE_NATIVE?"Built-in":"Gen.Sound",TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Skin"),WILD_CYAN_D2,ccur==14?TFT_RED:TFT_BLACK,lfsConfig.skin==SKIN_WILD?"WildPlayer":"Z-Player",TFT_YELLOW);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      if(foundRtc){
+        img.fillScreen(0);
+        spr_printmenu_item(img,1,2,PSTR("Date&Time"),WILD_CYAN_D2,ccur==15?TFT_RED:TFT_BLACK);
+        img.pushSprite(8,screenY);
+        screenY+=16;
+      }
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("Reset to default"),WILD_CYAN_D2,ccur==16?TFT_RED:TFT_BLACK);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      img.fillScreen(0);
+      spr_printmenu_item(img,1,2,PSTR("About"),WILD_CYAN_D2,ccur==17?TFT_RED:TFT_BLACK);
+      img.pushSprite(8,screenY);
+      screenY+=16;
+      // Fill remaining space to 312px (before the battery line)
+      img.fillScreen(0);
+      while(screenY<312){
+        img.pushSprite(8,screenY);
+        screenY+=16;
+      }
+      img.deleteSprite();
     }
-    img.deleteSprite();
   }
   // voltage debug
   static uint64_t InVolt=0;
@@ -924,27 +959,27 @@ void config_screen(){
     volt=((InVolt/1000.0)*VoltMult)+lfsConfig.batCalib;//+0.1;
     mlsV=millis();
   }
+  if(!zp){                          // one line under the 18 items (two, before MOD player and Skin)
     img.setColorDepth(8);
-    img.createSprite(224,16);
+    img.createSprite(224,8);
     img.fillScreen(0);
     img.setTextColor(TFT_WHITE);
     img.setTextSize(1);
     img.setFreeFont(&WildFont);
-    sprintf(buf,"%llu mV",InVolt);
-    spr_printmenu_item(img,1,1,PSTR("mV on pin:"),WILD_RED,TFT_BLACK,buf,TFT_GREEN);
-    sprintf(buf,"%.2f V",volt);
-    spr_printmenu_item(img,2,1,PSTR("Battery voltage:"),WILD_RED,TFT_BLACK,buf,TFT_GREEN);
-    img.pushSprite(8,296);
+    sprintf(buf,"%.2f V (%llu mV)",volt,InVolt);
+    spr_printmenu_item(img,1,1,PSTR("Battery:"),WILD_RED,TFT_BLACK,buf,TFT_GREEN);
+    img.pushSprite(8,312);
     img.deleteSprite();
+  }
   // survey keypad
   if(enc.left()&&lcdBlackout==false){
     if(!cfgSet){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
       lfsConfig.cfg_cur--;
       if(!foundRtc){
-        if(lfsConfig.cfg_cur==13) lfsConfig.cfg_cur=12;
+        if(lfsConfig.cfg_cur==15) lfsConfig.cfg_cur=14;
       }
-      if(lfsConfig.cfg_cur<0)lfsConfig.cfg_cur=15;
+      if(lfsConfig.cfg_cur<0)lfsConfig.cfg_cur=17;
     }else{
       switch(lfsConfig.cfg_cur){
         case 2:
@@ -1030,9 +1065,9 @@ void config_screen(){
       PlayerCTRL.scr_mode_update[SCR_CONFIG]=true;
       lfsConfig.cfg_cur++;
       if(!foundRtc){
-        if(lfsConfig.cfg_cur==13) lfsConfig.cfg_cur=14;
+        if(lfsConfig.cfg_cur==15) lfsConfig.cfg_cur=16;
       }
-      if(lfsConfig.cfg_cur>15) lfsConfig.cfg_cur=0;
+      if(lfsConfig.cfg_cur>17) lfsConfig.cfg_cur=0;
     }else{
       switch(lfsConfig.cfg_cur){
         case 2:
@@ -1151,16 +1186,24 @@ void config_screen(){
         lfsConfig.encReverse=!lfsConfig.encReverse;
         enc.setEncReverse(lfsConfig.encReverse);
         break;
-      case 13:
+      case 13:                          // the next .mod opened goes to the engine chosen
+        lfsConfig.modEngine=lfsConfig.modEngine==MOD_ENGINE_GS?MOD_ENGINE_NATIVE:MOD_ENGINE_GS;
+        break;
+      case 14:                          // the other look: every screen drawn afresh
+        lfsConfig.skin=lfsConfig.skin==SKIN_WILD?SKIN_ZPLAYER:SKIN_WILD;
+        for(int i=0;i<(int)(sizeof(PlayerCTRL.scr_mode_update)/sizeof(PlayerCTRL.scr_mode_update[0]));i++)
+          PlayerCTRL.scr_mode_update[i]=true;
+        break;
+      case 15:
         PlayerCTRL.screen_mode=SCR_DATETIME;
         PlayerCTRL.scr_mode_update[SCR_DATETIME]=true;
         break;
-      case 14:
+      case 16:
         PlayerCTRL.msg_cur=NO;
         PlayerCTRL.screen_mode=SCR_RESET_CONFIG;
         PlayerCTRL.scr_mode_update[SCR_RESET_CONFIG]=true;
         break;
-      case 15:
+      case 17:
         PlayerCTRL.screen_mode=SCR_ABOUT;
         PlayerCTRL.scr_mode_update[SCR_ABOUT]=true;
         break;

@@ -39,6 +39,20 @@
 #include "players/AYPlay.h"
 #include "players/PSGPlay.h"
 #include "players/MODPlay.h"
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#include "zp/zpscreen.h"      // the Z-Player look: its screen, font, logo
+#include "zp/zpmod.h"         // ... what it shows of a module
+#include "players/GSPlay.h"   // .mod through General Sound
+#include "zp/zplayout.h"      // ... the player screens' layout
+#include "zp/zpplayer.h"      // ... its player screen
+#include "zp/zpbrowser.h"     // ... its file browser
+#include "zp/zpgen.h"         // ... for what the ESP plays itself
+#include "zp/zpay.h"          // ... and for the AY formats
+#include "zp/zpintro.h"       // ... its boot screen
+#include "zp/zpconfig.h"      // ... its Set-Up page
+#else
+#include "zp/zpnone.h"        // the classic ESP32: no PSRAM, upstream's look and MOD player
+#endif
 #include "players/S3MPlay.h"
 #if defined(CONFIG_IDF_TARGET_ESP32S3)
 #include "players/XMPlay.h" 
@@ -73,7 +87,8 @@ void setup(){
   buttonsSetup();
   DACInit();
   AYInit();
-  introTFT();
+  GS_Init();       // General Sound: its ROM starts in core 0's spare time
+  if(lfsConfig.skin==SKIN_WILD) introTFT(); else zpIntro();  // the skin's boot screen
   delay(2000);
   show_frame();
   playerSourceChange(); // ay playcore or uart playcore
@@ -90,6 +105,7 @@ void loop(){
   getDateTime();
   generalTick();
   player();
+  if(zpOwns&&!zpMine()) zpRelease();   // upstream's screen again: its frame first
   switch(PlayerCTRL.screen_mode){
     case SCR_PLAYER:
       player_screen();

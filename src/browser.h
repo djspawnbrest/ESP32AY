@@ -376,9 +376,11 @@ int browser_search_files_in_sd_dir(bool fromPlayer=false){
     if(!sd_fat.begin(SD_CONFIG)){
       PlayerCTRL.isSDeject=true;
       PlayerCTRL.screen_mode=SCR_SDEJECT;
+      xSemaphoreGive(sdCardSemaphore);  // never return holding it: the next take would wait forever
       return FILE_ERR_NO_CARD;
     }
     if(!sd_dir.open(fromPlayer?sdConfig.play_dir:sdConfig.active_dir,O_RDONLY)){
+      xSemaphoreGive(sdCardSemaphore);
       return FILE_ERR_OTHER;
     }
     xSemaphoreGive(sdCardSemaphore); // Release the semaphore
@@ -504,9 +506,11 @@ int browser_build_list(bool fromPlayer=false){
     if(!sd_fat.begin(SD_CONFIG)){
       PlayerCTRL.isSDeject=true;
       PlayerCTRL.screen_mode=SCR_SDEJECT;
+      xSemaphoreGive(sdCardSemaphore);  // never return holding it: the next take would wait forever
       return FILE_ERR_NO_CARD;
     }
     if(!sd_dir.open(fromPlayer?sdConfig.play_dir:sdConfig.active_dir,O_RDONLY)){
+      xSemaphoreGive(sdCardSemaphore);
       return FILE_ERR_OTHER;
     }
     xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
@@ -527,6 +531,7 @@ int browser_build_list(bool fromPlayer=false){
               sort_list_len=0;
               char str[128];
               snprintf(str,sizeof(str),"Too many files\nin a folder\n(%u max)",SORT_FILES_MAX);
+              xSemaphoreGive(sdCardSemaphore);
               return FILE_ERR_OTHER;
             }
             if(sd_file.isSubDir()){
@@ -724,6 +729,7 @@ void browser_ayl_draw_end(){
   playlist_close();
 }
 
+bool zpBrowserDraw(int mode);     // zp/zpbrowser.h, included after this file
 int browser_screen(int mode){
   PGM_P header_dir=PSTR("Files");
   PGM_P header_ayl=PSTR("Playlist");
@@ -752,134 +758,139 @@ int browser_screen(int mode){
       playlist_close();
     }
   }
-  if(PlayerCTRL.scr_mode_update[SCR_BROWSER]){ 
-    int id=sdConfig.dir_cur-BROWSER_LINES/2;
-    if(id>=sort_list_len-BROWSER_LINES) id=sort_list_len-BROWSER_LINES;
-    if(id<0) id=0;
-    img.setColorDepth(8);
-    img.createSprite(224,16);
-    img.setTextWrap(false);
-    img.setTextColor(TFT_WHITE);
-    img.setTextSize(2);
-    img.setFreeFont(&WildFont);
-    //draw header
-    // PGM_P header_str=(mode==BROWSE_DIR)?header_dir:header_ayl;
-    // spr_println(img,0,1,header_str,2,ALIGN_CENTER,WILD_CYAN);
-    PGM_P header_str=(mode==BROWSE_DIR)?(strcmp(sdConfig.active_dir,"/")==0?"Root":sdConfig.active_dir):sdConfig.ayl_file;
-    char sort_stub[8];
-    if(mode==BROWSE_DIR) snprintf(sort_stub,sizeof(sort_stub),"|%s",sort_names[sdConfig.browser_sort]);
-    int sort_stub_width=(mode==BROWSE_DIR)?tft_strlen(sort_stub,2):0;
-    int header_width=tft_strlen(header_str,2);
-    img.fillScreen(0);
-    img.fillRect(0,0,img.width(),8*2,BRWSR_HEADER_BG);
-    if(header_width+sort_stub_width>img.width()){
-      // header path is too long - enable scrolling
-      char header_buf[MAX_PATH];
-      strncpy(header_buf,header_str,sizeof(header_buf)-1);
-      header_buf[sizeof(header_buf)-1]=0;
-      memcpy(scrollbuf+MAX_PATH,header_buf,sizeof(header_buf));
-      if(sUp[5]==0){
-        sUp[5]=S_UPD5;
+  if(zpBrowserDraw(mode)){        // the Z-Player look draws the list (zp/zpbrowser.h)
+    scroll=false;
+    sUp[5]=0;
+  }else{
+    if(PlayerCTRL.scr_mode_update[SCR_BROWSER]){ 
+      int id=sdConfig.dir_cur-BROWSER_LINES/2;
+      if(id>=sort_list_len-BROWSER_LINES) id=sort_list_len-BROWSER_LINES;
+      if(id<0) id=0;
+      img.setColorDepth(8);
+      img.createSprite(224,16);
+      img.setTextWrap(false);
+      img.setTextColor(TFT_WHITE);
+      img.setTextSize(2);
+      img.setFreeFont(&WildFont);
+      //draw header
+      // PGM_P header_str=(mode==BROWSE_DIR)?header_dir:header_ayl;
+      // spr_println(img,0,1,header_str,2,ALIGN_CENTER,WILD_CYAN);
+      PGM_P header_str=(mode==BROWSE_DIR)?(strcmp(sdConfig.active_dir,"/")==0?"Root":sdConfig.active_dir):sdConfig.ayl_file;
+      char sort_stub[8];
+      if(mode==BROWSE_DIR) snprintf(sort_stub,sizeof(sort_stub),"|%s",sort_names[sdConfig.browser_sort]);
+      int sort_stub_width=(mode==BROWSE_DIR)?tft_strlen(sort_stub,2):0;
+      int header_width=tft_strlen(header_str,2);
+      img.fillScreen(0);
+      img.fillRect(0,0,img.width(),8*2,BRWSR_HEADER_BG);
+      if(header_width+sort_stub_width>img.width()){
+        // header path is too long - enable scrolling
+        char header_buf[MAX_PATH];
+        strncpy(header_buf,header_str,sizeof(header_buf)-1);
+        header_buf[sizeof(header_buf)-1]=0;
+        memcpy(scrollbuf+MAX_PATH,header_buf,sizeof(header_buf));
+        if(sUp[5]==0){
+          sUp[5]=S_UPD5;
+          mlsS[5]=0;
+        }
+        if(mode==BROWSE_DIR) spr_print(img,img.width()-sort_stub_width,8*2,sort_stub,2,BRWSR_SORT);
+      }else{
+        // header fits - draw normally
+        spr_print(img,0,8*2,header_str,2,BRWSR_HEADER_TX);
+        if(mode==BROWSE_DIR) spr_print(img,img.width()-sort_stub_width,8*2,sort_stub,2,BRWSR_SORT);
+        sUp[5]=0;
         mlsS[5]=0;
       }
-      if(mode==BROWSE_DIR) spr_print(img,img.width()-sort_stub_width,8*2,sort_stub,2,BRWSR_SORT);
-    }else{
-      // header fits - draw normally
-      spr_print(img,0,8*2,header_str,2,BRWSR_HEADER_TX);
-      if(mode==BROWSE_DIR) spr_print(img,img.width()-sort_stub_width,8*2,sort_stub,2,BRWSR_SORT);
-      sUp[5]=0;
-      mlsS[5]=0;
-    }
-    if(sUp[5]==0){
-      img.pushSprite(8,8);
-    }
+      if(sUp[5]==0){
+        img.pushSprite(8,8);
+      }
 
-    int sx=0;
-    int sy=8*2;
-    int screenY=8+8*2;
-    if(mode==BROWSE_DIR){
-      browser_dir_draw_begin(id);
-    }else{
-      browser_ayl_draw_begin(id);
-    }
-    for(int i=0;i<BROWSER_LINES;i++){
-      img.fillScreen(0);
-      if(id>=0&&id<sort_list_len){
-        if(mode==BROWSE_DIR){
-          browser_dir_draw_item(sx,sy,id,sdConfig.dir_cur==id);
-        }else{
-          browser_ayl_draw_item(sx,sy,id,sdConfig.dir_cur==id);
-        }
-        if(sdConfig.dir_cur==id){
-          if(tft_strlen(lfn,2)>img.width()){
-            memcpy(scrollbuf,lfn,sizeof(lfn));
-            sUp[0]=S_UPD_DIR;
-            mlsS[0]=millis();
-            scroll=true;
-            scrollSY=screenY;
+      int sx=0;
+      int sy=8*2;
+      int screenY=8+8*2;
+      if(mode==BROWSE_DIR){
+        browser_dir_draw_begin(id);
+      }else{
+        browser_ayl_draw_begin(id);
+      }
+      for(int i=0;i<BROWSER_LINES;i++){
+        img.fillScreen(0);
+        if(id>=0&&id<sort_list_len){
+          if(mode==BROWSE_DIR){
+            browser_dir_draw_item(sx,sy,id,sdConfig.dir_cur==id);
           }else{
-            sPos[0]=0;
-            scrollDir[0]=true;
-            memset(scrollbuf,0,MAX_PATH);
-            mlsS[0]=0;
-            scroll=false;
-            scrollSY=0;
+            browser_ayl_draw_item(sx,sy,id,sdConfig.dir_cur==id);
+          }
+          if(sdConfig.dir_cur==id){
+            if(tft_strlen(lfn,2)>img.width()){
+              memcpy(scrollbuf,lfn,sizeof(lfn));
+              sUp[0]=S_UPD_DIR;
+              mlsS[0]=millis();
+              scroll=true;
+              scrollSY=screenY;
+            }else{
+              sPos[0]=0;
+              scrollDir[0]=true;
+              memset(scrollbuf,0,MAX_PATH);
+              mlsS[0]=0;
+              scroll=false;
+              scrollSY=0;
+            }
           }
         }
+        img.pushSprite(8,screenY);
+        screenY+=8*2;
+        id++;
       }
-      img.pushSprite(8,screenY);
-      screenY+=8*2;
-      id++;
-    }
-    if(mode==BROWSE_DIR){
-      browser_dir_draw_end();
-    }else{
-      browser_ayl_draw_end();
-    }
-    // scrollbar
-    if(sort_list_len>BROWSER_LINES){
-      // draw scrollbar
-      draw_scrollbar(sdConfig.dir_cur,sort_list_len);
-    }else{
-      // clear scrollbar
-      clear_scrollbar();
-    }
-    PlayerCTRL.scr_mode_update[SCR_BROWSER]=false;
-    img.deleteSprite();
-  }
-  //scroll header
-  if(sUp[5]>0){
-    char sort_stub[8];
-    if(mode==BROWSE_DIR) snprintf(sort_stub,sizeof(sort_stub),"|%s",sort_names[sdConfig.browser_sort]);
-    int sort_stub_width=(mode==BROWSE_DIR)?tft_strlen(sort_stub,2):0;
-    scrollString(scrollbuf+MAX_PATH,2,BRWSR_HEADER_TX,224-sort_stub_width,16,8,8,5,BRWSR_HEADER_BG,false);
-    // draw sort stub on top of scrolled header
-    if(mode==BROWSE_DIR){
-      img.setColorDepth(8);
-      img.createSprite(sort_stub_width,16);
-      img.fillScreen(BRWSR_HEADER_BG);
-      img.setFreeFont(&WildFont);
-      img.setTextSize(2);
-      img.setTextWrap(false);
-      img.setTextColor(BRWSR_SORT);
-      spr_print(img,0,8*2,sort_stub,2,BRWSR_SORT);
-      img.pushSprite(8+224-sort_stub_width,8);
+      if(mode==BROWSE_DIR){
+        browser_dir_draw_end();
+      }else{
+        browser_ayl_draw_end();
+      }
+      // scrollbar
+      if(sort_list_len>BROWSER_LINES){
+        // draw scrollbar
+        draw_scrollbar(sdConfig.dir_cur,sort_list_len);
+      }else{
+        // clear scrollbar
+        clear_scrollbar();
+      }
+      PlayerCTRL.scr_mode_update[SCR_BROWSER]=false;
       img.deleteSprite();
     }
-  }
-  //scroll
-  if(scroll){
-    if(sdConfig.isPlayAYL){ // in playlist
-      if(!strcmp(sdConfig.ayl_file,sdConfig.play_ayl_file)&&sdConfig.play_cur==sdConfig.dir_cur){
-        scrollString(scrollbuf,2,BRWSR_PLAY_FILE,224,16,8,scrollSY,0); // playing file in playlist
-      }else{
-        scrollString(scrollbuf,2,get_file_type_color(scrollbuf),224,16,8,scrollSY,0); // file in playlist under cursor
+    //scroll header
+    if(sUp[5]>0){
+      char sort_stub[8];
+      if(mode==BROWSE_DIR) snprintf(sort_stub,sizeof(sort_stub),"|%s",sort_names[sdConfig.browser_sort]);
+      int sort_stub_width=(mode==BROWSE_DIR)?tft_strlen(sort_stub,2):0;
+      scrollString(scrollbuf+MAX_PATH,2,BRWSR_HEADER_TX,224-sort_stub_width,16,8,8,5,BRWSR_HEADER_BG,false);
+      // draw sort stub on top of scrolled header
+      if(mode==BROWSE_DIR){
+        img.setColorDepth(8);
+        img.createSprite(sort_stub_width,16);
+        img.fillScreen(BRWSR_HEADER_BG);
+        img.setFreeFont(&WildFont);
+        img.setTextSize(2);
+        img.setTextWrap(false);
+        img.setTextColor(BRWSR_SORT);
+        spr_print(img,0,8*2,sort_stub,2,BRWSR_SORT);
+        img.pushSprite(8+224-sort_stub_width,8);
+        img.deleteSprite();
       }
-    }else{  // in folder
-      if(!strcmp(sdConfig.active_dir,sdConfig.play_dir)&&sdConfig.play_cur==sdConfig.dir_cur){
-        scrollString(scrollbuf,2,BRWSR_PLAY_FILE,224,16,8,scrollSY,0); // playing file
-      }else{
-        scrollString(scrollbuf,2,get_file_type_color(scrollbuf),224,16,8,scrollSY,0); // file in folder under cursor
+    }
+    //scroll
+    if(scroll){
+      if(sdConfig.isPlayAYL){ // in playlist
+        if(!strcmp(sdConfig.ayl_file,sdConfig.play_ayl_file)&&sdConfig.play_cur==sdConfig.dir_cur){
+          scrollString(scrollbuf,2,BRWSR_PLAY_FILE,224,16,8,scrollSY,0); // playing file in playlist
+        }else{
+          scrollString(scrollbuf,2,get_file_type_color(scrollbuf),224,16,8,scrollSY,0); // file in playlist under cursor
+        }
+      }else{  // in folder
+        if(!strcmp(sdConfig.active_dir,sdConfig.play_dir)&&sdConfig.play_cur==sdConfig.dir_cur){
+          scrollString(scrollbuf,2,BRWSR_PLAY_FILE,224,16,8,scrollSY,0); // playing file
+        }else{
+          scrollString(scrollbuf,2,get_file_type_color(scrollbuf),224,16,8,scrollSY,0); // file in folder under cursor
+        }
       }
     }
   }
@@ -1157,6 +1168,7 @@ int browser_screen(int mode){
 }
 
 void initSemaphore(){
+  i2cSemaphore=xSemaphoreCreateRecursiveMutex();
   sdCardSemaphore=xSemaphoreCreateMutex();
   if(sdCardSemaphore==NULL){
     printf("Error creating sd semaphore\n");
