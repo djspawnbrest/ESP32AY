@@ -72,6 +72,7 @@ bool zpBrowserDraw(int mode){
   if(!zpBrowserMine()) return false;
   if(!zpInit()) return false;
   bool full=!zpOwns;
+  full|=zpShow(4);
   zpClaim();
   if(!full&&!PlayerCTRL.scr_mode_update[SCR_BROWSER]) return true;
 

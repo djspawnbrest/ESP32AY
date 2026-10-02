@@ -89,6 +89,7 @@ static bool zpAyDraw(){
   static uint32_t last;
   bool full=PlayerCTRL.scr_mode_update[SCR_PLAYER]||!zpOwns;
   if(!zpInit()) return false;
+  full|=zpShow(2);
   zpClaim();
   if(full) zpAyStatic();
   else if(millis()-last<40) return true;
@@ -136,7 +137,7 @@ static bool zpAyDraw(){
   if(AYInfo.Length>0) zplTime(b,sizeof(b),AYInfo.Length); else strcpy(b,"--");
   zplLine(4,"Time",a,"of",b);
 
-  zplBars36(zpaBar,zpaPeak);
+  zplBars36(zpaBar,zpaPeak,1);
   zplPlaylist();
   zpFlush();
   return true;

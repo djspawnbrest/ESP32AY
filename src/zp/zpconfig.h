@@ -63,6 +63,7 @@ bool zpConfigDraw(){
   if(!zpConfigMine()) return false;
   if(!zpInit()) return false;
   bool full=!zpOwns;
+  full|=zpShow(5);
   zpClaim();
   static uint32_t lastVolt;
   static int first=0;                   // the first item shown
@@ -108,39 +109,46 @@ bool zpConfigDraw(){
   return true;
 }
 
-// About: upstream's credits kept, this firmware's added
+// About: upstream's credits kept, this firmware's added - at twice the
+// size, as Set-Up: the header bar with the version, fifteen lines of 29
+// columns, the foot.
 static bool zpAboutMine(){ return zpSkin()&&PlayerCTRL.screen_mode==SCR_ABOUT; }
 
 bool zpAboutDraw(){
   if(!zpAboutMine()) return false;
   if(!zpInit()) return false;
   bool full=!zpOwns;
+  full|=zpShow(6);
   zpClaim();
   if(!full&&!PlayerCTRL.scr_mode_update[SCR_ABOUT]){ zpFlush(); return true; }
+  static const struct{ uint8_t ink; const char *s; } lines[ZPC_LINES]={
+    {ZX_BGREEN,"The look:"},
+    {ZX_BWHITE,"  Z-Player, Evgeny Muchkin"},
+    {ZX_BGREEN,"General Sound:"},
+    {ZX_BWHITE,"  the card: X-Trade, 1997"},
+    {ZX_BWHITE,"  ROM: Stinger, 1.05b fixes"},
+    {ZX_BWHITE,"  psb & Evgeny Muchkin"},
+    {ZX_WHITE, "  emulated: Z80, 12MHz, 2MB"},
+    {ZX_BGREEN,"The player:"},
+    {ZX_BWHITE,"  by Spawn, Andy Karpov"},
+    {ZX_BGREEN,"Powered with:"},
+    {ZX_BCYAN, "  z80emu (Lin Ke-Fong),"},
+    {ZX_BCYAN, "  libayfly, ESP8266Audio,"},
+    {ZX_BCYAN, "  SdFat, libxmize, TFT_eSPI,"},
+    {ZX_BCYAN, "  EncButton, GyverFIFO,"},
+    {ZX_BCYAN, "  ArduinoFFT, sjasmplus."},
+  };
   zpClear(ZX_BLACK);
   zpBitmap((ZP_W-ZP_LOGO_W*2)/2,6,zpLogo,ZP_LOGO_W,ZP_LOGO_H,ZX_BWHITE,2);
   zpTextf(15,4,ZX_BYELLOW,ZX_BLACK,-1,"for ZxPod \x7f version %s",ZP_VERSION);
-  zpHeader(0,6,ZP_COLS,"About:");
-  int r=8;
-  zpText(2,r++,"The look:",ZX_BGREEN,ZX_BLACK);
-  zpText(4,r++,"Z-Player for General Sound, Evgeny Muchkin",ZX_BWHITE,ZX_BLACK);
-  zpText(4,r++,"(its screens, font and letters, seen running)",ZX_WHITE,ZX_BLACK);
-  r++;
-  zpText(2,r++,"General Sound:",ZX_BGREEN,ZX_BLACK);
-  zpText(4,r++,"the card: X-Trade, 1997; its ROM: Stinger,",ZX_BWHITE,ZX_BLACK);
-  zpText(4,r++,"1.05b fixes: psb & Evgeny Muchkin, 2007, 2015",ZX_BWHITE,ZX_BLACK);
-  zpText(4,r++,"emulated here: a Z80 at 12MHz, 2MB, core 0",ZX_WHITE,ZX_BLACK);
-  r++;
-  zpText(2,r++,"The player:",ZX_BGREEN,ZX_BLACK);
-  zpTextf(4,r++,ZX_BWHITE,ZX_BLACK,-1,"ZxPOD Player v.%s, %s",FULL_VERSION,BUILD_DATE);
-  zpText(4,r++,"by Spawn, Andy Karpov",ZX_BWHITE,ZX_BLACK);
-  r++;
-  zpText(2,r++,"Powered with:",ZX_BGREEN,ZX_BLACK);
-  zpText(4,r++,"libayfly, z80emu (Lin Ke-Fong), ESP8266Audio,",ZX_BCYAN,ZX_BLACK);
-  zpText(4,r++,"SdFat, libxmize, TFT_eSPI, EncButton,",ZX_BCYAN,ZX_BLACK);
-  zpText(4,r++,"GyverFIFO, ArduinoFFT, sjasmplus.",ZX_BCYAN,ZX_BLACK);
-  zpFill(0,38*8+3,ZP_W,2,ZX_BLUE);
-  zpText(2,39,"press the encoder to go back",ZX_WHITE,ZX_BLACK);
+  zpFill(0,ZPC_TOP-16,ZP_W,16,ZX_BLUE);
+  zpTextS(4,ZPC_TOP-16,"About:",ZX_BWHITE,ZX_BLUE,2);
+  char b[32];
+  snprintf(b,sizeof(b),"%s %s",FULL_VERSION,BUILD_DATE);   // upstream's version and build
+  zpTextS(ZP_W-4-8*(int)strlen(b),ZPC_TOP-16,b,ZX_BCYAN,ZX_BLUE,2);
+  for(int l=0;l<ZPC_LINES;l++) zpTextS(4,ZPC_TOP+l*16,lines[l].s,lines[l].ink,ZX_BLACK,2,29);
+  zpFill(0,ZPC_TOP+ZPC_LINES*16+2,ZP_W,2,ZX_BLUE);
+  zpTextS(4,304,"press the encoder to go back",ZX_WHITE,ZX_BLACK,2);
   PlayerCTRL.scr_mode_update[SCR_ABOUT]=false;
   zpFlush();
   return true;

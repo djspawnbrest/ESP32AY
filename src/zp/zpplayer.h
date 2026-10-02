@@ -52,6 +52,7 @@ static bool zpPlayerDraw(){
   static uint32_t last;
   bool full=PlayerCTRL.scr_mode_update[SCR_PLAYER]||!zpOwns;
   if(!zpInit()) return false;
+  full|=zpShow(1);
   zpClaim();
   if(full) zpPlayerStatic();
   else if(millis()-last<40) return true;  // 25 frames a second, as Z-Player
@@ -87,7 +88,7 @@ static bool zpPlayerDraw(){
   if(wait) snprintf(b,sizeof(b),"%d%%",pct); else zplTime(b,sizeof(b),AYInfo.Length);
   zplLine(4,"Time",a,!wait?"of":GS.state==GS_BOOTING?"Card":"Load",b,wait?ZX_BYELLOW:ZX_BCYAN);
 
-  zplBars36(zpBar,zpPeak);
+  zplBars36(zpBar,zpPeak,4);
   zplPlaylist();
   zpFlush();
   return true;
