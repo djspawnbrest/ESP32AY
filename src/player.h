@@ -653,8 +653,6 @@ void player(){
   if(lfsConfig.playerSource==PLAYER_MODE_SD){
     if(PlayerCTRL.isFinish){
       // FIX: Removed duplicate xSemaphoreGive - semaphore already released at line 657
-      uint8_t was=PlayerCTRL.music_type;
-      uint32_t t0=millis();
       playFinish();
       muteAYBeep();
       if(sdConfig.isPlayAYL){
@@ -671,13 +669,8 @@ void player(){
         prev_file_id=sort_list_play[sdConfig.play_cur].file_id;
       }
       memcpy(playFileName,lfn,sizeof(lfn));
-      int err=music_open(playFileName,ay_cur_song);
+      music_open(playFileName,ay_cur_song);
       music_init();
-      // the console: what was stopped, what is started, and how it went
-      Serial.printf("track: %s -> %d/%d %s (%s) open %d, %lu ms%s\n",file_ext_list[was],
-        sdConfig.play_cur-sdConfig.play_cur_start+1,sdConfig.play_count_files-sdConfig.play_cur_start,
-        playFileName,file_ext_list[PlayerCTRL.music_type],err,(unsigned long)(millis()-t0),
-        PlayerCTRL.music_type==TYPE_MOD?(GS.active?", GS":", native"):"");
       PlayerCTRL.scr_mode_update[SCR_BROWSER]=true;
       browser_rebuild=1;
       PlayerCTRL.isFinish=false;
