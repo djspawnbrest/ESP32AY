@@ -172,6 +172,10 @@ extern int      Z80NonMaskableInterrupt (Z80_STATE *state/*, void *context*/);
  * (see z80user.h) also control the emulation.
  */
 
+/* GS: the card's DAC interrupt handler as one routine (z80emu.c). */
+
+extern int      gsz80_intdac (Z80_STATE *state, const unsigned char *code, int room);
+
 extern int      Z80Emulate (Z80_STATE *state, 
 			int number_cycles/*, 
 			void *context*/);

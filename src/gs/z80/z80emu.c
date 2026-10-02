@@ -2623,3 +2623,69 @@ stop_emulation:
 
         return elapsed_cycles;
 }
+
+/* GS: the card's DAC interrupt run as one routine.  General Sound's ROM
+ * latches the four DACs from its generator's buffers 37 500 times a second
+ * - about a third of the card's time - with a handler of one shape: INT8 in
+ * ROM at 0038h (IM 1, all four channels), or under IM 2 a copy at 4040h in
+ * the fixed RAM built from the INT0.. templates with a read only for the
+ * channels playing (__MAIN.a80, INIT_H.a80, INTTST.a80):
+ *
+ *      EX AF,AF' / PUSH DE / LD E,A / LD D,HX /
+ *      LD A,(DE) and INC D, any of them in any order /
+ *      INC E / JR Z,... / LD A,E / POP DE / EX AF,AF' / EI / RET
+ *
+ * `code` is the handler's bytes at state->pc, taken by Z80Interrupt() just
+ * before.  When they have that shape, the JR is not taken (INC E does not
+ * wrap: A' is not FFh) and it all takes no more than `room` T-states, this
+ * does what the interpreter would - the registers, the flags, R, the two
+ * stack bytes, the reads (the DAC latches) - and returns the same T-states.
+ * Otherwise it changes nothing and returns 0: the interpreter runs it.
+ */
+int GSZ80_FAST gsz80_intdac (Z80_STATE *state, const unsigned char *code, int room)
+{
+        int     elapsed_cycles, x, n, k;
+
+        if (code[0] != 0x08 || code[1] != 0xd5 || code[2] != 0x5f
+            || code[3] != 0xdd || code[4] != 0x54)
+                return 0;
+        elapsed_cycles = 4 + 11 + 4 + 8;
+        for (n = 5; n < 24 && code[n] != 0x1c; n++) {
+                if (code[n] == 0x1a) elapsed_cycles += 7;
+                else if (code[n] == 0x14) elapsed_cycles += 4;
+                else return 0;
+        }
+        if (n == 24 || code[n + 1] != 0x28 || code[n + 3] != 0x7b || code[n + 4] != 0xd1
+            || code[n + 5] != 0x08 || code[n + 6] != 0xfb || code[n + 7] != 0xc9)
+                return 0;
+        elapsed_cycles += 4 + 7 + 4 + 10 + 4 + 4 + 10;
+        if (elapsed_cycles > room || (state->alternates[Z80_AF] >> 8) == 0xff)
+                return 0;
+
+        EXCHANGE(AF, state->alternates[Z80_AF]);
+        SP -= 2;
+        Z80_WRITE_WORD(SP, DE);
+        state->registers.byte[Z80_E] = A;
+        state->registers.byte[Z80_D] = state->registers.byte[Z80_IXH];
+        for (k = 5; k < n; k++) {
+                if (code[k] == 0x1a) {
+                        Z80_READ_BYTE(DE, x);
+                        A = x;
+                } else
+                        INC(state->registers.byte[Z80_D]);
+        }
+        INC(state->registers.byte[Z80_E]);
+        A = state->registers.byte[Z80_E];
+        Z80_READ_WORD(SP, x);
+        DE = x;
+        SP += 2;
+        EXCHANGE(AF, state->alternates[Z80_AF]);
+        state->iff1 = state->iff2 = 1;
+        Z80_READ_WORD(SP, x);
+        state->pc = x;
+        SP += 2;
+        /* an M1 for each opcode, and one more for the DD */
+        state->r = (state->r & 0x80) | ((state->r + n + 7) & 0x7f);
+        state->status = 0;
+        return elapsed_cycles;
+}

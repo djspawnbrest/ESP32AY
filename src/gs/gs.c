@@ -166,6 +166,52 @@ void GS_FAST gs_out(unsigned port, unsigned char v)
     }
 }
 
+static inline int step(int cycles);
+
+static inline const uint8_t *code_at(unsigned pc)
+{
+    return gs_rd[pc >> 14] + (pc & 0x3fff);
+}
+
+#ifdef GS_CHECK_INTDAC
+/* The host's check (make gs-intcheck): every DAC handler run both ways, on
+ * the card and on a copy by the interpreter, and compared. */
+#include <stdio.h>
+#include <stdlib.h>
+static long intdac_checked;
+static int intdac_run(int room)
+{
+    Z80_STATE z0 = z;
+    uint8_t fixed0[GS_FIXED_SIZE], dac0[4];
+    memcpy(fixed0, fixed, GS_FIXED_SIZE); memcpy(dac0, gs_dac, 4);
+    int n = gsz80_intdac(&z, code_at(z.pc), room);
+    if (!n) return 0;
+    Z80_STATE z1 = z;
+    uint8_t fixed1[GS_FIXED_SIZE], dac1[4];
+    memcpy(fixed1, fixed, GS_FIXED_SIZE); memcpy(dac1, gs_dac, 4);
+    z = z0; memcpy(fixed, fixed0, GS_FIXED_SIZE); memcpy(gs_dac, dac0, 4);
+    int m = 0;
+    while (z.pc != z1.pc || m < n) {
+        int k = gsz80_emulate(&z, 1);
+        m += k;
+        if (m > 200) break;
+    }
+    if (m != n || z.pc != z1.pc || memcmp(&z.registers, &z1.registers, sizeof z.registers)
+        || memcmp(z.alternates, z1.alternates, sizeof z.alternates) || z.r != z1.r
+        || z.iff1 != z1.iff1 || z.iff2 != z1.iff2 || memcmp(fixed, fixed1, GS_FIXED_SIZE)
+        || memcmp(gs_dac, dac1, 4)) {
+        fprintf(stderr, "the DAC handler at %04X differs after %ld: T %d/%d pc %04X/%04X r %02X/%02X\n",
+                z0.pc, intdac_checked, n, m, z.pc, z1.pc, z.r, z1.r);
+        exit(9);
+    }
+    z.status = 0;
+    if (!(intdac_checked++ & 0xfffff)) fprintf(stderr, "intdac: %ld checked\n", intdac_checked);
+    return n;
+}
+#else
+static inline int GS_FAST intdac_run(int room) { return gsz80_intdac(&z, code_at(z.pc), room); }
+#endif
+
 static inline int step(int cycles)
 {
     int n = gsz80_emulate(&z, cycles);
@@ -209,6 +255,11 @@ int GS_FAST gs_step(int16_t *out, int max_frames, int budget)
                 pt += gsz80_interrupt(&z, 0xff);
                 irq = 0;
                 ints++;
+                /* the DAC handler in one go when all of it falls in this
+                 * slice, as the interpreter would have run it: the frame at
+                 * the period's end sees the same latches (z80emu.c) */
+                if ((z.pc & 0x3fff) < 0x3fe0 && (z.pc & 0xe000) != 0x6000)
+                    pt += intdac_run(stop - pt);
                 continue;
             }
             if (z.halted) {             /* HALT: nothing until the next INT */
