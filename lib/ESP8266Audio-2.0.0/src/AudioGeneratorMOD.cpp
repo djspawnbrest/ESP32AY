@@ -1635,6 +1635,23 @@ void AudioGeneratorMOD::initTrackFrame(unsigned long* tF){
   }
 }
 
+bool AudioGeneratorMOD::getChannelNote(uint8_t channel,uint16_t* period,uint8_t* volume,uint8_t* level){
+  if(!running||channel>=Mod.numberOfChannels||channel>=CHANNELS) return false;
+  uint8_t smp=Mixer.channelSampleNumber[channel];
+  if(!Mixer.channelFrequency[channel]||!Mixer.channelVolume[channel]||smp>=SAMPLES||!Mod.samples[smp].length) return false;
+  *period=Player.lastAmigaPeriod[channel]>0?Player.lastAmigaPeriod[channel]:Player.amigaPeriod[channel];
+  *volume=Mixer.channelVolume[channel]>64?64:Mixer.channelVolume[channel];
+  #if defined(CONFIG_IDF_TARGET_ESP32S3)&&defined(BOARD_HAS_PSRAM)
+  // the byte GetSample() reads now (no interpolation)
+  uint32_t p=Mixer.channelSampleOffset[channel]>>FIXED_DIVIDER;
+  const Sample &s=Mod.samples[smp];
+  *level=(s.data&&p<s.length)?(uint8_t)abs((int)static_cast<int8_t>(s.data[p])):0;
+  #else
+  *level=*volume*2;                     // the sample is in the file, not in memory
+  #endif
+  return *period!=0;
+}
+
 void AudioGeneratorMOD::SetSeparation(int sep){
   stereoSeparation=sep;
   for(int ch=0; ch<Mod.numberOfChannels; ch++){

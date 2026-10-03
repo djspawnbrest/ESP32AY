@@ -36,7 +36,8 @@ void muteAYBeep(){
 int music_open(const char* filename,int ay_sub_song){
   int err=FILE_ERR_OTHER;
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
-    if(!sd_fat.begin(SD_CONFIG)) return FILE_ERR_NO_CARD;
+    bool held=true;                     // the formats read by their own players give the lock early
+    if(!sd_fat.begin(SD_CONFIG)){ xSemaphoreGive(sdCardSemaphore); return FILE_ERR_NO_CARD; }
     if(sd_play_file.open(filename,O_RDONLY)){
       sd_play_file.getName(lfn,sizeof(lfn));
       memcpy(playedFileName,lfn,sizeof(lfn));
@@ -163,14 +164,14 @@ int music_open(const char* filename,int ay_sub_song){
           break;
         case TYPE_MOD:
           sd_play_file.close();
-          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          xSemaphoreGive(sdCardSemaphore); held=false;  // Release the semaphore we no need for AudioFileSourceSDFAT
           memset(&music_data,0,sizeof(music_data));
           memset(&AYInfo,0,sizeof(AYInfo));
-          MOD_GetInfo(filename);
+          GS_GetInfo(filename);     // General Sound, or upstream's MOD player
           break;
         case TYPE_S3M:
           sd_play_file.close();
-          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          xSemaphoreGive(sdCardSemaphore); held=false;  // Release the semaphore we no need for AudioFileSourceSDFAT
           memset(&music_data,0,sizeof(music_data));
           memset(&AYInfo,0,sizeof(AYInfo));
           S3M_GetInfo(filename);
@@ -178,7 +179,7 @@ int music_open(const char* filename,int ay_sub_song){
       #if defined(CONFIG_IDF_TARGET_ESP32S3)
         case TYPE_XM:
           sd_play_file.close();
-          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          xSemaphoreGive(sdCardSemaphore); held=false;  // Release the semaphore we no need for AudioFileSourceSDFAT
           memset(&music_data,0,sizeof(music_data));
           memset(&AYInfo,0,sizeof(AYInfo));
           XM_GetInfo(filename);
@@ -186,28 +187,28 @@ int music_open(const char* filename,int ay_sub_song){
       #endif
         case TYPE_TAP:
           sd_play_file.close();
-          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          xSemaphoreGive(sdCardSemaphore); held=false;  // Release the semaphore we no need for AudioFileSourceSDFAT
           memset(&music_data,0,sizeof(music_data));
           memset(&AYInfo,0,sizeof(AYInfo));
           TAP_GetInfo(filename);
           break;
         case TYPE_TZX:
           sd_play_file.close();
-          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          xSemaphoreGive(sdCardSemaphore); held=false;  // Release the semaphore we no need for AudioFileSourceSDFAT
           memset(&music_data,0,sizeof(music_data));
           memset(&AYInfo,0,sizeof(AYInfo));
           TZX_GetInfo(filename);
           break;
         case TYPE_MP3:
           sd_play_file.close();
-          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          xSemaphoreGive(sdCardSemaphore); held=false;  // Release the semaphore we no need for AudioFileSourceSDFAT
           memset(&music_data,0,sizeof(music_data));
           memset(&AYInfo,0,sizeof(AYInfo));
           MP3_GetInfo(filename);
           break;
         case TYPE_WAV:
           sd_play_file.close();
-          xSemaphoreGive(sdCardSemaphore);  // Release the semaphore we no need for AudioFileSourceSDFAT
+          xSemaphoreGive(sdCardSemaphore); held=false;  // Release the semaphore we no need for AudioFileSourceSDFAT
           memset(&music_data,0,sizeof(music_data));
           memset(&AYInfo,0,sizeof(AYInfo));
           WAV_GetInfo(filename);
@@ -215,7 +216,7 @@ int music_open(const char* filename,int ay_sub_song){
       }
       loadingTime=millis()-beforeLoading;
     }
-    xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
+    if(held) xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
   }
   #ifdef DEBUG_RAM
     printf("Music opened!\n");
@@ -395,7 +396,7 @@ void music_init(){
     case TYPE_PSG: break;
     case TYPE_RSF: break;
     case TYPE_YRG: break;
-    case TYPE_MOD: break;
+    case TYPE_MOD: GS_Start(); break;  // the card starts here, on this core; it opens the amp itself
     case TYPE_S3M: break;
   #if defined(CONFIG_IDF_TARGET_ESP32S3)
     case TYPE_XM: break;
@@ -405,7 +406,7 @@ void music_init(){
     case TYPE_MP3: break;
     case TYPE_WAV: break;
   }
-  unMuteAmp();
+  if(!(PlayerCTRL.music_type==TYPE_MOD&&GS.active)) unMuteAmp();
 }
 
 void music_play(){
@@ -482,7 +483,7 @@ void music_play(){
     case TYPE_PSG: PSG_Play(); break;
     case TYPE_RSF: RSF_Play(); break;
     case TYPE_YRG: YRG_Play(); break;
-    case TYPE_MOD: MOD_Play(); break;
+    case TYPE_MOD: GS_Play(); break;
     case TYPE_S3M: S3M_Play(); break;
   #if defined(CONFIG_IDF_TARGET_ESP32S3)
     case TYPE_XM: XM_Play(); break;
@@ -510,7 +511,7 @@ void music_stop(){
     case TYPE_PSG: PSG_Cleanup(); break;
     case TYPE_RSF: RSF_Cleanup(); break;
     case TYPE_YRG: YRG_Cleanup(); break;
-    case TYPE_MOD: MOD_Cleanup(); break;
+    case TYPE_MOD: GS_Cleanup(); break;
     case TYPE_S3M: S3M_Cleanup(); break;
   #if defined(CONFIG_IDF_TARGET_ESP32S3)
     case TYPE_XM: XM_Cleanup(); break;
@@ -637,6 +638,7 @@ void playFinish(){
 }
 
 void player(){
+  GS_Tick();
   if(xSemaphoreTake(sdCardSemaphore,portMAX_DELAY)==pdTRUE){
     if(!sd_fat.card()->sectorCount()){
       xSemaphoreGive(sdCardSemaphore);  // Release the semaphore
@@ -791,6 +793,7 @@ void showFileInfo(){
       ||PlayerCTRL.music_type==TYPE_XM
     #endif
     ){
+      if(PlayerCTRL.music_type==TYPE_MOD&&GS.active) sprintf(tme,"MOD GS"); else
       sprintf(tme,"%s %s%u%s",file_ext_list[PlayerCTRL.music_type],(modChannels>9)?"":" ",modChannels,"Ch");
     }else if(PlayerCTRL.music_type==TYPE_MP3||PlayerCTRL.music_type==TYPE_WAV){
       if(PlayerCTRL.music_type==TYPE_MP3&&isVBR) sprintf(tme,"%s %u",file_ext_list[PlayerCTRL.music_type],bitrate);
@@ -1221,35 +1224,40 @@ void showClock(){
 }
 
 void player_screen(){
-  if(PlayerCTRL.scr_mode_update[SCR_PLAYER]){
-    clear_display_field();
-    dynRebuild=true;
-    playerFrameShow();
-  }
-  if(dynRebuild){
-    // show play mode
+  if(zpPlayerDraw()||zpAyDraw()||zpGenDraw()){  // the Z-Player look draws this one (zp/)
+    PlayerCTRL.scr_mode_update[SCR_PLAYER]=false;
+    dynRebuild=false;
+  }else{
+    if(PlayerCTRL.scr_mode_update[SCR_PLAYER]){
+      clear_display_field();
+      dynRebuild=true;
+      playerFrameShow();
+    }
+    if(dynRebuild){
+      // show play mode
+      if(lfsConfig.playerSource==PLAYER_MODE_SD){
+        tft.drawBitmap(199,22,spModes[lfsConfig.play_mode],30,30,TFT_BLACK,WILD_CYAN);
+      }else if(lfsConfig.playerSource==PLAYER_MODE_UART){
+        uartInfoShow();
+      }
+      if(!lfsConfig.showClock) vbUpdate();
+    }
+    dynRebuild=false;
+    PlayerCTRL.scr_mode_update[SCR_PLAYER]=false;
+    voltage();
+    ayClockShow();
+    showFileInfo();
     if(lfsConfig.playerSource==PLAYER_MODE_SD){
-      tft.drawBitmap(199,22,spModes[lfsConfig.play_mode],30,30,TFT_BLACK,WILD_CYAN);
-    }else if(lfsConfig.playerSource==PLAYER_MODE_UART){
-      uartInfoShow();
+      if(PlayerCTRL.screen_mode!=SCR_ALERT){
+        timeShow();
+        showPlayerIcons();
+      }
     }
-    if(!lfsConfig.showClock) vbUpdate();
-  }
-  dynRebuild=false;
-  PlayerCTRL.scr_mode_update[SCR_PLAYER]=false;
-  voltage();
-  ayClockShow();
-  showFileInfo();
-  if(lfsConfig.playerSource==PLAYER_MODE_SD){
     if(PlayerCTRL.screen_mode!=SCR_ALERT){
-      timeShow();
-      showPlayerIcons();
+      fastEQ();
     }
+    if(lfsConfig.showClock&&foundRtc) showClock();
   }
-  if(PlayerCTRL.screen_mode!=SCR_ALERT){
-    fastEQ();
-  }
-  if(lfsConfig.showClock&&foundRtc) showClock();
   //keypad survey
   if(lfsConfig.playerSource==PLAYER_MODE_SD){
     if(enc.hasClicks(1)&&lcdBlackout==false&&scrNotPlayer==false){
@@ -1530,13 +1538,15 @@ void AYPlayTask(void *pvParameters){
       }
       if(PlayerCTRL.music_type==TYPE_AY){
         if(PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
-          while(!Sound.buf_do_update){
+          while(!Sound.buf_do_update&&PlayerCTRL.music_type==TYPE_AY&&PlayerCTRL.isPlay&&!PlayerCTRL.isFinish){
             yield();
             vTaskDelay(1);
             esp_task_wdt_reset();
           }
-          Sound.buf_do_update=false;
-          AY_PlayBuf();
+          if(Sound.buf_do_update){
+            Sound.buf_do_update=false;
+            AY_PlayBuf();
+          }
         }
       }else{
         if(PlayerCTRL.music_type!=TYPE_MOD

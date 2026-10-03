@@ -14,6 +14,7 @@ bool muteR=false;
 
 void writeToAmp(byte address,byte val){
   if(foundAmp){
+    I2CLock lock;
     Wire.beginTransmission(ampAddress); // start transmission to device   
     Wire.write(address);                 // send register address
     Wire.write(val);                     // send value to write

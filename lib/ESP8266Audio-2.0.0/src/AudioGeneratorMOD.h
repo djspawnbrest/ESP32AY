@@ -49,6 +49,10 @@ class AudioGeneratorMOD:public AudioGenerator{
     void initEQBuffers(uint8_t* eqBuffer,uint8_t* channelEQBuffer); // EQ buffer is 96 elements max, channel EQ buffer is 8 elements max
     void initTrackFrame(unsigned long* tF);
     void SetSeparation(int sep);
+    // what a channel sounds now, for the screens: its period (as it sounds,
+    // a slide's included), its volume (0-64) and its level - the sample's
+    // byte where it plays, 0-128, before the volume; false while silent
+    bool getChannelNote(uint8_t channel,uint16_t* period,uint8_t* volume,uint8_t* level);
 	
   public:
     bool isPaused;

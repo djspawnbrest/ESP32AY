@@ -13,12 +13,12 @@ void MOD_Cleanup(){
   memset(bufEQ,0,sizeof(bufEQ));
   memset(&music_data,0,sizeof(music_data));
   memset(&AYInfo,0,sizeof(AYInfo));
-  modFile->close();
+  if(modFile) modFile->close();          // null after a module MOD_GetInfo refused
   delete mod;
   delete modFile;
   mod=nullptr;
   modFile=nullptr;
-  out->stop();
+  if(out) out->stop();
   vTaskDelay(pdMS_TO_TICKS(10));
   skipMod=false;
   modOutInitialized=false;  // FIX: Reset flag for next track

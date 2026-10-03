@@ -1,0 +1,237 @@
+// zpscreen.h - the Z-Player look's screen: 240 x 320 in the Spectrum's 16
+// colours, 4 bits a pixel in PSRAM, pushed to the ST7789 a strip of 8 lines
+// at a time, only the strips drawn into since the last push.
+//
+// The text is Z-Player's own 4 x 8 font (zpfont.h): 60 columns, 40 rows.
+// Everything draws into the framebuffer; zpFlush() sends what changed.
+// Upstream's frame and screens draw straight onto the TFT, so the one
+// who draws last owns the glass: zpClaim() before a Z-Player screen,
+// zpRelease() hands it back (show_frame() and a full redraw).
+
+#include "zpfont.h"
+#include "zplogo.h"
+
+// the Spectrum's colours: 0-7 normal, 8-15 bright
+enum{
+  ZX_BLACK=0,ZX_BLUE,ZX_RED,ZX_MAGENTA,ZX_GREEN,ZX_CYAN,ZX_YELLOW,ZX_WHITE,
+  ZX_BBLACK,ZX_BBLUE,ZX_BRED,ZX_BMAGENTA,ZX_BGREEN,ZX_BCYAN,ZX_BYELLOW,ZX_BWHITE,
+};
+static const uint16_t zpPal[16]={
+  0x0000,0x001A,0xD000,0xD01A,0x06A0,0x06BA,0xD6A0,0xD6BA,
+  0x0000,0x001F,0xF800,0xF81F,0x07E0,0x07FF,0xFFE0,0xFFFF,
+};
+
+#define ZP_W 240
+#define ZP_H 320
+#define ZP_COLS (ZP_W/4)
+#define ZP_ROWS (ZP_H/8)
+
+// the skin (Set-Up): Z-Player's screens, or upstream's WildPlayer ones -
+// every zp*Mine() asks this first, so upstream draws when it says no
+static bool zpSkin(){ return lfsConfig.skin!=SKIN_WILD; }
+
+static uint8_t *zpFb=NULL;              // ZP_W*ZP_H/2, PSRAM, high nibble = left pixel
+static uint64_t zpDirty=0;              // a bit a strip of 8 lines
+static bool zpOwns=false;               // the glass is ours
+static int zpShown=-1;                  // which screen drew last (zpShow)
+
+// A screen about to draw: true when another drew last - the static parts
+// on the glass (subtitle, octave labels) are that one's, so all of it is
+// drawn again.  A track change from one kind to another does not always
+// say so through scr_mode_update.
+static bool zpShow(int id){
+  bool other=zpShown!=id;
+  zpShown=id;
+  return other;
+}
+
+static bool zpInit(){
+  if(zpFb) return true;
+  zpFb=(uint8_t*)heap_caps_calloc(ZP_W*ZP_H/2,1,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+  return zpFb!=NULL;
+}
+
+static inline void zpPixel(int x,int y,uint8_t c){
+  if((unsigned)x>=ZP_W||(unsigned)y>=ZP_H) return;
+  uint8_t *p=zpFb+(y*ZP_W+x)/2;
+  *p=(x&1)?((*p&0xF0)|c):((*p&0x0F)|(c<<4));
+  zpDirty|=1ULL<<(y>>3);
+}
+
+// the strips of 8 lines that rows y..y+h-1 touch (on the screen)
+static inline void zpDirtyRows(int y,int h){
+  for(int s=y>>3;s<=(y+h-1)>>3;s++) zpDirty|=1ULL<<s;
+}
+
+// a rectangle, clipped: a row at a time - its odd ends a nibble each, the
+// rest whole bytes.  A pixel at a time it took most of a frame's 40 ms,
+// and the UI loop missed the encoder's quick clicks.
+static void zpFill(int x,int y,int w,int h,uint8_t c){
+  if(x<0){ w+=x; x=0; }
+  if(y<0){ h+=y; y=0; }
+  if(x+w>ZP_W) w=ZP_W-x;
+  if(y+h>ZP_H) h=ZP_H-y;
+  if(w<=0||h<=0) return;
+  uint8_t cc=c<<4|c;
+  for(int j=y;j<y+h;j++){
+    uint8_t *p=zpFb+(j*ZP_W+x)/2;
+    int i=x,e=x+w;
+    if(i&1){ *p=(*p&0xF0)|c; p++; i++; }
+    int n=(e-i)/2;
+    memset(p,cc,n); p+=n; i+=2*n;
+    if(i<e) *p=(*p&0x0F)|(c<<4);
+  }
+  zpDirtyRows(y,h);
+}
+
+static uint32_t zpClears;                // zpClear()s so far: what was drawn before one is gone
+
+static void zpClear(uint8_t c){
+  zpClears++;
+  memset(zpFb,c<<4|c,ZP_W*ZP_H/2);
+  zpDirty=(1ULL<<ZP_ROWS)-1;
+}
+
+// one character cell: col 0-59, row 0-39
+static void zpChar(int col,int row,uint8_t ch,uint8_t ink,uint8_t paper){
+  const uint8_t *g=zpFont[ch&0x7F];
+  int x0=col*4,y0=row*8;
+  if((unsigned)col>=ZP_COLS||(unsigned)row>=ZP_ROWS) return;
+  for(int y=0;y<8;y++){                 // a cell's row: two bytes
+    uint8_t bits=g[y],*p=zpFb+((y0+y)*ZP_W+x0)/2;
+    p[0]=((bits&8)?ink:paper)<<4|((bits&4)?ink:paper);
+    p[1]=((bits&2)?ink:paper)<<4|((bits&1)?ink:paper);
+  }
+  zpDirty|=1ULL<<row;
+}
+
+// text at a cell, clipped at `width` cells (pads with paper), returns the columns used
+static int zpText(int col,int row,const char *s,uint8_t ink,uint8_t paper,int width=-1){
+  int n=0;
+  while(*s&&(width<0||n<width)&&col+n<ZP_COLS){
+    uint8_t c=(uint8_t)*s++;
+    if(c==0xC2&&(uint8_t)*s==0xB7){ c=0x7F; s++; }          // UTF-8 middle dot
+    else if(c>=0x80) c='?';
+    zpChar(col+n++,row,c,ink,paper);
+  }
+  while(width>=0&&n<width&&col+n<ZP_COLS) zpChar(col+n++,row,' ',ink,paper);
+  return n;
+}
+
+static void zpTextf(int col,int row,uint8_t ink,uint8_t paper,int width,const char *fmt,...){
+  char buf[80];
+  va_list ap; va_start(ap,fmt); vsnprintf(buf,sizeof(buf),fmt,ap); va_end(ap);
+  zpText(col,row,buf,ink,paper,width);
+}
+
+// text at a pixel position, `scale` times the 4x8 cells (2: 8x16, 3: 12x24),
+// clipped at `width` cells and padded with paper; returns the cells used
+static int zpTextS(int x,int y,const char *s,uint8_t ink,uint8_t paper,int scale,int width=-1){
+  int n=0;
+  // a cell's row at a time into the framebuffer's bytes, copied for the
+  // scale's other rows, when it lies whole on the screen at an even x
+  bool bytes=!(x&1)&&y>=0&&y+8*scale<=ZP_H;
+  while(*s&&(width<0||n<width)&&x+(n+1)*4*scale<=ZP_W){
+    uint8_t c=(uint8_t)*s++;
+    if(c==0xC2&&(uint8_t)*s==0xB7){ c=0x7F; s++; }
+    else if(c>=0x80) c='?';
+    const uint8_t *g=zpFont[c&0x7F];
+    int x0=x+n*4*scale;
+    if(bytes&&x0>=0){
+      for(int r=0;r<8;r++){
+        uint8_t *row=zpFb+((y+r*scale)*ZP_W+x0)/2;
+        for(int px=0;px<4*scale;px+=2){
+          uint8_t a=(g[r]&(8>>(px/scale)))?ink:paper;
+          uint8_t b=(g[r]&(8>>((px+1)/scale)))?ink:paper;
+          row[px/2]=a<<4|b;
+        }
+        for(int k=1;k<scale;k++) memcpy(row+k*ZP_W/2,row,2*scale);
+      }
+      zpDirtyRows(y,8*scale);
+    }else{
+      for(int r=0;r<8;r++) for(int b=0;b<4;b++)
+        zpFill(x0+b*scale,y+r*scale,scale,scale,(g[r]&(8>>b))?ink:paper);
+    }
+    n++;
+  }
+  while(width>=0&&n<width&&x+(n+1)*4*scale<=ZP_W){ zpFill(x+n*4*scale,y,4*scale,8*scale,paper); n++; }
+  return n;
+}
+
+static void zpTextSf(int x,int y,uint8_t ink,uint8_t paper,int scale,int width,const char *fmt,...){
+  char buf[80];
+  va_list ap; va_start(ap,fmt); vsnprintf(buf,sizeof(buf),fmt,ap); va_end(ap);
+  zpTextS(x,y,buf,ink,paper,scale,width);
+}
+
+// a 1-bit bitmap, MSB left, scaled
+static void zpBitmap(int x,int y,const uint8_t *bits,int w,int h,uint8_t ink,int scale=1){
+  int bw=(w+7)/8;
+  for(int j=0;j<h;j++) for(int i=0;i<w;i++)
+    if(bits[j*bw+i/8]&(0x80>>(i&7))) zpFill(x+i*scale,y+j*scale,scale,scale,ink);
+}
+
+static void zpFrame(int x,int y,int w,int h,uint8_t c){
+  zpFill(x,y,w,1,c); zpFill(x,y+h-1,w,1,c);
+  zpFill(x,y,1,h,c); zpFill(x+w-1,y,1,h,c);
+}
+
+static uint32_t zpSent[ZP_ROWS];        // each strip's hash, as last sent
+static uint64_t zpUnsent=~0ULL;         // strips whose zpSent does not hold: sent whatever
+
+// the strips drawn into, to the TFT - only those whose pixels changed since
+// they were last sent: the screens draw most of their lines every frame, the
+// same, and the SPI took most of a frame for them.  Upstream's key handling
+// still draws its popups straight onto the glass (volume, track icons), so
+// four strips are sent anyway every 40 ms, in turn: the whole screen in
+// 0.4 s, and nothing of a popup stays.
+static void zpFlush(){
+  static uint16_t line[ZP_W*8];         // internal RAM: one strip
+  static uint32_t lastTurn;
+  static int turn;
+  if(!zpOwns) return;
+  uint64_t force=zpUnsent;
+  if(millis()-lastTurn>=40){
+    lastTurn=millis();
+    for(int k=0;k<4;k++) force|=1ULL<<((turn+k)%ZP_ROWS);
+    turn=(turn+4)%ZP_ROWS;
+  }
+  uint64_t want=zpDirty|force;
+  if(!want) return;
+  bool swap=false;
+  for(int s=0;s<ZP_ROWS;s++){
+    if(!(want&(1ULL<<s))) continue;
+    const uint8_t *src=zpFb+s*8*ZP_W/2;
+    const uint32_t *w=(const uint32_t *)src;
+    uint32_t h=2166136261u;             // FNV-1a, a word at a time
+    for(int i=0;i<ZP_W*8/2/4;i++) h=(h^w[i])*16777619u;
+    if(!(force&(1ULL<<s))&&h==zpSent[s]) continue;
+    zpSent[s]=h;
+    for(int i=0;i<ZP_W*8/2;i++){
+      line[2*i]=zpPal[src[i]>>4];
+      line[2*i+1]=zpPal[src[i]&15];
+    }
+    if(!swap){ tft.setSwapBytes(true); swap=true; }
+    tft.pushImage(0,s*8,ZP_W,8,line);
+  }
+  if(swap) tft.setSwapBytes(false);
+  zpDirty=0;
+  zpUnsent=0;
+}
+
+// the glass: ours for a Z-Player screen, upstream's otherwise
+static void zpClaim(){
+  if(zpOwns) return;
+  zpOwns=true;
+  zpDirty=(1ULL<<ZP_ROWS)-1;            // everything, over whatever was there
+  zpUnsent=~0ULL;
+}
+
+static void zpRelease(){
+  if(!zpOwns) return;
+  zpOwns=false;
+  zpShown=-1;
+  show_frame();                         // upstream's frame, then its screen in full
+  for(int i=0;i<(int)(sizeof(PlayerCTRL.scr_mode_update)/sizeof(PlayerCTRL.scr_mode_update[0]));i++)
+    PlayerCTRL.scr_mode_update[i]=true;
+}
