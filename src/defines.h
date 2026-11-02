@@ -280,6 +280,7 @@ struct AYSongInfo{
   unsigned long file_len; /* file length */
   unsigned long module_len; /* file length */
   bool is_ts; /* 2xay - turbo sound */
+  bool is_ts_single; /* turbo sound stored in one PT3 3.7 module */
 };
 
 struct AYSongInfo AYInfo;

@@ -134,32 +134,160 @@ struct PT3_SongInfo
 
 bool PT3_Detect(unsigned char *module, unsigned long length);
 
-unsigned char *PT3_FindSig(unsigned char *buffer, long length)
+// Check that module points to a structurally valid PT3 header.
+// require_signature is used for modules found by scanning, where the
+// "ProTracker 3." / "Vortex Tracker II" signature is the search key.
+static bool PT3_IsValidModule(unsigned char *module, unsigned long length, bool require_signature)
 {
-    char sig[] =
-    { 0x50, 0x72, 0x6f, 0x54, 0x72, 0x61, 0x63, 0x6b, 0x65, 0x72, 0x20, 0x33, 0x2e };
-    char sig1[] =
-    { 0x56, 0x6f, 0x72, 0x74, 0x65, 0x78, 0x20, 0x54, 0x72, 0x61, 0x63, 0x6b, 0x65, 0x72, 0x20, 0x49, 0x49 };
-    if(length < sizeof(sig) || length < sizeof(sig1))
-        return 0;
-    unsigned char *ptr = buffer;
-    unsigned long remaining = length - sizeof(sig);
-    while(remaining > sizeof(sig))
+    if(length < 0xCB)
+        return false;
+    if(require_signature)
     {
-        if(!memcmp(ptr, sig, sizeof(sig)) || !memcmp(ptr, sig1, sizeof(sig1))) //found
+        if(memcmp(module, "ProTracker 3.", 13) != 0 &&
+           memcmp(module, "Vortex Tracker II", 17) != 0)
+            return false;
+    }
+    PT3_File *header = (PT3_File *)module;
+    unsigned long patterns_pointer = header->PT3_PatternsPointer0 | (header->PT3_PatternsPointer1 << 8);
+    if(patterns_pointer < 0xCA || patterns_pointer >= length)
+        return false;
+    if(module[patterns_pointer - 1] != 0xFF)
+        return false;
+    unsigned long positions = patterns_pointer - 0xC9 - 1;
+    if(positions < 1 || positions > 256)
+        return false;
+    int max_pattern = -1;
+    for(unsigned long i = 0; i < positions; i++)
+    {
+        unsigned char value = header->PT3_PositionList[i];
+        if((value % 3) != 0)
+            return false;
+        int pattern = value / 3;
+        if(pattern > max_pattern)
+            max_pattern = pattern;
+    }
+    if(max_pattern < 0)
+        return false;
+    if(patterns_pointer + (unsigned long)(max_pattern + 1) * 6 > length)
+        return false;
+    unsigned long ornament0 = header->PT3_OrnamentsPointers0[0] | (header->PT3_OrnamentsPointers0[1] << 8);
+    if(ornament0 == 0 || ornament0 + 2 >= length)
+        return false;
+    if(module[ornament0] != 0 || module[ornament0 + 1] != 1 || module[ornament0 + 2] != 0)
+        return false;
+    return true;
+}
+
+// TurboSound container footer:
+//   "PT3!" + size1(16le) + "PT3!" + size2(16le) + "02TS"
+// (03TS has one more "PT3!" + size entry)
+// Returns 0 if there is no valid footer, 2 for 02TS, 3 for 03TS.
+static int PT3_GetTSFooter(unsigned char *module, unsigned long length, unsigned long *size1, unsigned long *size2)
+{
+    if(length >= 16 && memcmp(module + length - 4, "02TS", 4) == 0)
+    {
+        unsigned long footer = length - 16;
+        if(memcmp(module + footer, "PT3!", 4) == 0 &&
+           memcmp(module + footer + 6, "PT3!", 4) == 0)
         {
-            return ptr;
+            unsigned long s1 = module[footer + 4] | (module[footer + 5] << 8);
+            unsigned long s2 = module[footer + 10] | (module[footer + 11] << 8);
+            if(s1 > 0 && s2 > 0 && s1 + s2 == footer)
+            {
+                *size1 = s1;
+                *size2 = s2;
+                return 2;
+            }
         }
-        ptr++;
-        remaining--;
+    }
+    if(length >= 22 && memcmp(module + length - 4, "03TS", 4) == 0)
+    {
+        unsigned long footer = length - 22;
+        if(memcmp(module + footer, "PT3!", 4) == 0 &&
+           memcmp(module + footer + 6, "PT3!", 4) == 0 &&
+           memcmp(module + footer + 12, "PT3!", 4) == 0)
+        {
+            unsigned long s1 = module[footer + 4] | (module[footer + 5] << 8);
+            unsigned long s2 = module[footer + 10] | (module[footer + 11] << 8);
+            unsigned long s3 = module[footer + 16] | (module[footer + 17] << 8);
+            if(s1 > 0 && s2 > 0 && s3 > 0 && s1 + s2 + s3 == footer)
+            {
+                *size1 = s1;
+                *size2 = s2;
+                return 3;
+            }
+        }
     }
     return 0;
+}
+
+// Find the second complete PT3 module in a concatenated TurboSound file.
+// Only a module with a valid header is accepted, so text/sample data that
+// happens to contain "ProTracker 3." cannot trigger a false detection.
+static unsigned char *PT3_FindSecondModule(unsigned char *module, unsigned long length)
+{
+    if(length <= 0x63)
+        return 0;
+    for(unsigned long offset = 0x63; offset + 13 <= length; offset++)
+    {
+        if(memcmp(module + offset, "ProTracker 3.", 13) == 0 ||
+           (offset + 17 <= length && memcmp(module + offset, "Vortex Tracker II", 17) == 0))
+        {
+            if(PT3_IsValidModule(module + offset, length - offset, true))
+                return module + offset;
+        }
+    }
+    return 0;
+}
+
+// Legacy single-module TurboSound PT3 3.7 format:
+//   byte 0x62 (Mode) = total number of patterns (48), not 0x20
+//   position list references patterns of the first AY (upper half),
+//   second AY patterns are mirrored: (mode - 1 - pattern).
+// A normal single-AY module has Mode = 0x20 and positions start from 0.
+static bool PT3_IsSingleModuleTS(unsigned char *module, unsigned long length, int version)
+{
+    if(version < 7 || length < 0xCB)
+        return false;
+    PT3_File *header = (PT3_File *)module;
+    unsigned char mode = header->PT3_MusicName[0x62];
+    if(mode == 0x20 || mode < 2 || mode > 84)
+        return false;
+    unsigned long patterns_pointer = header->PT3_PatternsPointer0 | (header->PT3_PatternsPointer1 << 8);
+    if(patterns_pointer < 0xCA || patterns_pointer >= length)
+        return false;
+    if(module[patterns_pointer - 1] != 0xFF)
+        return false;
+    unsigned long positions = patterns_pointer - 0xC9 - 1;
+    if(positions < 1 || positions > 256)
+        return false;
+    int min_pattern = 256;
+    int max_pattern = -1;
+    for(unsigned long i = 0; i < positions; i++)
+    {
+        unsigned char value = header->PT3_PositionList[i];
+        if((value % 3) != 0)
+            return false;
+        int pattern = value / 3;
+        if(pattern < min_pattern)
+            min_pattern = pattern;
+        if(pattern > max_pattern)
+            max_pattern = pattern;
+    }
+    if(max_pattern < 0)
+        return false;
+    if(!(mode > max_pattern && mode < max_pattern * 2))
+        return false;
+    if(min_pattern < mode / 2)
+        return false;
+    if(patterns_pointer + (unsigned long)(max_pattern + 1) * 6 > length)
+        return false;
+    return true;
 }
 
 void PT3_Init(AYSongInfo &info)
 {
     int i;
-    unsigned char b;
     unsigned char *module = info.module;
     PT3_File *header = (PT3_File *)module;
     if(info.data)
@@ -172,6 +300,8 @@ void PT3_Init(AYSongInfo &info)
         delete (PT3_SongInfo *)info.data1;
         info.data1 = 0;
     }
+    info.is_ts = false;
+    info.is_ts_single = false;
     info.data = (void *)new PT3_SongInfo;
     if(!info.data)
         return;
@@ -183,34 +313,32 @@ void PT3_Init(AYSongInfo &info)
     {
         version = header->PT3_MusicName[13] - 0x30;
     }
-    
-    bool is_ts_37 = false;
-    if(version >= 7)
+
+    // 1. Official TurboSound container: two complete PT3 modules + 02TS footer.
+    // 2. Fallback: two concatenated PT3 modules without a footer.
+    // 3. Legacy single-module PT3 3.7 TurboSound (Mode != 0x20).
+    unsigned char *second_module = 0;
+    unsigned long size1 = 0, size2 = 0;
+    int footer = PT3_GetTSFooter(module, info.module_len, &size1, &size2);
+    if(footer >= 2 && size1 < info.module_len &&
+       PT3_IsValidModule(module + size1, info.module_len - size1, false))
     {
-        for(int pos = 0; pos < header->PT3_NumberOfPositions && pos < 256; pos++)
-        {
-            int pat_idx = header->PT3_PositionList[pos] / 3;
-            if(pat_idx >= 24 && pat_idx < 48)
-            {
-                is_ts_37 = true;
-                break;
-            }
-        }
+        second_module = module + size1;
     }
-    
-    unsigned char *ptr = PT3_FindSig(module + 0x63, info.module_len - 0x63);
-    if((unsigned long)ptr > 0 || is_ts_37)
+    else
+    {
+        second_module = PT3_FindSecondModule(module, info.module_len);
+    }
+
+    bool is_ts_single = false;
+    if(!second_module)
+        is_ts_single = PT3_IsSingleModuleTS(module, info.module_len, version);
+
+    if(second_module || is_ts_single)
     {
         info.is_ts = true;
-        if(is_ts_37 && (unsigned long)ptr == 0)
-        {
-            info.module1 = module;
-        }
-        else
-        {
-            info.module1 = ptr;
-            is_ts_37 = false;
-        }
+        info.is_ts_single = is_ts_single;
+        info.module1 = is_ts_single ? module : second_module;
         info.data1 = (void *)new PT3_SongInfo;
         if(!info.data1)
         {
@@ -228,19 +356,14 @@ void PT3_Init(AYSongInfo &info)
     {
         PT3.CurrentPosition = 0;
         i = header->PT3_PositionList[0];
-        b = header->PT3_MusicName[0x62];
-        if(b != 0x20)
+        if(is_ts_single && y == 1)
         {
-            int max_pos = b * 3 - 3;
+            int max_pos = header->PT3_MusicName[0x62] * 3 - 3;
             i = max_pos - i;
         }
-        if(is_ts_37 && y == 1)
-        {
-            int pat_idx = i / 3;
-            pat_idx = 47 - pat_idx;
-            i = pat_idx * 3;
-        }
-        PT3.Version = version;
+        PT3.Version = 6;
+        if((header->PT3_MusicName[13] >= '0') && (header->PT3_MusicName[13] <= '9'))
+            PT3.Version = header->PT3_MusicName[13] - 0x30;
         PT3.DelayCounter = 1;
         PT3.Delay = header->PT3_Delay;
         PT3_A.Address_In_Pattern = ay_sys_getword(&module[PT3_PatternsPointer + i * 2]);
@@ -280,7 +403,7 @@ void PT3_Init(AYSongInfo &info)
         if(!info.is_ts)
             break;
         data = info.data1;
-        if(!is_ts_37)
+        if(!is_ts_single)
         {
             module = info.module1;
             header = (PT3_File *)module;
@@ -681,20 +804,10 @@ void PT3_Play_Chip(AYSongInfo &info, unsigned long chip_num)
                 if(PT3.CurrentPosition == header->PT3_NumberOfPositions)
                     PT3.CurrentPosition = header->PT3_LoopPosition;
                 int pos_val = header->PT3_PositionList[PT3.CurrentPosition];
-                if(PT3.Version >= 7 && info.module1 == info.module)
+                if(info.is_ts_single && chip_num == 1)
                 {
-                    unsigned char b = header->PT3_MusicName[0x62];
-                    if(b != 0x20)
-                    {
-                        int max_pos = b * 3 - 3;
-                        pos_val = max_pos - pos_val;
-                    }
-                    int pat_idx = pos_val / 3;
-                    if(chip_num == 1)
-                    {
-                        pat_idx = 47 - pat_idx;
-                        pos_val = pat_idx * 3;
-                    }
+                    int max_pos = header->PT3_MusicName[0x62] * 3 - 3;
+                    pos_val = max_pos - pos_val;
                 }
                 PT3_A.Address_In_Pattern = ay_sys_getword(&module[PT3_PatternsPointer + pos_val * 2]);
                 PT3_B.Address_In_Pattern = ay_sys_getword(&module[PT3_PatternsPointer + pos_val * 2 + 2]);
@@ -1081,8 +1194,19 @@ void PT3_GetInfo(AYSongInfo &info)
     unsigned long length = PT3_GetTime(module, loop);
     info.Length = length;
     info.Loop = loop;
-    unsigned char *ptr = PT3_FindSig(module + 0x63, info.module_len - 0x63);
-    if((unsigned long)ptr > 0)
+    unsigned char *ptr = 0;
+    unsigned long size1 = 0, size2 = 0;
+    int footer = PT3_GetTSFooter(module, info.module_len, &size1, &size2);
+    if(footer >= 2 && size1 < info.module_len &&
+       PT3_IsValidModule(module + size1, info.module_len - size1, false))
+    {
+        ptr = module + size1;
+    }
+    else
+    {
+        ptr = PT3_FindSecondModule(module, info.module_len);
+    }
+    if(ptr)
     {
         length = PT3_GetTime(ptr, loop);
         if(length > info.Length)
