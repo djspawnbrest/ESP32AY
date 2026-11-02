@@ -299,23 +299,29 @@ void lfs_config_load(){
       }
     }
   }else{
-    LittleFS.begin(true);
-    fs::File f=LittleFS.open(CFG_FILENAME,"r");
-    if(f){
-      if(f.size()==sizeof(lfsConfig)){
-        f.readBytes((char*)&lfsConfig,sizeof(lfsConfig));
-        if(lfsConfig.version!=LFSCONFIG_VERSION){
-          // printf("LFS Config version mismatch! Expected %d, got %d. Resetting...\n",LFSCONFIG_VERSION,lfsConfig.version);
-          needReset=true;
-        }
-      }
-      f.close();
+    // Mount only our own partition, never the "spiffs" one used by other firmware.
+    // basePath must not be "/": esp_vfs_littlefs_register() fails to register a VFS at root,
+    // then every open() reports "File system is not mounted".
+    if(!LittleFS.begin(true,"/littlefs",10,"lfs")){
+      printf("LittleFS: partition \"lfs\" not mounted, config will not be saved!\n");
     }else{
-      if(!LittleFS.exists(CFG_FILENAME)){
-        fs::File f=LittleFS.open(CFG_FILENAME,"w");
-        if(f){
-          f.write((const uint8_t*)&lfsConfig,sizeof(lfsConfig));
-          f.close();
+      fs::File f=LittleFS.open(CFG_FILENAME,"r");
+      if(f){
+        if(f.size()==sizeof(lfsConfig)){
+          f.readBytes((char*)&lfsConfig,sizeof(lfsConfig));
+          if(lfsConfig.version!=LFSCONFIG_VERSION){
+            // printf("LFS Config version mismatch! Expected %d, got %d. Resetting...\n",LFSCONFIG_VERSION,lfsConfig.version);
+            needReset=true;
+          }
+        }
+        f.close();
+      }else{
+        if(!LittleFS.exists(CFG_FILENAME)){
+          fs::File f=LittleFS.open(CFG_FILENAME,"w");
+          if(f){
+            f.write((const uint8_t*)&lfsConfig,sizeof(lfsConfig));
+            f.close();
+          }
         }
       }
     }
